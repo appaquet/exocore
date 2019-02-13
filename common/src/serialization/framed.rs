@@ -12,8 +12,8 @@
 //!
 
 use std;
+use std::sync::Once;
 
-use crate::security::hash::Multihash;
 use byteorder;
 use byteorder::ByteOrder;
 use byteorder::LittleEndian;
@@ -21,8 +21,10 @@ use capnp;
 pub use capnp::message::ReaderSegments;
 use capnp::message::{Allocator, Builder, HeapAllocator, Reader};
 use capnp::serialize::SliceSegments;
-use lazycell::LazyCell;
+use lazycell::AtomicLazyCell;
 use owning_ref::OwningHandle;
+
+use crate::security::hash::Multihash;
 
 ///
 /// Trait that needs to have an impl for each capnp generated message struct.
@@ -154,7 +156,8 @@ where
 pub struct SliceFrame<'a> {
     metadata: FrameMetadata,
     data: &'a [u8],
-    lazy_reader: LazyCell<Reader<SliceSegments<'a>>>,
+    lazy_reader: AtomicLazyCell<Result<Reader<SliceSegments<'a>>, Error>>,
+    lazy_reader_once: Once,
 }
 
 impl<'a> SliceFrame<'a> {
@@ -187,7 +190,8 @@ impl<'a> SliceFrame<'a> {
         Ok(SliceFrame {
             metadata: header_metadata,
             data,
-            lazy_reader: LazyCell::new(),
+            lazy_reader: AtomicLazyCell::new(),
+            lazy_reader_once: Once::new(),
         })
     }
 
@@ -225,7 +229,8 @@ impl<'a> SliceFrame<'a> {
         Ok(SliceFrame {
             metadata: header_metadata,
             data: &data[frame_begin..frame_begin + footer_metadata.frame_size()],
-            lazy_reader: LazyCell::new(),
+            lazy_reader: AtomicLazyCell::new(),
+            lazy_reader_once: Once::new(),
         })
     }
 
@@ -269,9 +274,27 @@ impl<'a> Frame for SliceFrame<'a> {
     fn get_typed_reader<'b, T: MessageType<'b>>(
         &'b self,
     ) -> Result<<T as capnp::traits::Owned>::Reader, Error> {
-        let reader = self.lazy_reader.try_borrow_with(|| {
-            let message_range = self.metadata.message_range();
-            Self::read_capn_message(&self.data[message_range])
+        // Unfortunately, the LazyCell is nice to use when single thread, but in multi-thread,
+        // it doesn't have a "borrow_with" method that initializes if not already initialized.
+        // We use a Once to make sure we initialize the reader if needed.
+        if !self.lazy_reader.filled() {
+            self.lazy_reader_once.call_once(|| {
+                let message_range = self.metadata.message_range();
+                self.lazy_reader
+                    .fill(Self::read_capn_message(&self.data[message_range]))
+                    .map_err(|_| ())
+                    .expect("Lazy ready was already initialized, which should be impossible since it's inside a Once");
+            });
+        }
+
+        let reader = self
+            .lazy_reader
+            .borrow()
+            .expect("Tried to unwrap the lazy reader that should have been filled");
+
+        let reader = reader.as_ref().map_err(|err| {
+            // needed since the cell contains a ref to the error, and we cannot return it directly
+            err.clone()
         })?;
 
         reader.get_root().map_err(|_err| Error::InvalidData)
@@ -821,7 +844,7 @@ impl FrameMetadata {
 
     #[inline]
     fn frame_size(&self) -> usize {
-        Self::SIZE + Self::SIZE + usize::from(self.message_size) + usize::from(self.signature_size)
+        Self::SIZE + Self::SIZE + self.message_size + self.signature_size
     }
 
     #[inline]
@@ -831,7 +854,7 @@ impl FrameMetadata {
 
     #[inline]
     fn footer_offset(&self) -> usize {
-        Self::SIZE + usize::from(self.message_size) + usize::from(self.signature_size)
+        Self::SIZE + self.message_size + self.signature_size
     }
 
     #[inline]
@@ -975,8 +998,9 @@ impl From<std::io::Error> for Error {
 
 #[cfg(test)]
 pub mod tests {
-    use super::*;
     use crate::data_chain_capnp::{block, entry_header};
+
+    use super::*;
 
     #[test]
     fn write_and_read_frame_metadata() {

@@ -8,7 +8,7 @@ type BlockOffset = u64;
 
 pub mod directory;
 
-pub trait Store {
+pub trait Store: Send {
     fn write_block<B, S>(&mut self, block: &B, block_signatures: &S) -> Result<BlockOffset, Error>
     where
         B: framed::TypedFrame<block::Owned>,

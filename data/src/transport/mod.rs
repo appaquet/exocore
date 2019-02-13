@@ -33,7 +33,8 @@ pub struct InMessage {
     pub data: OwnedTypedFrame<envelope::Owned>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Fail)]
 pub enum Error {
+    #[fail(display = "An unknown error occurred")]
     Unknown,
 }

@@ -4,3 +4,6 @@
 [submodule "3rd/extindex"]
 	path = 3rd/extindex
 	url = https://github.com/appaquet/extindex-rs.git
+[submodule "3rd/capnproto-rust"]
+	path = 3rd/capnproto-rust
+	url = https://github.com/appaquet/capnproto-rust.git
