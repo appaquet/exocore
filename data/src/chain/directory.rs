@@ -1,6 +1,7 @@
 use std;
 use std::cmp::Ordering;
 use std::fs::{File, OpenOptions};
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use exocore_common::data_chain_capnp::{block, block_signatures};
@@ -169,7 +170,7 @@ impl Store for DirectoryStore {
         Ok(block_segment.next_block_offset)
     }
 
-    fn available_segments(&self) -> Vec<range::Range<BlockOffset>> {
+    fn available_segments(&self) -> Vec<Range<BlockOffset>> {
         self.segments
             .iter()
             .map(|segment| segment.offset_range())
@@ -454,8 +455,11 @@ impl DirectorySegment {
         directory.join(format!("seg_{}", first_offset))
     }
 
-    fn offset_range(&self) -> range::Range<BlockOffset> {
-        range::Range::new(self.first_block_offset, self.next_block_offset)
+    fn offset_range(&self) -> Range<BlockOffset> {
+        Range {
+            start: self.first_block_offset,
+            end: self.next_block_offset,
+        }
     }
 
     fn ensure_file_size(&mut self, write_size: usize) -> Result<(), Error> {
@@ -699,7 +703,7 @@ mod tests {
 
             let segments = directory_chain.available_segments();
             let data_size = ((block_msg.frame_size() + sig_msg.frame_size()) * 2) as BlockOffset;
-            assert_eq!(segments, vec![range::Range::new(0, data_size)]);
+            assert_eq!(segments, vec![Range::new(0, data_size)]);
             segments
         };
 
