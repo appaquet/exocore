@@ -9,7 +9,7 @@ use exocore_common::serialization::protos::{EntryID, OperationID};
 
 pub mod memory;
 
-pub trait Store: Send {
+pub trait Store: Send + 'static {
     fn put_operation(
         &mut self,
         operation: framed::OwnedTypedFrame<pending_operation::Owned>,

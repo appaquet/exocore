@@ -23,9 +23,14 @@ struct OperationBlockSignature {
     blockOffset @0: UInt64;
 }
 
+
+#
+#
+#
 struct Entry {
     header @0: EntryHeader;
     data @1: Data;
+    #TODO: Add entry type
 }
 
 struct EntryHeader {

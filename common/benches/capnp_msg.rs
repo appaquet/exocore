@@ -23,7 +23,7 @@ fn bench_build_message(b: &mut Bencher) {
 fn bench_read_message_from_slice_with_parsing(b: &mut Bencher) {
     let mut builder = FrameBuilder::<block::Owned>::new();
     build_test_block(&mut builder);
-    let data = builder.into_framed_vec().unwrap();
+    let data = builder.into_unsigned_framed_bytes().unwrap();
 
     b.iter(|| {
         let message = SliceFrame::new(&data).unwrap();
@@ -36,7 +36,7 @@ fn bench_read_message_from_slice_with_parsing(b: &mut Bencher) {
 fn bench_read_message_from_slice_no_parsing(b: &mut Bencher) {
     let mut builder = FrameBuilder::<block::Owned>::new();
     build_test_block(&mut builder);
-    let data = builder.into_framed_vec().unwrap();
+    let data = builder.into_unsigned_framed_bytes().unwrap();
 
     b.iter(|| {
         let message = SliceFrame::new(&data).unwrap();
@@ -48,7 +48,7 @@ fn bench_read_message_from_slice_no_parsing(b: &mut Bencher) {
 fn bench_read_message_from_owned_with_parsing(b: &mut Bencher) {
     let mut builder = FrameBuilder::<block::Owned>::new();
     build_test_block(&mut builder);
-    let data = builder.into_framed_vec().unwrap();
+    let data = builder.into_unsigned_framed_bytes().unwrap();
 
     b.iter(|| {
         let message = OwnedFrame::new(data.clone()).unwrap();
@@ -61,7 +61,7 @@ fn bench_read_message_from_owned_with_parsing(b: &mut Bencher) {
 fn bench_read_message_from_owned_no_parsing(b: &mut Bencher) {
     let mut builder = FrameBuilder::<block::Owned>::new();
     build_test_block(&mut builder);
-    let data = builder.into_framed_vec().unwrap();
+    let data = builder.into_unsigned_framed_bytes().unwrap();
 
     b.iter(|| {
         let message = OwnedFrame::new(data.clone()).unwrap();

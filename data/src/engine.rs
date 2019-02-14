@@ -1,10 +1,6 @@
-use crate::chain;
-use crate::pending;
-use crate::transport;
-
-use exocore_common;
-use exocore_common::node::Node;
-use exocore_common::serialization::framed::TypedFrame;
+use std;
+use std::sync::{Arc, Mutex, RwLock, Weak};
+use std::time::{Duration, Instant};
 
 use futures::prelude::*;
 use futures::sync::mpsc;
@@ -12,9 +8,13 @@ use futures::sync::oneshot;
 use tokio;
 use tokio::timer::Interval;
 
-use std;
-use std::sync::{Arc, Mutex, RwLock};
-use std::time::{Duration, Instant};
+use exocore_common;
+use exocore_common::node::Node;
+use exocore_common::serialization::framed::TypedFrame;
+
+use crate::chain;
+use crate::pending;
+use crate::transport;
 
 // TODO: Should be able to run without the chain.
 
@@ -25,6 +25,9 @@ use std::time::{Duration, Instant};
 
 const ENGINE_MANAGE_TIMER_INTERVAL: Duration = Duration::from_secs(1);
 
+///
+///
+///
 pub struct Engine<T, CS, PS>
 where
     T: transport::Transport,
@@ -37,23 +40,11 @@ where
     completion_receiver: oneshot::Receiver<Result<(), Error>>,
 }
 
-struct Inner<CS, PS>
-where
-    CS: chain::Store,
-    PS: pending::Store,
-{
-    nodes: Vec<Node>,
-    pending_store: Mutex<PS>,
-    chain_store: Mutex<CS>,
-    transport_sender: Option<mpsc::Sender<transport::OutMessage>>,
-    completion_sender: Option<oneshot::Sender<Result<(), Error>>>,
-}
-
 impl<T, CS, PS> Engine<T, CS, PS>
 where
     T: transport::Transport,
-    CS: chain::Store + 'static,
-    PS: pending::Store + 'static,
+    CS: chain::Store,
+    PS: pending::Store,
 {
     pub fn new(
         transport: T,
@@ -80,7 +71,7 @@ where
     }
 
     pub fn get_handle(&mut self) -> Handle {
-        // TODO:
+        // TODO: Add a new channel to which we should send streams events. It should probably be bounded & having an error to indicate that we could't push
         unimplemented!()
     }
 
@@ -88,79 +79,115 @@ where
         let transport_in_stream = self.transport.get_stream();
         let transport_out_sink = self.transport.get_sink();
 
-        // handle messages going to transport
-        let transport_sender = {
+        // create channel to send messages to transport's sink
+        {
             let weak_inner = Arc::downgrade(&self.inner);
             let (transport_out_channel_sender, transport_out_channel_receiver) = mpsc::unbounded();
             tokio::spawn(
                 transport_out_channel_receiver
                     .map_err(|err| {
-                        error!("Error in transport_out channel's receiver: {:?}", err);
-                        transport::Error::Unknown
+                        transport::Error::Other(format!(
+                            "Couldn't send to transport_out channel's receiver: {:?}",
+                            err
+                        ))
                     })
                     .forward(transport_out_sink)
                     .map(|_| ())
                     .map_err(move |err| {
-                        error!("Error forwarding to transport sink: {:?}", err);
-                        if let Some(locked_inner) = weak_inner.upgrade() {
-                            if let Ok(inner) = locked_inner.write().as_mut() {
-                                if let Some(sender) = inner.completion_sender.take() {
-                                    let _ = sender.send(Err(Error::Unknown));
-                                }
-                            }
-                        }
+                        Self::handle_spawned_future_error(
+                            "transport incoming stream",
+                            &weak_inner,
+                            Error::Transport(err),
+                        )
                     }),
             );
-            transport_out_channel_sender
-        };
+
+            let mut unlocked_inner = self.inner.write()?;
+            unlocked_inner.transport_sender = Some(transport_out_channel_sender);
+        }
 
         // handle transport's incoming messages
         {
-            let inner = Arc::clone(&self.inner);
+            let weak_inner1 = Arc::downgrade(&self.inner);
+            let weak_inner2 = Arc::downgrade(&self.inner);
             tokio::spawn(
                 transport_in_stream
                     .map_err(Error::Transport)
-                    .for_each(move |msg: transport::InMessage| {
-                        info!("Got incoming message of type: {}", msg.data.message_type());
-                        Self::handle_incoming_message(&inner)
-                    })
-                    .map_err(|err| {
-                        // TODO: Mark engine failed
-                        error!("Error handling incoming message from transport: {:?}", err);
+                    .for_each(move |msg| Self::handle_incoming_message(&weak_inner1, msg))
+                    .map_err(move |err| {
+                        Self::handle_spawned_future_error(
+                            "transport incoming stream",
+                            &weak_inner2,
+                            err,
+                        )
                     }),
             );
         }
 
-        tokio::spawn({
-            Interval::new_interval(ENGINE_MANAGE_TIMER_INTERVAL)
-                .for_each(|_| {
-                    // TODO: Sync at interval to check we didn't miss anything
-                    // TODO: Maybe propose a new block
-                    // TODO: Check if transport is complete
-
-                    Ok(())
-                })
-                .map_err(|err| {
-                    // TODO: Mark engine failed
-                    error!("Error in management timer: {:?}", err);
-                })
-        });
+        // management timer
+        {
+            let weak_inner1 = Arc::downgrade(&self.inner);
+            let weak_inner2 = Arc::downgrade(&self.inner);
+            tokio::spawn({
+                Interval::new_interval(ENGINE_MANAGE_TIMER_INTERVAL)
+                    .map_err(|err| Error::Other(format!("Interval error: {:?}", err)))
+                    .for_each(move |_| Self::handle_management_timer_tick(&weak_inner1))
+                    .map_err(move |err| {
+                        Self::handle_spawned_future_error("management timer", &weak_inner2, err)
+                    })
+            });
+        }
 
         self.started = true;
-
         Ok(())
     }
 
-    fn handle_incoming_message(inner: &Arc<RwLock<Inner<CS, PS>>>) -> Result<(), Error> {
+    fn handle_incoming_message(
+        inner: &Weak<RwLock<Inner<CS, PS>>>,
+        msg: transport::InMessage,
+    ) -> Result<(), Error> {
         unimplemented!()
+    }
+
+    fn handle_management_timer_tick(inner: &Weak<RwLock<Inner<CS, PS>>>) -> Result<(), Error> {
+        // TODO: Sync at interval to check we didn't miss anything
+        // TODO: Maybe propose a new block
+        // TODO: Check if transport is complete
+
+        unimplemented!()
+    }
+
+    fn handle_spawned_future_error(
+        future_name: &str,
+        weak_inner: &Weak<RwLock<Inner<CS, PS>>>,
+        error: Error,
+    ) {
+        error!("Got an error in future {}: {:?}", future_name, error);
+
+        let locked_inner = if let Some(locked_inner) = weak_inner.upgrade() {
+            locked_inner
+        } else {
+            return;
+        };
+
+        let mut inner = if let Ok(inner) = locked_inner.write() {
+            inner
+        } else {
+            return;
+        };
+
+        inner.try_complete(Err(Error::Other(format!(
+            "Couldn't send to completion channel: {:?}",
+            error
+        ))));
     }
 }
 
 impl<T, CS, PS> Future for Engine<T, CS, PS>
 where
     T: transport::Transport,
-    CS: chain::Store + 'static,
-    PS: pending::Store + 'static,
+    CS: chain::Store,
+    PS: pending::Store,
 {
     type Item = ();
     type Error = Error;
@@ -174,20 +201,52 @@ where
         let _ = try_ready!(self
             .completion_receiver
             .poll()
-            .map_err(|_cancel| Error::Unknown));
+            .map_err(|_cancel| Error::Other("Completion receiver has been cancelled".to_string())));
 
         Ok(Async::Ready(()))
     }
 }
 
+///
+///
+///
+struct Inner<CS, PS>
+where
+    CS: chain::Store,
+    PS: pending::Store,
+{
+    nodes: Vec<Node>,
+    pending_store: Mutex<PS>,
+    chain_store: Mutex<CS>,
+    transport_sender: Option<mpsc::UnboundedSender<transport::OutMessage>>,
+    completion_sender: Option<oneshot::Sender<Result<(), Error>>>,
+}
+
+impl<CS, PS> Inner<CS, PS>
+where
+    CS: chain::Store,
+    PS: pending::Store,
+{
+    fn try_complete(&mut self, result: Result<(), Error>) {
+        if let Some(sender) = self.completion_sender.take() {
+            let _ = sender.send(result);
+        }
+    }
+}
+
+///
+///
+///
 #[derive(Debug, Fail)]
 pub enum Error {
-    #[fail(display = "Try to lock a mutex that was poised")]
+    #[fail(display = "Try to lock a mutex that was poisoned")]
     Poisoned,
-    #[fail(display = "Error in transport")]
+    #[fail(display = "Error in transport: {:?}", _0)]
     Transport(transport::Error),
-    #[fail(display = "An unknown error occurred")]
-    Unknown,
+    #[fail(display = "Inner was dropped or couldn't get locked")]
+    InnerUpgrade,
+    #[fail(display = "An error occurred: {}", _0)]
+    Other(String),
 }
 
 impl<T> From<std::sync::PoisonError<T>> for Error {
@@ -196,11 +255,18 @@ impl<T> From<std::sync::PoisonError<T>> for Error {
     }
 }
 
+///
+/// Handle ot the Engine, allowing communication with the engine.
+/// The engine itself is owned by an future executor.
+///
 pub struct Handle {}
 
 impl Handle {
-    pub fn write_entry(&self) {
-        // TODO: Send to pending store
+    pub fn write_entry(&self) -> Result<(), Error> {
+        // TODO: Write to pending store
+        // TODO: Force sync
+
+        unimplemented!()
     }
 
     pub fn get_events_stream(&self, _from_time: Instant)
@@ -237,4 +303,10 @@ struct EntryCondition {
 //offset_condition
 
 // TODO: only if it's meant to be in block X at offset Y
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn engine_completion_on_error() {}
 }

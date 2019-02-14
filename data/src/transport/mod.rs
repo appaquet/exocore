@@ -35,6 +35,6 @@ pub struct InMessage {
 
 #[derive(Debug, Fail)]
 pub enum Error {
-    #[fail(display = "An unknown error occurred")]
-    Unknown,
+    #[fail(display = "An error occurred: {}", _0)]
+    Other(String),
 }
