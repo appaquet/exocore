@@ -79,7 +79,7 @@ impl Store for MemoryStore {
     fn operations_iter<'store, R>(
         &'store self,
         range: R,
-    ) -> Result<Box<Iterator<Item = StoredOperation> + 'store>, Error>
+    ) -> Result<Box<dyn Iterator<Item = StoredOperation> + 'store>, Error>
     where
         R: RangeBounds<OperationID>,
     {

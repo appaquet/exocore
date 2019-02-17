@@ -10,7 +10,6 @@ use tokio::timer::Interval;
 
 use exocore_common;
 use exocore_common::node::Node;
-use exocore_common::serialization::framed::TypedFrame;
 
 use crate::chain;
 use crate::pending;
@@ -70,9 +69,12 @@ where
         }
     }
 
-    pub fn get_handle(&mut self) -> Handle {
+    pub fn get_handle(&mut self) -> Handle<CS, PS> {
         // TODO: Add a new channel to which we should send streams events. It should probably be bounded & having an error to indicate that we could't push
-        unimplemented!()
+
+        Handle {
+            inner: Arc::downgrade(&self.inner),
+        }
     }
 
     fn start(&mut self) -> Result<(), Error> {
@@ -152,7 +154,6 @@ where
     fn handle_management_timer_tick(inner: &Weak<RwLock<Inner<CS, PS>>>) -> Result<(), Error> {
         // TODO: Sync at interval to check we didn't miss anything
         // TODO: Maybe propose a new block
-        // TODO: Check if transport is complete
 
         unimplemented!()
     }
@@ -259,9 +260,19 @@ impl<T> From<std::sync::PoisonError<T>> for Error {
 /// Handle ot the Engine, allowing communication with the engine.
 /// The engine itself is owned by an future executor.
 ///
-pub struct Handle {}
+pub struct Handle<CS, PS>
+where
+    CS: chain::Store,
+    PS: pending::Store,
+{
+    inner: Weak<RwLock<Inner<CS, PS>>>,
+}
 
-impl Handle {
+impl<CS, PS> Handle<CS, PS>
+where
+    CS: chain::Store,
+    PS: pending::Store,
+{
     pub fn write_entry(&self) -> Result<(), Error> {
         // TODO: Write to pending store
         // TODO: Force sync
@@ -269,9 +280,10 @@ impl Handle {
         unimplemented!()
     }
 
-    pub fn get_events_stream(&self, _from_time: Instant)
-    /*-> impl futures::Stream<Item = Event, Error = Error>*/
-    {
+    pub fn get_events_stream(
+        &self,
+        _from_time: Instant,
+    ) -> Box<dyn futures::Stream<Item = Event, Error = Error>> {
         unimplemented!()
     }
 }
@@ -279,30 +291,22 @@ impl Handle {
 ///
 ///
 ///
-struct CommitController {}
+pub struct CommitController {}
 
-enum Event {
+pub enum Event {
     NewPendingTransaction,
-    CommitedBlock,
+    CommittedBlock,
     FrozenBlock, // TODO: x depth
 }
 
-struct WrappedEntry {
-    status: EntryStatus,
+pub struct WrappedEntry {
+    pub status: EntryStatus,
     // either from pending, or chain
 }
 
-enum EntryStatus {
+pub enum EntryStatus {
     Committed,
     Pending,
-}
-
-struct EntryCondition {
-    //time_condition
-//block_condition
-//offset_condition
-
-// TODO: only if it's meant to be in block X at offset Y
 }
 
 #[cfg(test)]

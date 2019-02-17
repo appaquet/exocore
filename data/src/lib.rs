@@ -1,3 +1,5 @@
+#![deny(bare_trait_objects)]
+
 extern crate byteorder;
 extern crate exocore_common;
 #[macro_use]

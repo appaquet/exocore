@@ -20,9 +20,17 @@ struct PendingSyncRange {
     fromTime @0: UInt64;
     toTime @1: UInt64;
 
-    hashOnly @2: Bool;
+    requestedDetails @2: RequestedDetails;
+
     hash @3: Data;
 
+    # TODO: We don't want to send pending operations directly if we only asked for hash or header
     operations @4: List(Chain.PendingOperation);
+
+    enum RequestedDetails {
+      hash @0;
+      headers @1;
+      full @2;
+    }
 }
 

@@ -708,8 +708,13 @@ pub mod pending_sync_range {
             self.reader.get_data_field::<u64>(1)
         }
         #[inline]
-        pub fn get_hash_only(self) -> bool {
-            self.reader.get_bool_field(128)
+        pub fn get_requested_details(
+            self,
+        ) -> ::std::result::Result<
+            crate::data_transport_capnp::pending_sync_range::RequestedDetails,
+            ::capnp::NotInSchema,
+        > {
+            ::capnp::traits::FromU16::from_u16(self.reader.get_data_field::<u16>(8))
         }
         #[inline]
         pub fn get_hash(self) -> ::capnp::Result<::capnp::data::Reader<'a>> {
@@ -822,12 +827,20 @@ pub mod pending_sync_range {
             self.builder.set_data_field::<u64>(1, value);
         }
         #[inline]
-        pub fn get_hash_only(self) -> bool {
-            self.builder.get_bool_field(128)
+        pub fn get_requested_details(
+            self,
+        ) -> ::std::result::Result<
+            crate::data_transport_capnp::pending_sync_range::RequestedDetails,
+            ::capnp::NotInSchema,
+        > {
+            ::capnp::traits::FromU16::from_u16(self.builder.get_data_field::<u16>(8))
         }
         #[inline]
-        pub fn set_hash_only(&mut self, value: bool) {
-            self.builder.set_bool_field(128, value);
+        pub fn set_requested_details(
+            &mut self,
+            value: crate::data_transport_capnp::pending_sync_range::RequestedDetails,
+        ) {
+            self.builder.set_data_field::<u16>(8, value as u16)
         }
         #[inline]
         pub fn get_hash(self) -> ::capnp::Result<::capnp::data::Builder<'a>> {
@@ -902,5 +915,36 @@ pub mod pending_sync_range {
             pointers: 2,
         };
         pub const TYPE_ID: u64 = 0xfb10_27d7_6f28_4abd;
+    }
+
+    #[repr(u16)]
+    #[derive(Clone, Copy, PartialEq)]
+    pub enum RequestedDetails {
+        Hash = 0,
+        Headers = 1,
+        Full = 2,
+    }
+    impl ::capnp::traits::FromU16 for RequestedDetails {
+        #[inline]
+        fn from_u16(value: u16) -> ::std::result::Result<RequestedDetails, ::capnp::NotInSchema> {
+            match value {
+                0 => ::std::result::Result::Ok(RequestedDetails::Hash),
+                1 => ::std::result::Result::Ok(RequestedDetails::Headers),
+                2 => ::std::result::Result::Ok(RequestedDetails::Full),
+                n => ::std::result::Result::Err(::capnp::NotInSchema(n)),
+            }
+        }
+    }
+    impl ::capnp::traits::ToU16 for RequestedDetails {
+        #[inline]
+        fn to_u16(self) -> u16 {
+            self as u16
+        }
+    }
+    impl ::capnp::traits::HasTypeId for RequestedDetails {
+        #[inline]
+        fn type_id() -> u64 {
+            0xffd6_b306_ea5b_ff2du64
+        }
     }
 }

@@ -3,7 +3,6 @@ name = "exocore"
 version = "0.1.0"
 authors = ["Andre-Philippe Paquet <appaquet@gmail.com>"]
 
-
 [dependencies]
 exocore-server = { path = "./server" }
 exocore-index = { path = "./index" }
@@ -11,7 +10,6 @@ exocore-data = { path = "./data" }
 exocore-common = { path = "./common" }
 extsort = { path = "./3rd/extsort" }
 extindex = { path = "./3rd/extindex" }
-
 
 [workspace]
 members = [
