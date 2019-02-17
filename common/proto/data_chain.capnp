@@ -1,8 +1,8 @@
 @0xf51296176d1e327e;
 
 struct PendingOperation {
-    id @0: UInt64;
-    entryId @1: UInt64;
+    pendingId @0: UInt64;
+    operationId @1: UInt64;
 
     operation :union {
         newEntry @2: OperationNewEntry;

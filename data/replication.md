@@ -1,31 +1,32 @@
 
 
-# Replication order
+# Replication
 
+We have 2 data structure to replicate:
 * Chain
-* Pending
+* Pending store
 
 
-## Pending store
+## Pending store replication
 
 ### Messages
 
 * PendingSyncRequest(PendingSyncRange)
 * PendingSyncResponse(PendingSyncRange)
 
-
-### Operations
-* New entry
+### Operationdyn s
+* New entry (pending entry id = entry id)
     * Entry refusal ?
-* Block related
+* Block related (pending entry id = block id)
     * Block propose
     * Block proposal sign
     * Block proposal sign cancel
     * Block proposal refuse
 
-
 ### Cleanup
 * We should only cleanup if stuff were committed to the chain OR we got a refusal quorum (everybody refused something)
+
+
 
 
 ## Chain replication
@@ -35,6 +36,12 @@ Messages
 * GetRange
 
 ### Cleanup
+* A node that has access to unencrypted data can decide to cleanup the chain by truncating it, after moving entries around.
+  The process:
+  * Iterate through old blocks
+  * For each entry, check if it's an old version of an entry
+  * If it's an old entry, add to pending
+  * Once we have a part of a chain that contains only old versions, propose a chain truncation
 
 
 ## Exceptions

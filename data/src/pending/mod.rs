@@ -5,7 +5,7 @@ use std::vec::Vec;
 use exocore_common::data_chain_capnp::pending_operation;
 use exocore_common::security::hash::Multihash;
 use exocore_common::serialization::framed;
-use exocore_common::serialization::protos::{EntryID, OperationID};
+use exocore_common::serialization::protos::{PendingID, OperationID};
 
 pub mod memory;
 
@@ -17,7 +17,7 @@ pub trait Store: Send + 'static {
 
     fn get_entry_operations(
         &self,
-        entry_id: EntryID,
+        entry_id: PendingID,
     ) -> Result<Option<StoredEntryOperations>, Error>;
 
     fn operations_iter<'store, R>(
@@ -35,12 +35,12 @@ pub trait Store: Send + 'static {
 pub type TimelineIterator<'store> = Box<dyn Iterator<Item = StoredOperation> + 'store>;
 
 pub struct StoredOperation {
-    pub entry_id: EntryID,
+    pub entry_id: PendingID,
     pub operation_id: OperationID,
 }
 
 pub struct StoredEntryOperations {
-    pub entry_id: EntryID,
+    pub entry_id: PendingID,
     pub operations: Vec<Arc<framed::OwnedTypedFrame<pending_operation::Owned>>>,
 }
 
