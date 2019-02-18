@@ -4,8 +4,13 @@ using Chain = import "data_chain.capnp";
 using Common = import "common.capnp";
 
 struct Envelope {
-    type @0: UInt8;
-    from @1: Common.Node;
+    layer  @0: UInt8;
+    type   @1: UInt8;
+
+    from   @2: Common.Node;
+    to     @3: Common.Node;
+
+    data   @4: Data;
 }
 
 struct PendingSyncRequest {
@@ -17,15 +22,13 @@ struct PendingSyncResponse {
 }
 
 struct PendingSyncRange {
-    fromTime @0: UInt64;
-    toTime @1: UInt64;
+    fromTime         @0: UInt64;
+    toTime           @1: UInt64;
 
     requestedDetails @2: RequestedDetails;
 
-    hash @3: Data;
-
-    # TODO: We don't want to send pending operations directly if we only asked for hash or header
-    operations @4: List(Chain.PendingOperation);
+    hash             @3: Data;
+    operations       @4: List(Chain.PendingOperation);
 
     enum RequestedDetails {
       hash @0;

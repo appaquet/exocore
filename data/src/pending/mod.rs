@@ -5,7 +5,7 @@ use std::vec::Vec;
 use exocore_common::data_chain_capnp::pending_operation;
 use exocore_common::security::hash::Multihash;
 use exocore_common::serialization::framed;
-use exocore_common::serialization::protos::{PendingID, OperationID};
+use exocore_common::serialization::protos::{OperationID, PendingID};
 
 pub mod memory;
 

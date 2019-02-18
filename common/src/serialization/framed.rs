@@ -226,6 +226,11 @@ impl<'a> SliceFrame<'a> {
             return Err(Error::InvalidData);
         }
 
+        if header_metadata.message_size == 0 {
+            error!("Message from slice had an size of 0");
+            return Err(Error::EOF);
+        }
+
         Ok(SliceFrame {
             metadata: header_metadata,
             data: &data[frame_begin..frame_begin + footer_metadata.frame_size()],
@@ -1019,7 +1024,7 @@ pub mod tests {
 
     #[test]
     fn frame_builder_into_bytes() {
-        let block_builder = build_test_block("block_hash");
+        let block_builder = build_test_block(123, 321);
 
         let frame_data = block_builder.into_unsigned_framed_bytes().unwrap();
         let frame_slice = SliceFrame::new(&frame_data).unwrap();
@@ -1030,13 +1035,13 @@ pub mod tests {
 
         let typed_frame = frame_slice.into_typed::<block::Owned>();
         let block_reader = typed_frame.get_typed_reader().unwrap();
-        assert_eq!(block_reader.get_hash().unwrap(), "block_hash");
+        assert_eq!(block_reader.get_offset(), 123);
         assert_eq!(typed_frame.frame_size(), frame_data.len());
     }
 
     #[test]
     fn frame_builder_into_owned_frame() {
-        let block_builder = build_test_block("block_hash");
+        let block_builder = build_test_block(123, 10000);
 
         let owned_frame = block_builder.as_owned_unsigned_framed().unwrap();
         assert_eq!(
@@ -1045,12 +1050,12 @@ pub mod tests {
         );
 
         let block_reader = owned_frame.get_typed_reader().unwrap();
-        assert_eq!(block_reader.get_hash().unwrap(), "block_hash");
+        assert_eq!(block_reader.get_offset(), 123);
     }
 
     #[test]
     fn frame_builder_write_into_buffer() {
-        let block_builder = build_test_block("block_hash");
+        let block_builder = build_test_block(0, 10000);
 
         let mut data = [0u8; 1000];
         let frame_metadata = block_builder.write_into_unsigned(&mut data).unwrap();
@@ -1082,7 +1087,7 @@ pub mod tests {
     fn slice_frame_from_next_offset() -> Result<(), Error> {
         let mut data = [0u8; 1000];
 
-        let mut block1_builder = build_test_block("block1_hash");
+        let mut block1_builder = build_test_block(0, 10000);
         let block1_metadata = write_framed_builder_into_buffer(
             &mut data[0..],
             123,
@@ -1091,7 +1096,7 @@ pub mod tests {
         )?;
 
         let block2_offset = block1_metadata.frame_size();
-        let mut block2_builder = build_test_block("block2_hash");
+        let mut block2_builder = build_test_block(1, 10001);
         let block2_metadata = write_framed_builder_into_buffer(
             &mut data[block2_offset..],
             456,
@@ -1100,7 +1105,7 @@ pub mod tests {
         )?;
 
         let block3_offset = block2_offset + block2_metadata.frame_size();
-        let mut block3_builder = build_test_block("block3_hash");
+        let mut block3_builder = build_test_block(2, 10002);
         let block3_metadata = write_framed_builder_into_buffer(
             &mut data[block3_offset..],
             789,
@@ -1108,19 +1113,21 @@ pub mod tests {
             NullFrameSigner,
         )?;
 
+        dbg!(block3_offset);
+
         // wrong offset tests
         assert!(SliceFrame::new_from_next_offset(&data[0..], 0).is_err());
-        assert!(SliceFrame::new_from_next_offset(&data[0..], 100).is_err());
+        assert!(SliceFrame::new_from_next_offset(&data[0..], 112).is_err());
 
         let frame = SliceFrame::new_from_next_offset(&data[0..], block1_metadata.frame_size())?;
         assert_eq!(frame.message_type(), 123);
         let block_reader = frame.get_typed_reader::<block::Owned>()?;
-        assert_eq!(block_reader.get_hash()?, "block1_hash");
+        assert_eq!(block_reader.get_offset(), 0);
 
         let frame = SliceFrame::new_from_next_offset(&data[0..], block3_offset)?;
         assert_eq!(frame.message_type(), 456);
         let block_reader = frame.get_typed_reader::<block::Owned>()?;
-        assert_eq!(block_reader.get_hash()?, "block2_hash");
+        assert_eq!(block_reader.get_offset(), 1);
 
         let frame = SliceFrame::new_from_next_offset(
             &data[0..],
@@ -1128,14 +1135,14 @@ pub mod tests {
         )?;
         assert_eq!(frame.message_type(), 789);
         let block_reader = frame.get_typed_reader::<block::Owned>()?;
-        assert_eq!(block_reader.get_hash()?, "block3_hash");
+        assert_eq!(block_reader.get_offset(), 2);
 
         Ok(())
     }
 
     #[test]
     fn frame_write_fail_if_not_enough_space() {
-        let mut block_builder = build_test_block("block_hash");
+        let mut block_builder = build_test_block(0, 10000);
 
         let mut data = [0u8; 10];
         assert!(write_framed_builder_into_buffer(
@@ -1153,7 +1160,7 @@ pub mod tests {
 
         let mut next_offset = 0;
         for i in 0..1000 {
-            let mut block_builder = build_test_block(&format!("block{}", i));
+            let mut block_builder = build_test_block(i as u64, (i * 10000) as u64);
 
             let metadata = write_framed_builder_into_buffer(
                 &mut data[next_offset..],
@@ -1180,28 +1187,20 @@ pub mod tests {
 
         let typed_frame = last_iter_frame.framed_message.into_typed::<block::Owned>();
         let block_reader = typed_frame.get_typed_reader().unwrap();
-        assert_eq!(block_reader.get_hash().unwrap(), "block0");
+        assert_eq!(block_reader.get_offset(), 0);
 
         // iterator typing
         let frames_iter = FramesIterator::new(&data).take(10);
-        let hashes: Vec<String> = frames_iter
+        let hashes: Vec<u64> = frames_iter
             .filter(|m| m.framed_message.message_type() == 123)
             .map(|m| m.framed_message.into_typed::<block::Owned>())
             .map(|b| {
                 b.get_typed_reader()
                     .unwrap()
-                    .get_hash()
-                    .unwrap()
-                    .to_string()
+                    .get_offset()
             })
             .collect();
-        assert_eq!(
-            hashes,
-            vec![
-                "block0", "block1", "block2", "block3", "block4", "block5", "block6", "block7",
-                "block8", "block9",
-            ]
-        );
+        assert_eq!(hashes, vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     }
 
     #[test]
@@ -1218,7 +1217,7 @@ pub mod tests {
 
     #[test]
     fn frame_sign_and_validate() {
-        let block_builder = build_test_block("block_hash");
+        let block_builder = build_test_block(0, 10000);
 
         let signer = MultihashFrameSigner::new_sha3256();
         let frame: OwnedTypedFrame<block::Owned> = block_builder.as_owned_framed(signer).unwrap();
@@ -1243,21 +1242,16 @@ pub mod tests {
         assert!(MultihashFrameSigner::validate(&frame).is_err());
     }
 
-    fn build_test_block(hash: &str) -> FrameBuilder<block::Owned> {
+    fn build_test_block(block_offset: u64, entry_id: u64) -> FrameBuilder<block::Owned> {
         let mut block_msg_builder = FrameBuilder::<block::Owned>::new();
 
         let mut block_builder = block_msg_builder.get_builder_typed();
-        block_builder.set_hash(hash);
+        block_builder.set_offset(block_offset);
 
         let entries = block_builder.init_entries(1);
         {
             let mut entry = entries.get(0);
-
-            let mut entry_header_msg_builder = FrameBuilder::<entry_header::Owned>::new();
-            let mut header_builder = entry_header_msg_builder.get_builder_typed();
-            header_builder.set_hash(hash);
-
-            entry.set_header(header_builder.into_reader()).unwrap();
+            entry.set_id(entry_id);
         }
 
         block_msg_builder

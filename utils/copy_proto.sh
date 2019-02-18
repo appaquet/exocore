@@ -15,3 +15,5 @@ for proto_path in `ls $CUR_DIR/../target/debug/build/exocore-common-*/out/proto/
   cat $proto_path >> $dest_path
 done
 
+cargo fmt --all
+cargo test --all

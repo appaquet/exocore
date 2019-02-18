@@ -2,9 +2,9 @@
 
 # Replication
 
-We have 2 data structure to replicate:
-* Chain
-* Pending store
+We have 2 data structures to replicate:
+* Chain: immutable collection of blocks, with entries (cell data, meta, chain maintenance).
+* Pending store: transient store in which latest operations are aggregated, to eventually be added to the chain.
 
 
 ## Pending store replication
@@ -14,14 +14,18 @@ We have 2 data structure to replicate:
 * PendingSyncRequest(PendingSyncRange)
 * PendingSyncResponse(PendingSyncRange)
 
-### Operationdyn s
-* New entry (pending entry id = entry id)
-    * Entry refusal ?
+#### Operation
+* Entries related (pending entry id = entry id)
+    * OperationEntryNew
 * Block related (pending entry id = block id)
     * Block propose
     * Block proposal sign
-    * Block proposal sign cancel
-    * Block proposal refuse
+    * Block proposal refuse (can happen after sign if node detects anomaly or accepts a better block)
+
+
+### Block proposal
+* One node propose a block into pending store. 
+
 
 ### Cleanup
 * We should only cleanup if stuff were committed to the chain OR we got a refusal quorum (everybody refused something)
@@ -31,9 +35,9 @@ We have 2 data structure to replicate:
 
 ## Chain replication
 
-Messages
-* DescribeRange
-* GetRange
+### Messages
+* DescribeRange (by depth or by offsets)
+* GetRange (by offsets)
 
 ### Cleanup
 * A node that has access to unencrypted data can decide to cleanup the chain by truncating it, after moving entries around.
@@ -42,6 +46,8 @@ Messages
   * For each entry, check if it's an old version of an entry
   * If it's an old entry, add to pending
   * Once we have a part of a chain that contains only old versions, propose a chain truncation
+
+
 
 
 ## Exceptions
@@ -56,13 +62,12 @@ Messages
   * Two stage commit where nobody adds to the chain unless everybody has agreed that they have signatures.
     Cons: This adds latency and communication for nothing... And it's an never ending story.
 
-
 ## TODO
-- [ ] Rename entry_id --> pending_group ? (first operation id)
+- [X] Rename entry_id --> pending_group ? (first operation id)
+- [X] Add chain entry type
+        * Block proposal
+- [ ] Remove hash from capnp messages since they are now in the framing protocol
 - [ ] What is the logic on who proposes
         * Needs to have full data access
         * Needs to be considered online by others for them to wait for its proposal
-- [ ] Add chain entry type
-        * Block proposal
-- [ ] Remove hash from capnp messages since they are now in the framing protocol
 - [ ] Conditional entry: entry can be conditional on time, other entry commit, etc.

@@ -6,7 +6,7 @@ use exocore_common::data_chain_capnp::pending_operation;
 use exocore_common::security::hash::{Sha3Hasher, StreamHasher};
 use exocore_common::serialization::framed;
 use exocore_common::serialization::framed::{SignedFrame, TypedFrame};
-use exocore_common::serialization::protos::{PendingID, OperationID};
+use exocore_common::serialization::protos::{OperationID, PendingID};
 
 use super::*;
 
@@ -225,9 +225,8 @@ mod test {
             op_builder.set_operation_id(operation_id);
             let inner_op_builder = op_builder.init_operation();
 
-            let new_entry_op_builder = inner_op_builder.init_new_entry();
-            let entry_builder = new_entry_op_builder.init_entry();
-            let mut entry_header_builder = entry_builder.init_header();
+            let new_entry_op_builder = inner_op_builder.init_entry_new();
+            let mut entry_header_builder = new_entry_op_builder.init_entry_header();
             entry_header_builder.set_id(pending_id);
         }
 
