@@ -5,6 +5,7 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use exocore_common::data_chain_capnp::{block, block_signatures};
+use exocore_common::range;
 use exocore_common::serialization::framed;
 use exocore_common::serialization::framed::{Frame, FramesIterator, MessageType, TypedFrame};
 
@@ -455,10 +456,7 @@ impl DirectorySegment {
     }
 
     fn offset_range(&self) -> Range<BlockOffset> {
-        Range {
-            start: self.first_block_offset,
-            end: self.next_block_offset,
-        }
+        self.first_block_offset..self.next_block_offset
     }
 
     fn ensure_file_size(&mut self, write_size: usize) -> Result<(), Error> {
@@ -702,13 +700,7 @@ mod tests {
 
             let segments = directory_chain.available_segments();
             let data_size = ((block_msg.frame_size() + sig_msg.frame_size()) * 2) as BlockOffset;
-            assert_eq!(
-                segments,
-                vec![Range {
-                    start: 0,
-                    end: data_size
-                }]
-            );
+            assert_eq!(segments, vec![0..data_size]);
             segments
         };
 
@@ -815,7 +807,7 @@ mod tests {
 
                 let segments_after = directory_chain.available_segments();
                 assert_ne!(segments_before, segments_after);
-                assert_eq!(segments_after.last().unwrap().to, block_n_plus_offset);
+                assert_eq!(segments_after.last().unwrap().end, block_n_plus_offset);
 
                 let mut iter = directory_chain.block_iter(0).unwrap();
                 validate_iterator(iter, cutoff, 0, block_n_offset, false);
@@ -833,7 +825,7 @@ mod tests {
 
                 let segments_after = directory_chain.available_segments();
                 assert_ne!(segments_before, segments_after);
-                assert_eq!(segments_after.last().unwrap().to, block_n_plus_offset);
+                assert_eq!(segments_after.last().unwrap().end, block_n_plus_offset);
 
                 let mut iter = directory_chain.block_iter(0).unwrap();
                 validate_iterator(iter, cutoff, 0, block_n_offset, false);
