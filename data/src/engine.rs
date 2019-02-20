@@ -236,27 +236,6 @@ where
 }
 
 ///
-///
-///
-#[derive(Debug, Fail)]
-pub enum Error {
-    #[fail(display = "Try to lock a mutex that was poisoned")]
-    Poisoned,
-    #[fail(display = "Error in transport: {:?}", _0)]
-    Transport(transport::Error),
-    #[fail(display = "Inner was dropped or couldn't get locked")]
-    InnerUpgrade,
-    #[fail(display = "An error occurred: {}", _0)]
-    Other(String),
-}
-
-impl<T> From<std::sync::PoisonError<T>> for Error {
-    fn from(_err: std::sync::PoisonError<T>) -> Self {
-        Error::Poisoned
-    }
-}
-
-///
 /// Handle ot the Engine, allowing communication with the engine.
 /// The engine itself is owned by an future executor.
 ///
@@ -285,6 +264,27 @@ where
         _from_time: Instant,
     ) -> Box<dyn futures::Stream<Item = Event, Error = Error>> {
         unimplemented!()
+    }
+}
+
+///
+///
+///
+#[derive(Debug, Fail)]
+pub enum Error {
+    #[fail(display = "Try to lock a mutex that was poisoned")]
+    Poisoned,
+    #[fail(display = "Error in transport: {:?}", _0)]
+    Transport(transport::Error),
+    #[fail(display = "Inner was dropped or couldn't get locked")]
+    InnerUpgrade,
+    #[fail(display = "An error occurred: {}", _0)]
+    Other(String),
+}
+
+impl<T> From<std::sync::PoisonError<T>> for Error {
+    fn from(_err: std::sync::PoisonError<T>) -> Self {
+        Error::Poisoned
     }
 }
 
