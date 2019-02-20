@@ -666,8 +666,8 @@ mod tests {
     use tempdir;
 
     use super::*;
-    use exocore_common::serialization::framed::{OwnedTypedFrame, TypedFrame};
     use exocore_common::range;
+    use exocore_common::serialization::framed::{OwnedTypedFrame, TypedFrame};
 
     #[test]
     fn directory_chain_create_and_open() {

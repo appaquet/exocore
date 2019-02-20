@@ -1294,13 +1294,17 @@ pub mod pending_sync_range {
             ::capnp::traits::FromU16::from_u16(self.reader.get_data_field::<u16>(8))
         }
         #[inline]
-        pub fn get_hash(self) -> ::capnp::Result<::capnp::data::Reader<'a>> {
+        pub fn get_operations_hash(self) -> ::capnp::Result<::capnp::data::Reader<'a>> {
             self.reader
                 .get_pointer_field(0)
                 .get_data(::std::ptr::null(), 0)
         }
-        pub fn has_hash(&self) -> bool {
+        pub fn has_operations_hash(&self) -> bool {
             !self.reader.get_pointer_field(0).is_null()
+        }
+        #[inline]
+        pub fn get_operations_count(self) -> u32 {
+            self.reader.get_data_field::<u32>(5)
         }
         #[inline]
         pub fn get_operations(
@@ -1420,21 +1424,29 @@ pub mod pending_sync_range {
             self.builder.set_data_field::<u16>(8, value as u16)
         }
         #[inline]
-        pub fn get_hash(self) -> ::capnp::Result<::capnp::data::Builder<'a>> {
+        pub fn get_operations_hash(self) -> ::capnp::Result<::capnp::data::Builder<'a>> {
             self.builder
                 .get_pointer_field(0)
                 .get_data(::std::ptr::null(), 0)
         }
         #[inline]
-        pub fn set_hash(&mut self, value: ::capnp::data::Reader) {
+        pub fn set_operations_hash(&mut self, value: ::capnp::data::Reader) {
             self.builder.get_pointer_field(0).set_data(value);
         }
         #[inline]
-        pub fn init_hash(self, size: u32) -> ::capnp::data::Builder<'a> {
+        pub fn init_operations_hash(self, size: u32) -> ::capnp::data::Builder<'a> {
             self.builder.get_pointer_field(0).init_data(size)
         }
-        pub fn has_hash(&self) -> bool {
+        pub fn has_operations_hash(&self) -> bool {
             !self.builder.get_pointer_field(0).is_null()
+        }
+        #[inline]
+        pub fn get_operations_count(self) -> u32 {
+            self.builder.get_data_field::<u32>(5)
+        }
+        #[inline]
+        pub fn set_operations_count(&mut self, value: u32) {
+            self.builder.set_data_field::<u32>(5, value);
         }
         #[inline]
         pub fn get_operations(
@@ -1602,7 +1614,7 @@ pub mod chain_sync_request {
             self.reader.get_data_field::<u32>(4)
         }
         #[inline]
-        pub fn get_sampling(self) -> u32 {
+        pub fn get_sample(self) -> u32 {
             self.reader.get_data_field::<u32>(5)
         }
         #[inline]
@@ -1734,11 +1746,11 @@ pub mod chain_sync_request {
             self.builder.set_data_field::<u32>(4, value);
         }
         #[inline]
-        pub fn get_sampling(self) -> u32 {
+        pub fn get_sample(self) -> u32 {
             self.builder.get_data_field::<u32>(5)
         }
         #[inline]
-        pub fn set_sampling(&mut self, value: u32) {
+        pub fn set_sample(&mut self, value: u32) {
             self.builder.set_data_field::<u32>(5, value);
         }
         #[inline]

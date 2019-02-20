@@ -38,8 +38,10 @@ struct PendingSyncRange {
 
     requestedDetails @2: RequestedDetails;
 
-    hash             @3: Data;
-    operations       @4: List(Chain.PendingOperation);
+    operationsHash   @3: Data;
+    operationsCount  @4: UInt32;
+
+    operations       @5: List(Chain.PendingOperation);
 
     enum RequestedDetails {
       hash @0;
@@ -56,7 +58,7 @@ struct ChainSyncRequest {
     toOffset         @1: UInt64;
 
     count            @2: UInt32;
-    sampling         @3: UInt32;
+    sample           @3: UInt32;
 
     requestedDetails @4: RequestedDetails;
 

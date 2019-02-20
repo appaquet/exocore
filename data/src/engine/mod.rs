@@ -15,12 +15,7 @@ use crate::chain;
 use crate::pending;
 use crate::transport;
 
-// TODO: Should be able to run without the chain.
-
-// TODO: Should have a "EngineState" so that we can easily test the states transition / actions
-// TODO: If node has access to data, it needs ot check its integrity by the upper layer
-// TODO: If not, a node needs to wait for a majority of nodes that has data
-// TODO: should send full if an object has been modified by us recently and we never sent to remote
+mod pending_syncer;
 
 const ENGINE_MANAGE_TIMER_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -55,8 +50,9 @@ where
 
         let context = Arc::new(RwLock::new(Inner {
             nodes,
-            pending_store: Mutex::new(pending_store),
-            chain_store: Mutex::new(chain_store),
+            pending_store,
+            pending_syncer: pending_syncer::PendingSyncer::new(),
+            chain_store,
             transport_sender: None,
             completion_sender: Some(completion_sender),
         }));
@@ -217,8 +213,9 @@ where
     PS: pending::Store,
 {
     nodes: Vec<Node>,
-    pending_store: Mutex<PS>,
-    chain_store: Mutex<CS>,
+    pending_store: PS,
+    pending_syncer: pending_syncer::PendingSyncer<PS>,
+    chain_store: CS,
     transport_sender: Option<mpsc::UnboundedSender<transport::OutMessage>>,
     completion_sender: Option<oneshot::Sender<Result<(), Error>>>,
 }

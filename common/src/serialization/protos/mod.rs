@@ -58,6 +58,30 @@ impl<'a> MessageType<'a> for self::data_chain_capnp::block_signature::Owned {
 
 impl<'a> MessageType<'a> for self::data_transport_capnp::envelope::Owned {
     fn message_type() -> u16 {
-        6
+        100
+    }
+}
+
+impl<'a> MessageType<'a> for self::data_transport_capnp::engine_message::Owned {
+    fn message_type() -> u16 {
+        101
+    }
+}
+
+impl<'a> MessageType<'a> for self::data_transport_capnp::pending_sync_request::Owned {
+    fn message_type() -> u16 {
+        102
+    }
+}
+
+impl<'a> MessageType<'a> for self::data_transport_capnp::pending_sync_response::Owned {
+    fn message_type() -> u16 {
+        103
+    }
+}
+
+impl<'a> MessageType<'a> for self::data_transport_capnp::pending_sync_range::Owned {
+    fn message_type() -> u16 {
+        104
     }
 }
