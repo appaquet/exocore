@@ -2063,8 +2063,12 @@ pub mod block {
             self.reader.get_data_field::<u64>(0)
         }
         #[inline]
-        pub fn get_previous_offset(self) -> u64 {
+        pub fn get_depth(self) -> u64 {
             self.reader.get_data_field::<u64>(1)
+        }
+        #[inline]
+        pub fn get_previous_offset(self) -> u64 {
+            self.reader.get_data_field::<u64>(2)
         }
         #[inline]
         pub fn get_previous_hash(self) -> ::capnp::Result<::capnp::data::Reader<'a>> {
@@ -2077,7 +2081,7 @@ pub mod block {
         }
         #[inline]
         pub fn get_signature_size(self) -> u16 {
-            self.reader.get_data_field::<u16>(8)
+            self.reader.get_data_field::<u16>(12)
         }
         #[inline]
         pub fn get_source_node_id(self) -> ::capnp::Result<::capnp::text::Reader<'a>> {
@@ -2181,12 +2185,20 @@ pub mod block {
             self.builder.set_data_field::<u64>(0, value);
         }
         #[inline]
-        pub fn get_previous_offset(self) -> u64 {
+        pub fn get_depth(self) -> u64 {
             self.builder.get_data_field::<u64>(1)
         }
         #[inline]
-        pub fn set_previous_offset(&mut self, value: u64) {
+        pub fn set_depth(&mut self, value: u64) {
             self.builder.set_data_field::<u64>(1, value);
+        }
+        #[inline]
+        pub fn get_previous_offset(self) -> u64 {
+            self.builder.get_data_field::<u64>(2)
+        }
+        #[inline]
+        pub fn set_previous_offset(&mut self, value: u64) {
+            self.builder.set_data_field::<u64>(2, value);
         }
         #[inline]
         pub fn get_previous_hash(self) -> ::capnp::Result<::capnp::data::Builder<'a>> {
@@ -2207,11 +2219,11 @@ pub mod block {
         }
         #[inline]
         pub fn get_signature_size(self) -> u16 {
-            self.builder.get_data_field::<u16>(8)
+            self.builder.get_data_field::<u16>(12)
         }
         #[inline]
         pub fn set_signature_size(&mut self, value: u16) {
-            self.builder.set_data_field::<u16>(8, value);
+            self.builder.set_data_field::<u16>(12, value);
         }
         #[inline]
         pub fn get_source_node_id(self) -> ::capnp::Result<::capnp::text::Builder<'a>> {
@@ -2277,7 +2289,7 @@ pub mod block {
     mod _private {
         use capnp::private::layout;
         pub const STRUCT_SIZE: layout::StructSize = layout::StructSize {
-            data: 3,
+            data: 4,
             pointers: 3,
         };
         pub const TYPE_ID: u64 = 0x8229_c7b6_b47f_62b0;
@@ -2352,8 +2364,12 @@ pub mod block_header {
             self.reader.get_data_field::<u64>(0)
         }
         #[inline]
-        pub fn get_previous_offset(self) -> u64 {
+        pub fn get_depth(self) -> u64 {
             self.reader.get_data_field::<u64>(1)
+        }
+        #[inline]
+        pub fn get_previous_offset(self) -> u64 {
+            self.reader.get_data_field::<u64>(2)
         }
         #[inline]
         pub fn get_previous_hash(self) -> ::capnp::Result<::capnp::data::Reader<'a>> {
@@ -2366,7 +2382,7 @@ pub mod block_header {
         }
         #[inline]
         pub fn get_signature_size(self) -> u16 {
-            self.reader.get_data_field::<u16>(8)
+            self.reader.get_data_field::<u16>(12)
         }
         #[inline]
         pub fn get_source_node_id(self) -> ::capnp::Result<::capnp::text::Reader<'a>> {
@@ -2460,12 +2476,20 @@ pub mod block_header {
             self.builder.set_data_field::<u64>(0, value);
         }
         #[inline]
-        pub fn get_previous_offset(self) -> u64 {
+        pub fn get_depth(self) -> u64 {
             self.builder.get_data_field::<u64>(1)
         }
         #[inline]
-        pub fn set_previous_offset(&mut self, value: u64) {
+        pub fn set_depth(&mut self, value: u64) {
             self.builder.set_data_field::<u64>(1, value);
+        }
+        #[inline]
+        pub fn get_previous_offset(self) -> u64 {
+            self.builder.get_data_field::<u64>(2)
+        }
+        #[inline]
+        pub fn set_previous_offset(&mut self, value: u64) {
+            self.builder.set_data_field::<u64>(2, value);
         }
         #[inline]
         pub fn get_previous_hash(self) -> ::capnp::Result<::capnp::data::Builder<'a>> {
@@ -2486,11 +2510,11 @@ pub mod block_header {
         }
         #[inline]
         pub fn get_signature_size(self) -> u16 {
-            self.builder.get_data_field::<u16>(8)
+            self.builder.get_data_field::<u16>(12)
         }
         #[inline]
         pub fn set_signature_size(&mut self, value: u16) {
-            self.builder.set_data_field::<u16>(8, value);
+            self.builder.set_data_field::<u16>(12, value);
         }
         #[inline]
         pub fn get_source_node_id(self) -> ::capnp::Result<::capnp::text::Builder<'a>> {
@@ -2525,7 +2549,7 @@ pub mod block_header {
     mod _private {
         use capnp::private::layout;
         pub const STRUCT_SIZE: layout::StructSize = layout::StructSize {
-            data: 3,
+            data: 4,
             pointers: 2,
         };
         pub const TYPE_ID: u64 = 0xc58d_6c6b_8803_2108;

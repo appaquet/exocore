@@ -8,8 +8,6 @@ exocore-server = { path = "./server" }
 exocore-index = { path = "./index" }
 exocore-data = { path = "./data" }
 exocore-common = { path = "./common" }
-extsort = { path = "./3rd/extsort" }
-extindex = { path = "./3rd/extindex" }
 
 [workspace]
 members = [
@@ -17,8 +15,6 @@ members = [
   "index",
   "data",
   "common",
-  "3rd/extsort",
-  "3rd/extindex",
 ]
 
 #[patch.crates-io]

@@ -32,12 +32,11 @@ We have 2 data structures to replicate:
 
 
 
-
 ## Chain replication
 
 ### Messages
-* DescribeRange (by depth or by offsets)
-* GetRange (by offsets)
+* ChainSyncRequest
+
 
 ### Cleanup
 * A node that has access to unencrypted data can decide to cleanup the chain by truncating it, after moving entries around.
@@ -47,11 +46,8 @@ We have 2 data structures to replicate:
   * If it's an old entry, add to pending
   * Once we have a part of a chain that contains only old versions, propose a chain truncation
 
-
-
-
 ## Exceptions
-* A node has signature of other nodes on a block, and is about to send his signature, but then get partitionned.
+* A node has signature of other nodes on a block, and is about to send his signature, but then get partitioned.
   He's the only one with quorum, and adds to the block.
 
   Solutions:
@@ -62,11 +58,8 @@ We have 2 data structures to replicate:
   * Two stage commit where nobody adds to the chain unless everybody has agreed that they have signatures.
     Cons: This adds latency and communication for nothing... And it's an never ending story.
 
+
 ## TODO
-- [X] Rename entry_id --> pending_group ? (first operation id)
-- [X] Add chain entry type
-        * Block proposal
-- [ ] Remove hash from capnp messages since they are now in the framing protocol
 - [ ] What is the logic on who proposes
         * Needs to have full data access
         * Needs to be considered online by others for them to wait for its proposal

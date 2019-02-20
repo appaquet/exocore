@@ -13,6 +13,17 @@ struct Envelope {
     data   @4: Data;
 }
 
+struct EngineMessage {
+    message :union {
+        pendingSyncRequest    @0: PendingSyncRequest;
+        pendingSyncResponse   @1: PendingSyncResponse;
+        chainSyncRequest      @2: ChainSyncRequest;
+    }
+}
+
+#
+# Pending
+#
 struct PendingSyncRequest {
     ranges @0: List(PendingSyncRange);
 }
@@ -37,3 +48,23 @@ struct PendingSyncRange {
     }
 }
 
+#
+# Chain
+#
+struct ChainSyncRequest {
+    fromOffset       @0: UInt64;
+    toOffset         @1: UInt64;
+
+    count            @2: UInt32;
+    sampling         @3: UInt32;
+
+    requestedDetails @4: RequestedDetails;
+
+    headers          @5: List(Chain.BlockHeader);
+    blocks           @6: List(Chain.Block);
+
+    enum RequestedDetails {
+      headers  @0;
+      blocks   @1;
+    }
+}

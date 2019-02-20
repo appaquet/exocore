@@ -145,8 +145,8 @@ where
     }
 
     fn handle_incoming_message(
-        inner: &Weak<RwLock<Inner<CS, PS>>>,
-        msg: transport::InMessage,
+        _inner: &Weak<RwLock<Inner<CS, PS>>>,
+        _msg: transport::InMessage,
     ) -> Result<(), Error> {
         unimplemented!()
     }
@@ -251,7 +251,7 @@ pub enum Error {
 }
 
 impl<T> From<std::sync::PoisonError<T>> for Error {
-    fn from(err: std::sync::PoisonError<T>) -> Self {
+    fn from(_err: std::sync::PoisonError<T>) -> Self {
         Error::Poisoned
     }
 }

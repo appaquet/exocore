@@ -65,20 +65,24 @@ enum EntryType {
 
 struct Block {
     offset         @0: UInt64;
-    previousOffset @1: UInt64;
-    previousHash   @2: Data;
-    signatureSize  @3: UInt16;
-    sourceNodeId   @4: Text;
+    depth          @1: UInt64;
+    previousOffset @2: UInt64;
+    previousHash   @3: Data;
+    signatureSize  @4: UInt16;
 
-    entries        @5: List(Entry);
+    sourceNodeId   @5: Text;
+
+    entries        @6: List(Entry);
 }
 
 struct BlockHeader {
     offset         @0: UInt64;
-    previousOffset @1: UInt64;
-    previousHash   @2: Data;
-    signatureSize  @3: UInt16;
-    sourceNodeId   @4: Text;
+    depth          @1: UInt64;
+    previousOffset @2: UInt64;
+    previousHash   @3: Data;
+    signatureSize  @4: UInt16;
+
+    sourceNodeId   @5: Text;
 }
 
 struct BlockSignatures {

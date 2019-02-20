@@ -1003,7 +1003,7 @@ impl From<std::io::Error> for Error {
 
 #[cfg(test)]
 pub mod tests {
-    use crate::data_chain_capnp::{block, entry_header};
+    use crate::data_chain_capnp::block;
 
     use super::*;
 
@@ -1194,11 +1194,7 @@ pub mod tests {
         let hashes: Vec<u64> = frames_iter
             .filter(|m| m.framed_message.message_type() == 123)
             .map(|m| m.framed_message.into_typed::<block::Owned>())
-            .map(|b| {
-                b.get_typed_reader()
-                    .unwrap()
-                    .get_offset()
-            })
+            .map(|b| b.get_typed_reader().unwrap().get_offset())
             .collect();
         assert_eq!(hashes, vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     }
