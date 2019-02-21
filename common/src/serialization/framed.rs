@@ -18,7 +18,7 @@ use byteorder;
 use byteorder::ByteOrder;
 use byteorder::LittleEndian;
 use capnp;
-pub use capnp::message::ReaderSegments;
+use capnp::message::ReaderSegments;
 use capnp::message::{Allocator, Builder, HeapAllocator, Reader};
 use capnp::serialize::SliceSegments;
 use lazycell::AtomicLazyCell;

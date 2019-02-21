@@ -4,7 +4,7 @@
 # Pending store
 #
 struct PendingOperation {
-    pendingId              @0: UInt64;
+    groupId                @0: UInt64;
     operationId            @1: UInt64;
 
     operation :union {

@@ -1,5 +1,5 @@
 use std;
-use std::sync::{Arc, Mutex, RwLock, Weak};
+use std::sync::{Arc, RwLock, Weak};
 use std::time::{Duration, Instant};
 
 use futures::prelude::*;
@@ -15,7 +15,7 @@ use crate::chain;
 use crate::pending;
 use crate::transport;
 
-mod pending_syncer;
+mod pending_sync;
 
 const ENGINE_MANAGE_TIMER_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -51,7 +51,7 @@ where
         let context = Arc::new(RwLock::new(Inner {
             nodes,
             pending_store,
-            pending_syncer: pending_syncer::PendingSyncer::new(),
+            pending_syncer: pending_sync::Synchronizer::new(),
             chain_store,
             transport_sender: None,
             completion_sender: Some(completion_sender),
@@ -147,7 +147,7 @@ where
         unimplemented!()
     }
 
-    fn handle_management_timer_tick(inner: &Weak<RwLock<Inner<CS, PS>>>) -> Result<(), Error> {
+    fn handle_management_timer_tick(_inner: &Weak<RwLock<Inner<CS, PS>>>) -> Result<(), Error> {
         // TODO: Sync at interval to check we didn't miss anything
         // TODO: Maybe propose a new block
 
@@ -214,7 +214,7 @@ where
 {
     nodes: Vec<Node>,
     pending_store: PS,
-    pending_syncer: pending_syncer::PendingSyncer<PS>,
+    pending_syncer: pending_sync::Synchronizer<PS>,
     chain_store: CS,
     transport_sender: Option<mpsc::UnboundedSender<transport::OutMessage>>,
     completion_sender: Option<oneshot::Sender<Result<(), Error>>>,

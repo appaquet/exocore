@@ -5,7 +5,7 @@ use std::vec::Vec;
 use exocore_common::data_chain_capnp::pending_operation;
 use exocore_common::security::hash::Multihash;
 use exocore_common::serialization::framed;
-use exocore_common::serialization::protos::{OperationID, PendingID};
+use exocore_common::serialization::protos::{GroupID, OperationID};
 
 pub mod memory;
 
@@ -15,15 +15,15 @@ pub trait Store: Send + Sync + 'static {
         operation: framed::OwnedTypedFrame<pending_operation::Owned>,
     ) -> Result<(), Error>;
 
-    fn get_entry_operations(
+    fn get_group_operations(
         &self,
-        entry_id: PendingID,
-    ) -> Result<Option<StoredEntryOperations>, Error>;
+        group_id: GroupID,
+    ) -> Result<Option<StoredGroupOperations>, Error>;
 
     fn operations_iter<'store, R>(
         &'store self,
         range: R,
-    ) -> Result<Box<dyn Iterator<Item = StoredOperation> + 'store>, Error>
+    ) -> Result<TimelineIterator<'store>, Error>
     where
         R: RangeBounds<OperationID>;
 
@@ -34,13 +34,15 @@ pub trait Store: Send + Sync + 'static {
 
 pub type TimelineIterator<'store> = Box<dyn Iterator<Item = StoredOperation> + 'store>;
 
+#[derive(Clone)]
 pub struct StoredOperation {
-    pub entry_id: PendingID,
+    pub group_id: GroupID,
     pub operation_id: OperationID,
+    pub operation: Arc<framed::OwnedTypedFrame<pending_operation::Owned>>,
 }
 
-pub struct StoredEntryOperations {
-    pub entry_id: PendingID,
+pub struct StoredGroupOperations {
+    pub group_id: GroupID,
     pub operations: Vec<Arc<framed::OwnedTypedFrame<pending_operation::Owned>>>,
 }
 
@@ -58,5 +60,32 @@ pub enum Error {
 impl From<framed::Error> for Error {
     fn from(err: framed::Error) -> Self {
         Error::Serialization(err)
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use exocore_common::serialization::framed::{FrameBuilder, MultihashFrameSigner};
+
+    pub fn create_pending_operation(
+        operation_id: OperationID,
+        group_id: GroupID,
+    ) -> framed::OwnedTypedFrame<pending_operation::Owned> {
+        let mut msg_builder = FrameBuilder::<pending_operation::Owned>::new();
+
+        {
+            let mut op_builder: pending_operation::Builder = msg_builder.get_builder_typed();
+            op_builder.set_group_id(group_id);
+            op_builder.set_operation_id(operation_id);
+            let inner_op_builder = op_builder.init_operation();
+
+            let new_entry_op_builder = inner_op_builder.init_entry_new();
+            let mut entry_header_builder = new_entry_op_builder.init_entry_header();
+            entry_header_builder.set_id(group_id);
+        }
+
+        let frame_signer = MultihashFrameSigner::new_sha3256();
+        msg_builder.as_owned_framed(frame_signer).unwrap()
     }
 }

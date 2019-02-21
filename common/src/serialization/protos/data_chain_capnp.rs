@@ -69,7 +69,7 @@ pub mod pending_operation {
             self.reader.total_size()
         }
         #[inline]
-        pub fn get_pending_id(self) -> u64 {
+        pub fn get_group_id(self) -> u64 {
             self.reader.get_data_field::<u64>(0)
         }
         #[inline]
@@ -157,11 +157,11 @@ pub mod pending_operation {
             self.builder.into_reader().total_size()
         }
         #[inline]
-        pub fn get_pending_id(self) -> u64 {
+        pub fn get_group_id(self) -> u64 {
             self.builder.get_data_field::<u64>(0)
         }
         #[inline]
-        pub fn set_pending_id(&mut self, value: u64) {
+        pub fn set_group_id(&mut self, value: u64) {
             self.builder.set_data_field::<u64>(0, value);
         }
         #[inline]
