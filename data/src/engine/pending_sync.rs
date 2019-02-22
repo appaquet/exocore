@@ -112,8 +112,8 @@ impl SyncRange {
         let mut range_msg_builder: pending_sync_range::Builder =
             range_frame_builder.get_builder_typed();
 
-        range_msg_builder.set_from_time(self.from_operation);
-        range_msg_builder.set_to_time(self.to_operation);
+        range_msg_builder.set_from_operation(self.from_operation);
+        range_msg_builder.set_to_operation(self.to_operation);
         range_msg_builder.set_operations_count(self.operations.len() as u32);
 
         // TODO: Support for different level of requested details

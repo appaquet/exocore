@@ -41,11 +41,15 @@ pub trait Frame: SignedFrame {
     fn message_type(&self) -> u16;
     fn message_size(&self) -> usize;
     fn frame_size(&self) -> usize;
+    fn frame_data(&self) -> &[u8];
     fn get_typed_reader<'b, T: MessageType<'b>>(
         &'b self,
     ) -> Result<<T as capnp::traits::Owned>::Reader, Error>;
-    fn copy_into(&self, buf: &mut [u8]);
     fn to_owned(&self) -> OwnedFrame;
+
+    fn copy_into(&self, buf: &mut [u8]) {
+        buf[0..self.frame_size()].copy_from_slice(self.frame_data());
+    }
 }
 
 ///
@@ -58,9 +62,13 @@ where
     fn message_type(&self) -> u16;
     fn message_size(&self) -> usize;
     fn frame_size(&self) -> usize;
+    fn frame_data(&self) -> &[u8];
     fn get_typed_reader(&self) -> Result<<T as capnp::traits::Owned>::Reader, Error>;
-    fn copy_into(&self, buf: &mut [u8]);
     fn to_owned(&self) -> OwnedTypedFrame<T>;
+
+    fn copy_into(&self, buf: &mut [u8]) {
+        buf[0..self.frame_size()].copy_from_slice(self.frame_data());
+    }
 }
 
 ///
@@ -276,6 +284,10 @@ impl<'a> Frame for SliceFrame<'a> {
         self.metadata.frame_size()
     }
 
+    fn frame_data(&self) -> &[u8] {
+        self.data
+    }
+
     fn get_typed_reader<'b, T: MessageType<'b>>(
         &'b self,
     ) -> Result<<T as capnp::traits::Owned>::Reader, Error> {
@@ -303,10 +315,6 @@ impl<'a> Frame for SliceFrame<'a> {
         })?;
 
         reader.get_root().map_err(|_err| Error::InvalidData)
-    }
-
-    fn copy_into(&self, buf: &mut [u8]) {
-        buf[0..self.metadata.frame_size()].copy_from_slice(self.data);
     }
 
     fn to_owned(&self) -> OwnedFrame {
@@ -396,12 +404,12 @@ where
         self.message.frame_size()
     }
 
-    fn get_typed_reader(&self) -> Result<<T as capnp::traits::Owned>::Reader, Error> {
-        self.message.get_typed_reader::<T>()
+    fn frame_data(&self) -> &[u8] {
+        self.message.data
     }
 
-    fn copy_into(&self, buf: &mut [u8]) {
-        self.message.copy_into(buf);
+    fn get_typed_reader(&self) -> Result<<T as capnp::traits::Owned>::Reader, Error> {
+        self.message.get_typed_reader::<T>()
     }
 
     fn to_owned(&self) -> OwnedTypedFrame<T> {
@@ -542,14 +550,14 @@ impl Frame for OwnedFrame {
         self.owned_slice_message.frame_size()
     }
 
+    fn frame_data(&self) -> &[u8] {
+        self.owned_slice_message.frame_data()
+    }
+
     fn get_typed_reader<'b, T: MessageType<'b>>(
         &'b self,
     ) -> Result<<T as capnp::traits::Owned>::Reader, Error> {
         self.owned_slice_message.get_typed_reader::<T>()
-    }
-
-    fn copy_into(&self, buf: &mut [u8]) {
-        self.owned_slice_message.copy_into(buf)
     }
 
     fn to_owned(&self) -> OwnedFrame {
@@ -595,12 +603,12 @@ where
         self.message.frame_size()
     }
 
-    fn get_typed_reader(&self) -> Result<<T as capnp::traits::Owned>::Reader, Error> {
-        self.message.get_typed_reader::<T>()
+    fn frame_data(&self) -> &[u8] {
+        self.message.frame_data()
     }
 
-    fn copy_into(&self, buf: &mut [u8]) {
-        self.message.copy_into(buf);
+    fn get_typed_reader(&self) -> Result<<T as capnp::traits::Owned>::Reader, Error> {
+        self.message.get_typed_reader::<T>()
     }
 
     fn to_owned(&self) -> OwnedTypedFrame<T> {

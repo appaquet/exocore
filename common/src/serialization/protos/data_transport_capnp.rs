@@ -1277,11 +1277,11 @@ pub mod pending_sync_range {
             self.reader.total_size()
         }
         #[inline]
-        pub fn get_from_time(self) -> u64 {
+        pub fn get_from_operation(self) -> u64 {
             self.reader.get_data_field::<u64>(0)
         }
         #[inline]
-        pub fn get_to_time(self) -> u64 {
+        pub fn get_to_operation(self) -> u64 {
             self.reader.get_data_field::<u64>(1)
         }
         #[inline]
@@ -1392,19 +1392,19 @@ pub mod pending_sync_range {
             self.builder.into_reader().total_size()
         }
         #[inline]
-        pub fn get_from_time(self) -> u64 {
+        pub fn get_from_operation(self) -> u64 {
             self.builder.get_data_field::<u64>(0)
         }
         #[inline]
-        pub fn set_from_time(&mut self, value: u64) {
+        pub fn set_from_operation(&mut self, value: u64) {
             self.builder.set_data_field::<u64>(0, value);
         }
         #[inline]
-        pub fn get_to_time(self) -> u64 {
+        pub fn get_to_operation(self) -> u64 {
             self.builder.get_data_field::<u64>(1)
         }
         #[inline]
-        pub fn set_to_time(&mut self, value: u64) {
+        pub fn set_to_operation(&mut self, value: u64) {
             self.builder.set_data_field::<u64>(1, value);
         }
         #[inline]

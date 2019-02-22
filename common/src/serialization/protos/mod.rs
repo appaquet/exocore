@@ -22,66 +22,92 @@ pub type OperationID = u64;
 
 impl<'a> MessageType<'a> for self::data_chain_capnp::pending_operation::Owned {
     fn message_type() -> u16 {
-        0
-    }
-}
-
-impl<'a> MessageType<'a> for self::data_chain_capnp::entry::Owned {
-    fn message_type() -> u16 {
-        1
-    }
-}
-
-impl<'a> MessageType<'a> for self::data_chain_capnp::entry_header::Owned {
-    fn message_type() -> u16 {
-        2
-    }
-}
-
-impl<'a> MessageType<'a> for self::data_chain_capnp::block::Owned {
-    fn message_type() -> u16 {
-        3
-    }
-}
-
-impl<'a> MessageType<'a> for self::data_chain_capnp::block_signatures::Owned {
-    fn message_type() -> u16 {
-        4
-    }
-}
-
-impl<'a> MessageType<'a> for self::data_chain_capnp::block_signature::Owned {
-    fn message_type() -> u16 {
-        5
-    }
-}
-
-impl<'a> MessageType<'a> for self::data_transport_capnp::envelope::Owned {
-    fn message_type() -> u16 {
         100
     }
 }
 
-impl<'a> MessageType<'a> for self::data_transport_capnp::engine_message::Owned {
+impl<'a> MessageType<'a> for self::data_chain_capnp::operation_entry_new::Owned {
     fn message_type() -> u16 {
         101
     }
 }
 
-impl<'a> MessageType<'a> for self::data_transport_capnp::pending_sync_request::Owned {
+impl<'a> MessageType<'a> for self::data_chain_capnp::operation_block_propose::Owned {
     fn message_type() -> u16 {
         102
     }
 }
 
-impl<'a> MessageType<'a> for self::data_transport_capnp::pending_sync_response::Owned {
+impl<'a> MessageType<'a> for self::data_chain_capnp::operation_block_sign::Owned {
     fn message_type() -> u16 {
         103
     }
 }
 
-impl<'a> MessageType<'a> for self::data_transport_capnp::pending_sync_range::Owned {
+impl<'a> MessageType<'a> for self::data_chain_capnp::operation_block_refuse::Owned {
     fn message_type() -> u16 {
         104
+    }
+}
+
+impl<'a> MessageType<'a> for self::data_chain_capnp::entry::Owned {
+    fn message_type() -> u16 {
+        120
+    }
+}
+
+impl<'a> MessageType<'a> for self::data_chain_capnp::entry_header::Owned {
+    fn message_type() -> u16 {
+        121
+    }
+}
+
+impl<'a> MessageType<'a> for self::data_chain_capnp::block::Owned {
+    fn message_type() -> u16 {
+        122
+    }
+}
+
+impl<'a> MessageType<'a> for self::data_chain_capnp::block_signatures::Owned {
+    fn message_type() -> u16 {
+        123
+    }
+}
+
+impl<'a> MessageType<'a> for self::data_chain_capnp::block_signature::Owned {
+    fn message_type() -> u16 {
+        124
+    }
+}
+
+///
+///
+impl<'a> MessageType<'a> for self::data_transport_capnp::envelope::Owned {
+    fn message_type() -> u16 {
+        200
+    }
+}
+
+impl<'a> MessageType<'a> for self::data_transport_capnp::engine_message::Owned {
+    fn message_type() -> u16 {
+        201
+    }
+}
+
+impl<'a> MessageType<'a> for self::data_transport_capnp::pending_sync_request::Owned {
+    fn message_type() -> u16 {
+        202
+    }
+}
+
+impl<'a> MessageType<'a> for self::data_transport_capnp::pending_sync_response::Owned {
+    fn message_type() -> u16 {
+        203
+    }
+}
+
+impl<'a> MessageType<'a> for self::data_transport_capnp::pending_sync_range::Owned {
+    fn message_type() -> u16 {
+        204
     }
 }

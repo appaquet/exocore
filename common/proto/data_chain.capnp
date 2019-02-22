@@ -6,12 +6,16 @@
 struct PendingOperation {
     groupId                @0: UInt64;
     operationId            @1: UInt64;
+    operationType          @2: OperationType;
 
-    operation :union {
-        entryNew           @2: OperationEntryNew;
-        blockPropose       @3: OperationBlockPropose;
-        blockSign          @4: OperationBlockSign;
-        blockRefuse        @5: OperationBlockRefuse;
+    operationData          @3: Data;
+    operationSignature     @4: Data;
+
+    enum OperationType {
+        entryNew           @0;
+        blockPropose       @1;
+        blockSign          @2;
+        blockRefuse        @3;
     }
 }
 

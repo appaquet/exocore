@@ -33,15 +33,15 @@ struct PendingSyncResponse {
 }
 
 struct PendingSyncRange {
-    fromTime         @0: UInt64;
-    toTime           @1: UInt64;
+    fromOperation      @0: UInt64;
+    toOperation        @1: UInt64;
 
-    requestedDetails @2: RequestedDetails;
+    requestedDetails   @2: RequestedDetails;
 
-    operationsHash   @3: Data;
-    operationsCount  @4: UInt32;
+    operationsHash     @3: Data;
+    operationsCount    @4: UInt32;
 
-    operations       @5: List(Chain.PendingOperation);
+    operations         @5: List(Chain.PendingOperation);
 
     enum RequestedDetails {
       hash @0;
