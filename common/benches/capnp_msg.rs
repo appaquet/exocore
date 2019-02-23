@@ -1,11 +1,9 @@
-#![feature(test)]
+#![cfg_attr(test, feature(test))]
 extern crate test;
 
 use test::Bencher;
 
-use tempdir;
-
-use exocore_common::data_chain_capnp::{block, entry, entry_header};
+use exocore_common::data_chain_capnp::{block, entry};
 use exocore_common::serialization::framed::{Frame, FrameBuilder, OwnedFrame, SliceFrame};
 
 #[bench]

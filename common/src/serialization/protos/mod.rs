@@ -26,27 +26,33 @@ impl<'a> MessageType<'a> for self::data_chain_capnp::pending_operation::Owned {
     }
 }
 
-impl<'a> MessageType<'a> for self::data_chain_capnp::operation_entry_new::Owned {
+impl<'a> MessageType<'a> for self::data_chain_capnp::pending_operation_header::Owned {
     fn message_type() -> u16 {
         101
     }
 }
 
+impl<'a> MessageType<'a> for self::data_chain_capnp::operation_entry_new::Owned {
+    fn message_type() -> u16 {
+        110
+    }
+}
+
 impl<'a> MessageType<'a> for self::data_chain_capnp::operation_block_propose::Owned {
     fn message_type() -> u16 {
-        102
+        112
     }
 }
 
 impl<'a> MessageType<'a> for self::data_chain_capnp::operation_block_sign::Owned {
     fn message_type() -> u16 {
-        103
+        113
     }
 }
 
 impl<'a> MessageType<'a> for self::data_chain_capnp::operation_block_refuse::Owned {
     fn message_type() -> u16 {
-        104
+        114
     }
 }
 

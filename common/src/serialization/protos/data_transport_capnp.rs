@@ -1307,15 +1307,25 @@ pub mod pending_sync_range {
             self.reader.get_data_field::<u32>(5)
         }
         #[inline]
-        pub fn get_operations(
-            self,
-        ) -> ::capnp::Result<
-            ::capnp::struct_list::Reader<'a, crate::data_chain_capnp::pending_operation::Owned>,
-        > {
+        pub fn get_operations(self) -> ::capnp::Result<::capnp::data_list::Reader<'a>> {
             ::capnp::traits::FromPointerReader::get_from_pointer(&self.reader.get_pointer_field(1))
         }
         pub fn has_operations(&self) -> bool {
             !self.reader.get_pointer_field(1).is_null()
+        }
+        #[inline]
+        pub fn get_operations_headers(
+            self,
+        ) -> ::capnp::Result<
+            ::capnp::struct_list::Reader<
+                'a,
+                crate::data_chain_capnp::pending_operation_header::Owned,
+            >,
+        > {
+            ::capnp::traits::FromPointerReader::get_from_pointer(&self.reader.get_pointer_field(2))
+        }
+        pub fn has_operations_headers(&self) -> bool {
+            !self.reader.get_pointer_field(2).is_null()
         }
     }
 
@@ -1449,20 +1459,13 @@ pub mod pending_sync_range {
             self.builder.set_data_field::<u32>(5, value);
         }
         #[inline]
-        pub fn get_operations(
-            self,
-        ) -> ::capnp::Result<
-            ::capnp::struct_list::Builder<'a, crate::data_chain_capnp::pending_operation::Owned>,
-        > {
+        pub fn get_operations(self) -> ::capnp::Result<::capnp::data_list::Builder<'a>> {
             ::capnp::traits::FromPointerBuilder::get_from_pointer(self.builder.get_pointer_field(1))
         }
         #[inline]
         pub fn set_operations(
             &mut self,
-            value: ::capnp::struct_list::Reader<
-                'a,
-                crate::data_chain_capnp::pending_operation::Owned,
-            >,
+            value: ::capnp::data_list::Reader<'a>,
         ) -> ::capnp::Result<()> {
             ::capnp::traits::SetPointerBuilder::set_pointer_builder(
                 self.builder.get_pointer_field(1),
@@ -1471,11 +1474,7 @@ pub mod pending_sync_range {
             )
         }
         #[inline]
-        pub fn init_operations(
-            self,
-            size: u32,
-        ) -> ::capnp::struct_list::Builder<'a, crate::data_chain_capnp::pending_operation::Owned>
-        {
+        pub fn init_operations(self, size: u32) -> ::capnp::data_list::Builder<'a> {
             ::capnp::traits::FromPointerBuilder::init_pointer(
                 self.builder.get_pointer_field(1),
                 size,
@@ -1483,6 +1482,47 @@ pub mod pending_sync_range {
         }
         pub fn has_operations(&self) -> bool {
             !self.builder.get_pointer_field(1).is_null()
+        }
+        #[inline]
+        pub fn get_operations_headers(
+            self,
+        ) -> ::capnp::Result<
+            ::capnp::struct_list::Builder<
+                'a,
+                crate::data_chain_capnp::pending_operation_header::Owned,
+            >,
+        > {
+            ::capnp::traits::FromPointerBuilder::get_from_pointer(self.builder.get_pointer_field(2))
+        }
+        #[inline]
+        pub fn set_operations_headers(
+            &mut self,
+            value: ::capnp::struct_list::Reader<
+                'a,
+                crate::data_chain_capnp::pending_operation_header::Owned,
+            >,
+        ) -> ::capnp::Result<()> {
+            ::capnp::traits::SetPointerBuilder::set_pointer_builder(
+                self.builder.get_pointer_field(2),
+                value,
+                false,
+            )
+        }
+        #[inline]
+        pub fn init_operations_headers(
+            self,
+            size: u32,
+        ) -> ::capnp::struct_list::Builder<
+            'a,
+            crate::data_chain_capnp::pending_operation_header::Owned,
+        > {
+            ::capnp::traits::FromPointerBuilder::init_pointer(
+                self.builder.get_pointer_field(2),
+                size,
+            )
+        }
+        pub fn has_operations_headers(&self) -> bool {
+            !self.builder.get_pointer_field(2).is_null()
         }
     }
 
@@ -1501,7 +1541,7 @@ pub mod pending_sync_range {
         use capnp::private::layout;
         pub const STRUCT_SIZE: layout::StructSize = layout::StructSize {
             data: 3,
-            pointers: 2,
+            pointers: 3,
         };
         pub const TYPE_ID: u64 = 0xfb10_27d7_6f28_4abd;
     }

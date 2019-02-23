@@ -41,7 +41,8 @@ struct PendingSyncRange {
     operationsHash     @3: Data;
     operationsCount    @4: UInt32;
 
-    operations         @5: List(Chain.PendingOperation);
+    operations         @5: List(Data);
+    operationsHeaders  @6: List(Chain.PendingOperationHeader);
 
     enum RequestedDetails {
       hash @0;

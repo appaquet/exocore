@@ -5,7 +5,6 @@ use std::vec::Vec;
 use exocore_common::data_chain_capnp::pending_operation;
 use exocore_common::security::hash::Multihash;
 use exocore_common::serialization::framed;
-use exocore_common::serialization::framed::TypedFrame;
 use exocore_common::serialization::protos::{GroupID, OperationID};
 
 pub mod memory;
@@ -63,8 +62,7 @@ impl From<framed::Error> for Error {
 
 #[cfg(test)]
 pub mod tests {
-    use exocore_common::data_chain_capnp::operation_entry_new;
-    use exocore_common::serialization::framed::{FrameBuilder, MultihashFrameSigner, SignedFrame};
+    use exocore_common::serialization::framed::{FrameBuilder, MultihashFrameSigner};
 
     use super::*;
 
@@ -79,17 +77,10 @@ pub mod tests {
             op_builder.set_group_id(group_id);
             op_builder.set_operation_id(operation_id);
 
-            let mut new_entry_op_frame_builder = FrameBuilder::<operation_entry_new::Owned>::new();
-            let new_entry_op_builder = new_entry_op_frame_builder.get_builder_typed();
-            let mut entry_header_builder = new_entry_op_builder.init_entry_header();
-            entry_header_builder.set_id(group_id);
-
-            let op_frame = new_entry_op_frame_builder
-                .as_owned_framed(framed::MultihashFrameSigner::new_sha3256())
-                .unwrap();
-
-            op_builder.set_operation_data(op_frame.frame_data());
-            op_builder.set_operation_signature(op_frame.signature_data().unwrap_or(b""));
+            let inner_op_builder = op_builder.init_operation();
+            let new_entry_builder = inner_op_builder.init_entry_new();
+            let mut entry_header_builder = new_entry_builder.init_entry_header();
+            entry_header_builder.set_id(1234);
         }
 
         let frame_signer = MultihashFrameSigner::new_sha3256();
