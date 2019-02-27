@@ -66,7 +66,7 @@ pub mod tests {
 
     use super::*;
 
-    pub fn create_pending_operation(
+    pub fn create_new_entry_op(
         operation_id: OperationID,
         group_id: GroupID,
     ) -> framed::OwnedTypedFrame<pending_operation::Owned> {

@@ -179,21 +179,15 @@ impl<'store> Iterator for OperationsIterator<'store> {
 mod test {
     use super::*;
 
-    use crate::pending::tests::create_pending_operation;
+    use crate::pending::tests::create_new_entry_op;
 
     #[test]
     fn put_and_retrieve_operation() {
         let mut store = MemoryStore::new();
 
-        store
-            .put_operation(create_pending_operation(105, 200))
-            .unwrap();
-        store
-            .put_operation(create_pending_operation(100, 200))
-            .unwrap();
-        store
-            .put_operation(create_pending_operation(102, 201))
-            .unwrap();
+        store.put_operation(create_new_entry_op(105, 200)).unwrap();
+        store.put_operation(create_new_entry_op(100, 200)).unwrap();
+        store.put_operation(create_new_entry_op(102, 201)).unwrap();
 
         let timeline: Vec<(OperationID, GroupID)> = store
             .operations_iter(..)
@@ -221,21 +215,11 @@ mod test {
     fn operations_iteration() {
         let mut store = MemoryStore::new();
 
-        store
-            .put_operation(create_pending_operation(105, 200))
-            .unwrap();
-        store
-            .put_operation(create_pending_operation(100, 200))
-            .unwrap();
-        store
-            .put_operation(create_pending_operation(102, 201))
-            .unwrap();
-        store
-            .put_operation(create_pending_operation(107, 202))
-            .unwrap();
-        store
-            .put_operation(create_pending_operation(110, 203))
-            .unwrap();
+        store.put_operation(create_new_entry_op(105, 200)).unwrap();
+        store.put_operation(create_new_entry_op(100, 200)).unwrap();
+        store.put_operation(create_new_entry_op(102, 201)).unwrap();
+        store.put_operation(create_new_entry_op(107, 202)).unwrap();
+        store.put_operation(create_new_entry_op(110, 203)).unwrap();
 
         assert_eq!(store.operations_iter(..).unwrap().count(), 5);
     }
@@ -244,21 +228,11 @@ mod test {
     fn operations_range_summary() {
         let mut store = MemoryStore::new();
 
-        store
-            .put_operation(create_pending_operation(105, 200))
-            .unwrap();
-        store
-            .put_operation(create_pending_operation(100, 200))
-            .unwrap();
-        store
-            .put_operation(create_pending_operation(102, 201))
-            .unwrap();
-        store
-            .put_operation(create_pending_operation(107, 202))
-            .unwrap();
-        store
-            .put_operation(create_pending_operation(110, 203))
-            .unwrap();
+        store.put_operation(create_new_entry_op(105, 200)).unwrap();
+        store.put_operation(create_new_entry_op(100, 200)).unwrap();
+        store.put_operation(create_new_entry_op(102, 201)).unwrap();
+        store.put_operation(create_new_entry_op(107, 202)).unwrap();
+        store.put_operation(create_new_entry_op(110, 203)).unwrap();
 
         let range1_summary = store.operations_range_summary(100..=102).unwrap();
         assert_eq!(range1_summary.count, 2);

@@ -1,9 +1,10 @@
 
-
 # Replication
 
 We have 2 data structures to replicate:
-* Chain: immutable collection of blocks, with entries (cell data, meta, chain maintenance).
+* Chain: immutable collection of blocks that contain entries. Entries can be arbitrary data stored for the index layer,
+         or metadata entries related to the chain.
+         
 * Pending store: transient store in which latest operations are aggregated, to eventually be added to the chain.
 
 
@@ -18,17 +19,20 @@ We have 2 data structures to replicate:
 * Entries related (pending entry id = entry id)
     * OperationEntryNew
 * Block related (pending entry id = block id)
-    * Block propose
-    * Block proposal sign
-    * Block proposal refuse (can happen after sign if node detects anomaly or accepts a better block)
+    * BlockPropose
+    * BlockProposalSign
+    * BlockProposalRefuse (can happen after sign if node detects anomaly or accepts a better block)
+* Maintenance related
+    * Pending store cleanup mark
 
 
 ### Block proposal
 * One node propose a block into pending store. 
 
-
 ### Cleanup
-* We should only cleanup if stuff were committed to the chain OR we got a refusal quorum (everybody refused something)
+* We should only cleanup if stuff were committed to the chain OR we got a refusal quorum (everybody refused something).
+  
+* If a node was offline and received data before s
 
 
 
@@ -36,7 +40,6 @@ We have 2 data structures to replicate:
 
 ### Messages
 * ChainSyncRequest
-
 
 ### Cleanup
 * A node that has access to unencrypted data can decide to cleanup the chain by truncating it, after moving entries around.
