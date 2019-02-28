@@ -21,4 +21,13 @@ where
     CP: exocore_data::chain::ChainStore,
     PP: exocore_data::pending::PendingStore,
 {
+
+    // TODO : Instanciate Tantivy
+
+    pub fn handle_stream() -> () {
+
+    }
+
+    fn index
+
 }
