@@ -970,7 +970,7 @@ where
     }
 
     fn finish(self) -> Option<Vec<u8>> {
-        Some(self.hasher.into_mulithash_bytes())
+        Some(self.hasher.into_multihash_bytes())
     }
 }
 
