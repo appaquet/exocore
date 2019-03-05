@@ -21,3 +21,13 @@ steps:
       export PATH=$PATH:$HOME/.cargo/bin
       cargo test --all --verbose -- --test-threads=1
     displayName: 'Test all'
+
+  - script: |
+      export PATH=$PATH:$HOME/.cargo/bin
+      cargo tarpaulin --exclude-files=3rd --exclude-files="*_capnp.rs" --all --out Xml -v
+    displayName: 'Code coverage'
+
+  - task: PublishCodeCoverageResults@1
+    inputs:
+      codeCoverageTool: cobertura
+      summaryFileLocation: $(System.DefaultWorkingDirectory)/cobertura.xml
