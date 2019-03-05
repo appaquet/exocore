@@ -12,12 +12,9 @@ steps:
     displayName: 'Sync submodules'
 
   - script: |
+      docker --version
       curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable
       rustc --version && cargo --version
-      sudo apt update && sudo apt install -y capnproto libssl-dev pkg-config cmake zlib1g-dev
-
-      export PATH=$PATH:$HOME/.cargo/bin
-      RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin
     displayName: 'Install dependencies'
     
   - script: |
@@ -26,8 +23,7 @@ steps:
     displayName: 'Test all'
 
   - script: |
-      export PATH=$PATH:$HOME/.cargo/bin
-      cargo tarpaulin --exclude-files=3rd --exclude-files="*_capnp.rs" --all --out Xml -v
+      docker run --security-opt seccomp=unconfined -v "$PWD:/volume" xd009642/tarpaulin cargo tarpaulin --exclude-files=3rd --exclude-files="*_capnp.rs" --all --out Xml -v  -- --test-threads=1
     displayName: 'Code coverage'
 
   - task: PublishCodeCoverageResults@1
