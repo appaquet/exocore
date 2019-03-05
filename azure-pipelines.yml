@@ -14,7 +14,8 @@ steps:
   - script: |
       curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable
       rustc --version && cargo --version
-      sudo apt update && sudo apt install -y capnproto
+      sudo apt update && sudo apt install -y capnproto libssl-dev pkg-config cmake zlib1g-dev
+      RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin
     displayName: 'Install dependencies'
     
   - script: |
