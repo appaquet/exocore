@@ -16,8 +16,7 @@ struct Envelope {
 struct EngineMessage {
     message :union {
         pendingSyncRequest    @0: PendingSyncRequest;
-        pendingSyncResponse   @1: PendingSyncResponse;
-        chainSyncRequest      @2: ChainSyncRequest;
+        chainSyncRequest      @1: ChainSyncRequest;
     }
 }
 
@@ -28,21 +27,15 @@ struct PendingSyncRequest {
     ranges @0: List(PendingSyncRange);
 }
 
-struct PendingSyncResponse {
-    ranges @0: List(PendingSyncRange);
-}
-
 struct PendingSyncRange {
     fromOperation      @0: UInt64;
     toOperation        @1: UInt64;
 
-    requestedDetails   @2: RequestedDetails;
+    operationsHash     @2: Data;
+    operationsCount    @3: UInt32;
 
-    operationsHash     @3: Data;
-    operationsCount    @4: UInt32;
-
-    operations         @5: List(Data);
-    operationsHeaders  @6: List(Chain.PendingOperationHeader);
+    operations         @4: List(Data); # Frames of Chain.PendingOperation
+    operationsHeaders  @5: List(Chain.PendingOperationHeader);
 
     enum RequestedDetails {
       hash @0;

@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use std::collections::HashSet;
 use std::ops::Bound;
 use std::ops::RangeBounds;
 
@@ -9,7 +10,9 @@ use exocore_common::security::hash::{Sha3Hasher, StreamHasher};
 use exocore_common::serialization::capnp;
 use exocore_common::serialization::framed;
 use exocore_common::serialization::framed::*;
-use exocore_common::serialization::protos::data_chain_capnp::pending_operation;
+use exocore_common::serialization::protos::data_chain_capnp::{
+    pending_operation, pending_operation_header,
+};
 use exocore_common::serialization::protos::data_transport_capnp::{
     pending_sync_range, pending_sync_request,
 };
@@ -17,10 +20,23 @@ use exocore_common::serialization::protos::OperationID;
 
 use crate::pending;
 use crate::pending::{Store, StoredOperation};
-use std::collections::HashSet;
 
 const MAX_OPERATIONS_PER_RANGE: u32 = 30;
 
+///
+/// Synchronizes local pending store against remote nodes' pending stores. It does that by exchanging
+/// PendingSyncRequest messages.
+///
+/// This PendingSyncRequest message contains information about ranges of operations (by `OperationID`) in a local pending store,
+/// and is sent to be applied / compared to the remote pending store. If there are differences in the remote store, the remote
+/// nodes reply with a request that represents the intent of the remote store. That intent could be to request missing data,
+/// or send missing data.
+///
+/// The whole store could be compared as a while (no boundaries), but that would result in excessive data transmission, because
+/// a single difference would require the whole store to be compared. In order to minimize this, when building ranges, a node
+/// tries to limit the number of operations by range. If a single range is not equal, only this range will be compared via
+/// headers exchange and full operations exchange.
+///
 pub struct Synchronizer<PS: Store> {
     phantom: std::marker::PhantomData<PS>,
 }
@@ -32,11 +48,11 @@ impl<PS: Store> Synchronizer<PS> {
         }
     }
 
-    pub fn create_sync_range_request(
+    pub fn create_sync_request(
         &self,
         store: &PS,
     ) -> Result<FrameBuilder<pending_sync_request::Owned>, Error> {
-        let mut sync_ranges = SyncRanges::new();
+        let mut sync_ranges = SyncRangesBuilder::new();
         for operation in store.operations_iter(..)? {
             sync_ranges.push_operation(operation, OperationDetails::None);
         }
@@ -70,7 +86,7 @@ impl<PS: Store> Synchronizer<PS> {
         let in_reader: pending_sync_request::Reader = request.get_typed_reader()?;
         let in_ranges = in_reader.get_ranges()?;
 
-        if let Some(out_ranges) = self.handle_sync_ranges(store, in_ranges.iter())? {
+        if let Some(out_ranges) = self.handle_incoming_sync_ranges(store, in_ranges.iter())? {
             let mut sync_request_frame_builder = FrameBuilder::<pending_sync_request::Owned>::new();
             let mut sync_request_builder = sync_request_frame_builder.get_builder_typed();
 
@@ -88,24 +104,23 @@ impl<PS: Store> Synchronizer<PS> {
         }
     }
 
-    fn handle_sync_ranges<'a, I>(
+    fn handle_incoming_sync_ranges<'a, I>(
         &mut self,
         store: &mut PS,
         sync_range_iterator: I,
-    ) -> Result<Option<SyncRanges>, Error>
+    ) -> Result<Option<SyncRangesBuilder>, Error>
     where
         I: Iterator<Item = pending_sync_range::Reader<'a>>,
     {
         let mut out_ranges_contains_changes = false;
-        let mut out_ranges = SyncRanges::new();
+        let mut out_ranges = SyncRangesBuilder::new();
 
         for sync_range_reader in sync_range_iterator {
-            let (bounds, from_operation, to_operation) =
-                Self::extract_sync_bounds(&sync_range_reader)?;
-            if to_operation < from_operation && to_operation != 0 {
+            let (bounds, bounds_from, bounds_to) = Self::extract_sync_bounds(&sync_range_reader)?;
+            if bounds_to < bounds_from && bounds_to != 0 {
                 return Err(Error::InvalidSyncRequest(format!(
                     "Request from={} > to={}",
-                    from_operation, to_operation
+                    bounds_from, bounds_to
                 )));
             }
 
@@ -126,74 +141,52 @@ impl<PS: Store> Synchronizer<PS> {
                 }
             }
 
-            // then check resulting range hash and count
-            let (local_hash, local_count) = Self::get_store_range_info(store, bounds)?;
+            // then check local store's range hash and count
+            let (local_hash, local_count) = Self::local_store_range_info(store, bounds)?;
             let remote_hash = sync_range_reader.get_operations_hash()?;
             let remote_count = sync_range_reader.get_operations_count();
 
             if remote_hash == &local_hash[..] && local_count == remote_count as usize {
                 // we are equal to remote, nothing to do
-                out_ranges.push_range(SyncRange::new_hashed(
-                    from_operation,
-                    to_operation,
+                out_ranges.push_range(SyncRangeBuilder::new_hashed(
+                    bounds_from,
+                    bounds_to,
                     local_hash,
                     local_count as u32,
                 ));
             } else if remote_count == 0 {
                 // remote has no data, we sent everything
                 out_ranges_contains_changes = true;
-                out_ranges.create_new_range(from_operation);
+                out_ranges.create_new_range(bounds_from);
                 for operation in store.operations_iter(bounds)? {
                     out_ranges.push_operation(operation, OperationDetails::Full);
                 }
-                out_ranges.set_last_range_to(to_operation);
+                out_ranges.set_last_range_to(bounds_to);
             } else if !sync_range_reader.has_operations_headers()
                 && !sync_range_reader.has_operations_headers()
             {
                 // remote has only sent us hash, we reply with headers
                 out_ranges_contains_changes = true;
-                out_ranges.create_new_range(from_operation);
+                out_ranges.create_new_range(bounds_from);
                 for operation in store.operations_iter(bounds)? {
                     out_ranges.push_operation(operation, OperationDetails::Header);
                 }
-                out_ranges.set_last_range_to(to_operation);
+                out_ranges.set_last_range_to(bounds_to);
             } else {
-                // remote and local has differences. we do a diff
+                // Remote and local has differences. We do a diff
                 out_ranges_contains_changes = true;
-                out_ranges.create_new_range(from_operation);
+                out_ranges.create_new_range(bounds_from);
 
                 let remote_iter = sync_range_reader.get_operations_headers()?.iter();
                 let local_iter = store.operations_iter(bounds)?;
-                let merged_iter = remote_iter.merge_join_by(local_iter, |remote_op, local_op| {
-                    remote_op.get_operation_id().cmp(&local_op.operation_id)
-                });
+                Self::diff_local_remote_range(
+                    &mut out_ranges,
+                    &mut included_operations,
+                    remote_iter,
+                    local_iter,
+                )?;
 
-                let mut diff_any_different = false;
-                for merge_res in merged_iter {
-                    match merge_res {
-                        EitherOrBoth::Left(_remote_op) => {
-                            diff_any_different = true;
-                            // We are missing this operation. Not including header will make remote sends it to us
-                        }
-                        EitherOrBoth::Right(local_op) => {
-                            // Make sure it's not because operations was given with full details
-                            if !included_operations.contains(&local_op.operation_id) {
-                                diff_any_different = true;
-
-                                // Remote is missing it, send full operation
-                                out_ranges.push_operation(local_op, OperationDetails::Full);
-                            }
-                        }
-                        EitherOrBoth::Both(_remote_op, local_op) => {
-                            out_ranges.push_operation(local_op, OperationDetails::Header);
-                        }
-                    }
-                }
-                out_ranges.set_last_range_to(to_operation);
-
-                if !diff_any_different {
-                    return Err(Error::InvalidSyncState("Got into diff branch, but didn't result in any changes, which shouldn't have happened".to_string()));
-                }
+                out_ranges.set_last_range_to(bounds_to);
             }
         }
 
@@ -204,7 +197,7 @@ impl<PS: Store> Synchronizer<PS> {
         }
     }
 
-    fn get_store_range_info<R>(store: &PS, range: R) -> Result<(Vec<u8>, usize), Error>
+    fn local_store_range_info<R>(store: &PS, range: R) -> Result<(Vec<u8>, usize), Error>
     where
         R: RangeBounds<OperationID>,
     {
@@ -245,18 +238,61 @@ impl<PS: Store> Synchronizer<PS> {
 
         Ok((bounds, from, to))
     }
+
+    fn diff_local_remote_range<'a, 'b, RI, LI>(
+        out_ranges: &mut SyncRangesBuilder,
+        included_operations: &mut HashSet<u64>,
+        remote_iter: RI,
+        local_iter: LI,
+    ) -> Result<(), Error>
+    where
+        LI: Iterator<Item = StoredOperation> + 'b,
+        RI: Iterator<Item = pending_operation_header::Reader<'a>> + 'a,
+    {
+        let merged_iter = remote_iter.merge_join_by(local_iter, |remote_op, local_op| {
+            remote_op.get_operation_id().cmp(&local_op.operation_id)
+        });
+
+        let mut diff_has_difference = false;
+        for merge_res in merged_iter {
+            match merge_res {
+                EitherOrBoth::Left(_remote_op) => {
+                    diff_has_difference = true;
+                    // We are missing this operation in local store.
+                    // Not including header will make remote sends it to us.
+                }
+                EitherOrBoth::Right(local_op) => {
+                    // Make sure it's not because operations was given with full details
+                    if !included_operations.contains(&local_op.operation_id) {
+                        diff_has_difference = true;
+
+                        // Remote is missing it, send full operation
+                        out_ranges.push_operation(local_op, OperationDetails::Full);
+                    }
+                }
+                EitherOrBoth::Both(_remote_op, local_op) => {
+                    out_ranges.push_operation(local_op, OperationDetails::Header);
+                }
+            }
+        }
+        if !diff_has_difference {
+            return Err(Error::InvalidSyncState("Got into diff branch, but didn't result in any changes, which shouldn't have happened".to_string()));
+        }
+
+        Ok(())
+    }
 }
 
 ///
+/// Collection of SyncRangeBuilder, taking into account maximum operations we want per range.
 ///
-///
-struct SyncRanges {
-    ranges: Vec<SyncRange>,
+struct SyncRangesBuilder {
+    ranges: Vec<SyncRangeBuilder>,
 }
 
-impl SyncRanges {
-    fn new() -> SyncRanges {
-        SyncRanges { ranges: Vec::new() }
+impl SyncRangesBuilder {
+    fn new() -> SyncRangesBuilder {
+        SyncRangesBuilder { ranges: Vec::new() }
     }
 
     fn push_operation(&mut self, operation: StoredOperation, details: OperationDetails) {
@@ -278,10 +314,11 @@ impl SyncRanges {
     }
 
     fn create_new_range(&mut self, from_operation_id: OperationID) {
-        self.ranges.push(SyncRange::new(from_operation_id, 0, true));
+        self.ranges
+            .push(SyncRangeBuilder::new(from_operation_id, 0));
     }
 
-    fn push_range(&mut self, sync_range: SyncRange) {
+    fn push_range(&mut self, sync_range: SyncRangeBuilder) {
         self.ranges.push(sync_range);
     }
 
@@ -297,9 +334,15 @@ impl SyncRanges {
 }
 
 ///
+/// Builder for pending_sync_range messages. A pending sync range represents a range in the Pending Store to be synchronized
+/// against a remote node's own store.
 ///
+/// It can describe the operations in 3 ways:
+///  * High level metadata (hash + count)
+///  * Operations headers
+///  * Operations full data
 ///
-struct SyncRange {
+struct SyncRangeBuilder {
     from_operation: OperationID,
     to_operation: OperationID,
 
@@ -318,25 +361,15 @@ enum OperationDetails {
     None,
 }
 
-impl SyncRange {
-    fn new(
-        from_operation: OperationID,
-        to_operation: OperationID,
-        with_hashing: bool,
-    ) -> SyncRange {
-        let hasher = if with_hashing {
-            Some(FramesHasher::new())
-        } else {
-            None
-        };
-
-        SyncRange {
+impl SyncRangeBuilder {
+    fn new(from_operation: OperationID, to_operation: OperationID) -> SyncRangeBuilder {
+        SyncRangeBuilder {
             from_operation,
             to_operation,
             operations: Vec::new(),
             operations_headers: Vec::new(),
             operations_count: 0,
-            hasher,
+            hasher: Some(FramesHasher::new()),
             hash: None,
         }
     }
@@ -346,8 +379,8 @@ impl SyncRange {
         to_operation: OperationID,
         operations_hash: Vec<u8>,
         operations_count: u32,
-    ) -> SyncRange {
-        SyncRange {
+    ) -> SyncRangeBuilder {
+        SyncRangeBuilder {
             from_operation,
             to_operation,
             operations: Vec::new(),
@@ -387,7 +420,6 @@ impl SyncRange {
         range_msg_builder.set_to_operation(self.to_operation);
         range_msg_builder.set_operations_count(self.operations_count);
 
-        // copy headers
         if !self.operations_headers.is_empty() {
             let mut operations_headers_builder = range_msg_builder
                 .reborrow()
@@ -405,7 +437,6 @@ impl SyncRange {
             }
         }
 
-        // copy operations
         if !self.operations.is_empty() {
             let mut operations_builder = range_msg_builder
                 .reborrow()
@@ -427,19 +458,10 @@ impl SyncRange {
 
         Ok(())
     }
-
-    fn into_sync_range_frame_builder(
-        self,
-    ) -> Result<FrameBuilder<pending_sync_range::Owned>, Error> {
-        let mut range_frame_builder = FrameBuilder::<pending_sync_range::Owned>::new();
-        let mut range_msg_builder = range_frame_builder.get_builder_typed();
-        self.write_into_sync_range_builder(&mut range_msg_builder)?;
-        Ok(range_frame_builder)
-    }
 }
 
 ///
-///
+/// Pending Synchronization Error
 ///
 #[derive(Debug, Fail)]
 pub enum Error {
@@ -502,10 +524,6 @@ impl FramesHasher {
         self.hasher.consume(signature_data);
     }
 
-    fn consume_data(&mut self, data: &[u8]) {
-        self.hasher.consume(data);
-    }
-
     fn into_multihash_bytes(self) -> Vec<u8> {
         self.hasher.into_multihash_bytes()
     }
@@ -513,14 +531,15 @@ impl FramesHasher {
 
 #[cfg(test)]
 mod tests {
-    use crate::pending::tests::create_new_entry_op;
+    use std::sync::Arc;
+
     use exocore_common::serialization::protos::data_chain_capnp::{
         pending_operation, pending_operation_header,
     };
-    use std::sync::Arc;
+
+    use crate::pending::tests::create_new_entry_op;
 
     use super::*;
-    use crate::pending::memory::MemoryStore;
 
     #[test]
     fn create_sync_range_request() {
@@ -530,7 +549,7 @@ mod tests {
         }
 
         let synchronizer = Synchronizer::new();
-        let sync_request = synchronizer.create_sync_range_request(&store).unwrap();
+        let sync_request = synchronizer.create_sync_request(&store).unwrap();
 
         let sync_request_frame = sync_request.as_owned_framed(NullFrameSigner).unwrap();
         let sync_request_reader: pending_sync_request::Reader =
@@ -630,7 +649,6 @@ mod tests {
 
     #[test]
     fn handle_sync_some_to_all() {
-        crate::utils::setup_logging();
         let mut store_a = crate::pending::memory::MemoryStore::new();
         let mut sync_a = Synchronizer::new();
         for operation in pending_ops_generator(100) {
@@ -655,7 +673,7 @@ mod tests {
 
     #[test]
     fn sync_ranges_push_operation() {
-        let mut sync_ranges = SyncRanges::new();
+        let mut sync_ranges = SyncRangesBuilder::new();
         for operation in stored_ops_generator(90) {
             sync_ranges.push_operation(operation, OperationDetails::None);
         }
@@ -743,7 +761,7 @@ mod tests {
         let mut count_b_to_a = 0;
 
         let mut next_request = sync_a
-            .create_sync_range_request(&store_a)
+            .create_sync_request(&store_a)
             .unwrap()
             .as_owned_unsigned_framed()
             .unwrap();
@@ -778,14 +796,21 @@ mod tests {
         count: usize,
         details: OperationDetails,
     ) -> Vec<FrameBuilder<pending_sync_range::Owned>> {
-        let mut sync_ranges = SyncRanges::new();
+        let mut sync_ranges = SyncRangesBuilder::new();
         for operation in stored_ops_generator(count) {
             sync_ranges.push_operation(operation, details);
         }
         sync_ranges
             .ranges
             .into_iter()
-            .map(|mut range| range.into_sync_range_frame_builder().unwrap())
+            .map(|range| {
+                let mut range_frame_builder = FrameBuilder::<pending_sync_range::Owned>::new();
+                let mut range_msg_builder = range_frame_builder.get_builder_typed();
+                range
+                    .write_into_sync_range_builder(&mut range_msg_builder)
+                    .unwrap();
+                range_frame_builder
+            })
             .collect()
     }
 

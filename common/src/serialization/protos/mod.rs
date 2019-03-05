@@ -106,14 +106,8 @@ impl<'a> MessageType<'a> for self::data_transport_capnp::pending_sync_request::O
     }
 }
 
-impl<'a> MessageType<'a> for self::data_transport_capnp::pending_sync_response::Owned {
-    fn message_type() -> u16 {
-        203
-    }
-}
-
 impl<'a> MessageType<'a> for self::data_transport_capnp::pending_sync_range::Owned {
     fn message_type() -> u16 {
-        204
+        203
     }
 }

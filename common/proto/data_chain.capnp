@@ -18,7 +18,6 @@ struct PendingOperation {
 struct PendingOperationHeader {
     groupId                @0: UInt64;
     operationId            @1: UInt64;
-
     operationSignature     @2: Data;
 }
 
