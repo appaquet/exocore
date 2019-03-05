@@ -14,6 +14,8 @@ steps:
   - script: |
       docker --version
       curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable
+
+      export PATH=$PATH:$HOME/.cargo/bin
       rustc --version && cargo --version
     displayName: 'Install dependencies'
     
