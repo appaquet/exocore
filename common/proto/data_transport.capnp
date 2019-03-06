@@ -36,12 +36,6 @@ struct PendingSyncRange {
 
     operations         @4: List(Data); # Frames of Chain.PendingOperation
     operationsHeaders  @5: List(Chain.PendingOperationHeader);
-
-    enum RequestedDetails {
-      hash @0;
-      headers @1;
-      full @2;
-    }
 }
 
 #
@@ -51,16 +45,18 @@ struct ChainSyncRequest {
     fromOffset       @0: UInt64;
     toOffset         @1: UInt64;
 
-    count            @2: UInt32;
-    sample           @3: UInt32;
-
-    requestedDetails @4: RequestedDetails;
-
-    headers          @5: List(Chain.BlockHeader);
-    blocks           @6: List(Chain.Block);
+    requestedDetails @2: RequestedDetails;
 
     enum RequestedDetails {
       headers  @0;
       blocks   @1;
     }
+}
+
+struct ChainSyncResponse {
+    fromOffset       @0: UInt64;
+    toOffset         @1: UInt64;
+
+    headers          @2: List(Chain.BlockHeader);
+    blocks           @3: List(Data); # Frames of Chain.Block
 }

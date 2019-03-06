@@ -26,7 +26,7 @@ impl MockTransportHub {
 
         // create channel incoming message for this node will be sent to
         let (incoming_sender, incoming_receiver) = mpsc::unbounded();
-        nodes_sink.insert(node.get_id().clone(), incoming_sender);
+        nodes_sink.insert(node.id().clone(), incoming_sender);
 
         // completion handler
         let (completion_sender, completion_future) = CompletionSender::new();
@@ -107,7 +107,7 @@ impl Future for MockTransport {
 
                 let in_message = message.to_in_message(node.clone());
                 for dest_node in &message.to {
-                    if let Some(sink) = nodes_sink.get(dest_node.get_id()) {
+                    if let Some(sink) = nodes_sink.get(dest_node.id()) {
                         let _ = sink.unbounded_send(in_message.clone());
                     }
                 }
@@ -248,14 +248,14 @@ mod test {
 
         let (message, transport1_stream) = receive_message(&mut rt, transport1_stream);
         let message_reader = message.data.get_typed_reader().unwrap();
-        assert_eq!(message.from.get_id(), "0");
+        assert_eq!(message.from.id(), "0");
         assert_eq!(message_reader.get_type(), 100);
 
         send_message(&mut rt, transport1_sink, vec![node0], 101);
 
         let (message, transport1_stream) = receive_message(&mut rt, transport0_stream);
         let message_reader = message.data.get_typed_reader().unwrap();
-        assert_eq!(message.from.get_id(), "1");
+        assert_eq!(message.from.id(), "1");
         assert_eq!(message_reader.get_type(), 101);
     }
 

@@ -59,6 +59,15 @@ Operations in pending store can be:
 ## Chain replication
 TODO
 
+Start
+1) For each node, ask sync request with their own segments
+2..) Take response, check what's equal to local. What's not equal, ask for details after
+..3) Once we found from which point not equal, ask data from that position
+
+
+* A node that boots needs to be considered a data node at first so that it doesn't prevent quorum
+
+
 ### Messages
 * ChainSyncRequest
 
@@ -82,9 +91,14 @@ TODO
   * Two stage commit where nobody adds to the chain unless everybody has agreed that they have signatures.
     Cons: This adds latency and communication for nothing... And it's an never ending story.
 
+* A node local chain changes after we synced against it
+  * TODO:
+
 
 ## TODO
 - [ ] What is the logic on who proposes
         * Needs to have full data access
         * Needs to be considered online by others for them to wait for its proposal
 - [ ] Conditional entry: entry can be conditional on time, other entry commit, etc.
+- [ ] How do we bootstrap the chain ?
+      First block created by master key on 1 node

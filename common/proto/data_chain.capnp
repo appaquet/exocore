@@ -70,25 +70,27 @@ enum EntryType {
 }
 
 struct Block {
-    offset         @0: UInt64;
-    depth          @1: UInt64;
-    previousOffset @2: UInt64;
-    previousHash   @3: Data;
-    signatureSize  @4: UInt16;
+    offset          @0: UInt64;
+    depth           @1: UInt64;
+    previousOffset  @2: UInt64;
+    previousHash    @3: Data;
+    signaturesSize  @4: UInt16;
 
-    sourceNodeId   @5: Text;
+    sourceNodeId    @5: Text;
 
-    entries        @6: List(Entry);
+    entries         @6: List(Entry);
 }
 
 struct BlockHeader {
-    offset         @0: UInt64;
-    depth          @1: UInt64;
-    previousOffset @2: UInt64;
-    previousHash   @3: Data;
-    signatureSize  @4: UInt16;
+    offset          @0: UInt64;
+    depth           @1: UInt64;
+    previousOffset  @2: UInt64;
+    previousHash    @3: Data;
+    blockSize       @4: UInt64;
+    signaturesSize  @5: UInt16; # TODO: Other name to prevent confusion with frame's signature
+    hash            @6: Data;
 
-    sourceNodeId   @5: Text;
+    sourceNodeId    @7: Text;
 }
 
 struct BlockSignatures {

@@ -15,6 +15,7 @@ use crate::chain;
 use crate::pending;
 use crate::transport;
 
+mod chain_sync;
 mod pending_sync;
 
 const ENGINE_MANAGE_TIMER_INTERVAL: Duration = Duration::from_secs(1);
