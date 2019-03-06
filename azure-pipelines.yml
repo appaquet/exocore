@@ -9,10 +9,8 @@ variables:
 - group: master_builds
 
 steps:
-  - script: |
-      git submodule sync --recursive
-      git submodule update --init --recursive
-    displayName: 'Sync submodules'
+  - checkout: self
+    submodules: true
 
   - script: |
       docker --version
