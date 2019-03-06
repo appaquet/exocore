@@ -111,3 +111,15 @@ impl<'a> MessageType<'a> for self::data_transport_capnp::pending_sync_range::Own
         203
     }
 }
+
+impl<'a> MessageType<'a> for self::data_transport_capnp::chain_sync_request::Owned {
+    fn message_type() -> u16 {
+        204
+    }
+}
+
+impl<'a> MessageType<'a> for self::data_transport_capnp::chain_sync_response::Owned {
+    fn message_type() -> u16 {
+        205
+    }
+}

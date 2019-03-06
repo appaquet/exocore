@@ -2290,7 +2290,7 @@ pub mod block {
             !self.reader.get_pointer_field(0).is_null()
         }
         #[inline]
-        pub fn get_signature_size(self) -> u16 {
+        pub fn get_signatures_size(self) -> u16 {
             self.reader.get_data_field::<u16>(12)
         }
         #[inline]
@@ -2428,11 +2428,11 @@ pub mod block {
             !self.builder.get_pointer_field(0).is_null()
         }
         #[inline]
-        pub fn get_signature_size(self) -> u16 {
+        pub fn get_signatures_size(self) -> u16 {
             self.builder.get_data_field::<u16>(12)
         }
         #[inline]
-        pub fn set_signature_size(&mut self, value: u16) {
+        pub fn set_signatures_size(&mut self, value: u16) {
             self.builder.set_data_field::<u16>(12, value);
         }
         #[inline]
@@ -2591,17 +2591,30 @@ pub mod block_header {
             !self.reader.get_pointer_field(0).is_null()
         }
         #[inline]
-        pub fn get_signature_size(self) -> u16 {
-            self.reader.get_data_field::<u16>(12)
+        pub fn get_block_size(self) -> u64 {
+            self.reader.get_data_field::<u64>(3)
+        }
+        #[inline]
+        pub fn get_signatures_size(self) -> u16 {
+            self.reader.get_data_field::<u16>(16)
+        }
+        #[inline]
+        pub fn get_hash(self) -> ::capnp::Result<::capnp::data::Reader<'a>> {
+            self.reader
+                .get_pointer_field(1)
+                .get_data(::std::ptr::null(), 0)
+        }
+        pub fn has_hash(&self) -> bool {
+            !self.reader.get_pointer_field(1).is_null()
         }
         #[inline]
         pub fn get_source_node_id(self) -> ::capnp::Result<::capnp::text::Reader<'a>> {
             self.reader
-                .get_pointer_field(1)
+                .get_pointer_field(2)
                 .get_text(::std::ptr::null(), 0)
         }
         pub fn has_source_node_id(&self) -> bool {
-            !self.reader.get_pointer_field(1).is_null()
+            !self.reader.get_pointer_field(2).is_null()
         }
     }
 
@@ -2719,29 +2732,54 @@ pub mod block_header {
             !self.builder.get_pointer_field(0).is_null()
         }
         #[inline]
-        pub fn get_signature_size(self) -> u16 {
-            self.builder.get_data_field::<u16>(12)
+        pub fn get_block_size(self) -> u64 {
+            self.builder.get_data_field::<u64>(3)
         }
         #[inline]
-        pub fn set_signature_size(&mut self, value: u16) {
-            self.builder.set_data_field::<u16>(12, value);
+        pub fn set_block_size(&mut self, value: u64) {
+            self.builder.set_data_field::<u64>(3, value);
+        }
+        #[inline]
+        pub fn get_signatures_size(self) -> u16 {
+            self.builder.get_data_field::<u16>(16)
+        }
+        #[inline]
+        pub fn set_signatures_size(&mut self, value: u16) {
+            self.builder.set_data_field::<u16>(16, value);
+        }
+        #[inline]
+        pub fn get_hash(self) -> ::capnp::Result<::capnp::data::Builder<'a>> {
+            self.builder
+                .get_pointer_field(1)
+                .get_data(::std::ptr::null(), 0)
+        }
+        #[inline]
+        pub fn set_hash(&mut self, value: ::capnp::data::Reader) {
+            self.builder.get_pointer_field(1).set_data(value);
+        }
+        #[inline]
+        pub fn init_hash(self, size: u32) -> ::capnp::data::Builder<'a> {
+            self.builder.get_pointer_field(1).init_data(size)
+        }
+        pub fn has_hash(&self) -> bool {
+            !self.builder.get_pointer_field(1).is_null()
         }
         #[inline]
         pub fn get_source_node_id(self) -> ::capnp::Result<::capnp::text::Builder<'a>> {
             self.builder
-                .get_pointer_field(1)
+                .get_pointer_field(2)
                 .get_text(::std::ptr::null(), 0)
         }
         #[inline]
         pub fn set_source_node_id(&mut self, value: ::capnp::text::Reader) {
-            self.builder.get_pointer_field(1).set_text(value);
+            self.builder.get_pointer_field(2).set_text(value);
         }
         #[inline]
         pub fn init_source_node_id(self, size: u32) -> ::capnp::text::Builder<'a> {
-            self.builder.get_pointer_field(1).init_text(size)
+            self.builder.get_pointer_field(2).init_text(size)
         }
         pub fn has_source_node_id(&self) -> bool {
-            !self.builder.get_pointer_field(1).is_null()
+            !self.builder.get_pointer_field(2).is_null()
         }
     }
 
@@ -2759,8 +2797,8 @@ pub mod block_header {
     mod _private {
         use capnp::private::layout;
         pub const STRUCT_SIZE: layout::StructSize = layout::StructSize {
-            data: 4,
-            pointers: 2,
+            data: 5,
+            pointers: 3,
         };
         pub const TYPE_ID: u64 = 0xc58d_6c6b_8803_2108;
     }

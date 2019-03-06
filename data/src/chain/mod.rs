@@ -4,7 +4,9 @@ use exocore_common::data_chain_capnp::{block, block_signatures};
 use exocore_common::serialization::framed;
 use exocore_common::serialization::framed::TypedFrame;
 
-type BlockOffset = u64;
+pub type BlockOffset = u64;
+pub type BlockDepth = u64;
+pub type BlockSignaturesSize = u16;
 
 pub mod directory;
 
@@ -27,6 +29,8 @@ pub trait Store: Send + Sync + 'static {
 
     fn get_block_from_next_offset(&self, next_offset: BlockOffset) -> Result<StoredBlock, Error>;
 
+    fn get_last_block(&self) -> Result<Option<StoredBlock>, Error>;
+
     fn truncate_from_offset(&mut self, offset: BlockOffset) -> Result<(), Error>;
 }
 
@@ -47,8 +51,9 @@ pub enum Error {
 }
 
 pub struct StoredBlock<'a> {
-    block: framed::TypedSliceFrame<'a, block::Owned>,
-    signatures: framed::TypedSliceFrame<'a, block_signatures::Owned>,
+    pub offset: BlockOffset,
+    pub block: framed::TypedSliceFrame<'a, block::Owned>,
+    pub signatures: framed::TypedSliceFrame<'a, block_signatures::Owned>,
 }
 
 impl<'a> StoredBlock<'a> {
@@ -58,16 +63,8 @@ impl<'a> StoredBlock<'a> {
     }
 
     #[inline]
-    pub fn get_offset(&self) -> Result<BlockOffset, framed::Error> {
-        let block_reader = self.block.get_typed_reader()?;
-        Ok(block_reader.get_offset())
-    }
-
-    #[inline]
-    pub fn next_offset(&self) -> Result<BlockOffset, framed::Error> {
-        let block_reader = self.block.get_typed_reader()?;
-        let offset = block_reader.get_offset();
-        Ok(offset + (self.block.frame_size() + self.signatures.frame_size()) as BlockOffset)
+    pub fn next_offset(&self) -> BlockOffset {
+        self.offset + self.total_size() as BlockOffset
     }
 }
 

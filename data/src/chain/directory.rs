@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std;
 use std::cmp::Ordering;
 use std::fs::{File, OpenOptions};
@@ -14,10 +16,10 @@ use super::*;
 /// Directory persistence
 ///
 #[derive(Copy, Clone, Debug)]
-struct DirectoryConfig {
-    segment_over_allocate_size: u64,
-    segment_min_free_size: u64,
-    segment_max_size: u64,
+pub struct DirectoryConfig {
+    pub segment_over_allocate_size: u64,
+    pub segment_min_free_size: u64,
+    pub segment_max_size: u64,
 }
 
 impl Default for DirectoryConfig {
@@ -30,14 +32,14 @@ impl Default for DirectoryConfig {
     }
 }
 
-struct DirectoryStore {
+pub struct DirectoryStore {
     config: DirectoryConfig,
     directory: PathBuf,
     segments: Vec<DirectorySegment>,
 }
 
 impl DirectoryStore {
-    fn create(config: DirectoryConfig, directory_path: &Path) -> Result<DirectoryStore, Error> {
+    pub fn create(config: DirectoryConfig, directory_path: &Path) -> Result<DirectoryStore, Error> {
         if !directory_path.exists() {
             return Err(Error::UnexpectedState(format!(
                 "Tried to create directory at {:?}, but it didn't exist",
@@ -66,7 +68,7 @@ impl DirectoryStore {
         })
     }
 
-    fn open(config: DirectoryConfig, directory_path: &Path) -> Result<DirectoryStore, Error> {
+    pub fn open(config: DirectoryConfig, directory_path: &Path) -> Result<DirectoryStore, Error> {
         if !directory_path.exists() {
             return Err(Error::UnexpectedState(format!(
                 "Tried to open directory at {:?}, but it didn't exist",
@@ -199,7 +201,7 @@ impl Store for DirectoryStore {
 
         Ok(Box::new(DirectoryBlockIterator {
             directory: self,
-            current_offset: last_block.get_offset()?,
+            current_offset: last_block.offset,
             current_segment: None,
             last_error: None,
             reverse: true,
@@ -226,6 +228,17 @@ impl Store for DirectoryStore {
             })?;
 
         segment.get_block_from_next_offset(next_offset)
+    }
+
+    fn get_last_block(&self) -> Result<Option<StoredBlock>, Error> {
+        let last_segment = if let Some(last_segment) = self.segments.last() {
+            last_segment
+        } else {
+            return Ok(None);
+        };
+
+        let last_block = last_segment.get_block_from_next_offset(last_segment.next_block_offset)?;
+        Ok(Some(last_block))
     }
 
     fn truncate_from_offset(&mut self, offset: BlockOffset) -> Result<(), Error> {
@@ -328,7 +341,6 @@ struct DirectorySegment {
     first_block_offset: BlockOffset,
     segment_path: PathBuf,
     segment_file: SegmentFile,
-    last_block_offset: BlockOffset,
     next_block_offset: BlockOffset,
     next_file_offset: usize,
 }
@@ -346,7 +358,6 @@ impl DirectorySegment {
     {
         let block_reader = block.get_typed_reader().unwrap();
         let first_block_offset = block_reader.get_offset();
-        let last_block_offset = first_block_offset;
 
         let segment_path = Self::segment_path(directory, first_block_offset);
         if segment_path.exists() {
@@ -370,7 +381,6 @@ impl DirectorySegment {
             first_block_offset,
             segment_path,
             segment_file,
-            last_block_offset,
             next_block_offset: first_block_offset + written_data_size as BlockOffset,
             next_file_offset: written_data_size,
         })
@@ -413,7 +423,7 @@ impl DirectorySegment {
         };
 
         // iterate through segments and find the last block and its offset
-        let (last_block_offset, next_block_offset, next_file_offset) = {
+        let (next_block_offset, next_file_offset) = {
             let mut last_block_file_offset = None;
             let block_iter = FramesIterator::new(&segment_file.mmap)
                 .filter(|msg| msg.framed_message.message_type() == block::Owned::message_type());
@@ -430,7 +440,6 @@ impl DirectorySegment {
 
                     let written_data_size = block_message.frame_size() + sigs_message.frame_size();
                     (
-                        block_reader.get_offset(),
                         block_reader.get_offset() + written_data_size as BlockOffset,
                         file_offset + written_data_size,
                     )
@@ -448,7 +457,6 @@ impl DirectorySegment {
             first_block_offset,
             segment_path: segment_path.to_path_buf(),
             segment_file,
-            last_block_offset,
             next_block_offset,
             next_file_offset,
         })
@@ -529,7 +537,11 @@ impl DirectorySegment {
         let signatures =
             framed::TypedSliceFrame::new(&self.segment_file.mmap[signatures_file_offset..])?;
 
-        Ok(StoredBlock { block, signatures })
+        Ok(StoredBlock {
+            offset,
+            block,
+            signatures,
+        })
     }
 
     fn get_block_from_next_offset(&self, next_offset: BlockOffset) -> Result<StoredBlock, Error> {
@@ -560,7 +572,13 @@ impl DirectorySegment {
             signatures_offset,
         )?;
 
-        Ok(StoredBlock { block, signatures })
+        let offset = first_block_offset + (signatures_offset as BlockOffset)
+            - (block.frame_size() as BlockOffset);
+        Ok(StoredBlock {
+            offset,
+            block,
+            signatures,
+        })
     }
 
     fn truncate_extra(&mut self) -> Result<(), Error> {
@@ -698,21 +716,21 @@ mod tests {
             let second_offset = directory_chain.write_block(&block_msg, &sig_msg).unwrap();
 
             let block = directory_chain.get_block(0).unwrap();
-            assert_eq!(block.get_offset().unwrap(), 0);
+            assert_eq!(block.offset, 0);
             let block = directory_chain
                 .get_block_from_next_offset(second_offset)
                 .unwrap();
-            assert_eq!(block.get_offset().unwrap(), 0);
+            assert_eq!(block.offset, 0);
 
             let block_msg = create_block(second_offset);
             let sig_msg = create_block_sigs();
             let third_offset = directory_chain.write_block(&block_msg, &sig_msg).unwrap();
             let block = directory_chain.get_block(second_offset).unwrap();
-            assert_eq!(block.get_offset().unwrap(), second_offset);
+            assert_eq!(block.offset, second_offset);
             let block = directory_chain
                 .get_block_from_next_offset(third_offset)
                 .unwrap();
-            assert_eq!(block.get_offset().unwrap(), second_offset);
+            assert_eq!(block.offset, second_offset);
 
             let segments = directory_chain.available_segments();
             let data_size = ((block_msg.frame_size() + sig_msg.frame_size()) * 2) as BlockOffset;
@@ -743,35 +761,35 @@ mod tests {
             assert_eq!(segments.len(), 2);
 
             let block = directory_chain.get_block(0).unwrap();
-            assert_eq!(block.get_offset().unwrap(), 0);
+            assert_eq!(block.offset, 0);
 
             let block = directory_chain.get_block(segments[0].end).unwrap();
-            assert_eq!(block.get_offset().unwrap(), segments[0].end);
+            assert_eq!(block.offset, segments[0].end);
 
             let block = directory_chain
                 .get_block_from_next_offset(segments[0].end)
                 .unwrap();
-            assert_eq!(block.next_offset().unwrap(), segments[0].end);
+            assert_eq!(block.next_offset(), segments[0].end);
 
             let block = directory_chain
                 .get_block_from_next_offset(segments[0].end)
                 .unwrap();
-            assert_eq!(block.next_offset().unwrap(), segments[0].end);
+            assert_eq!(block.next_offset(), segments[0].end);
 
             let last_block = directory_chain
                 .get_block_from_next_offset(segments[1].end)
                 .unwrap();
 
-            let last_block_offset = last_block.get_offset().unwrap();
-            let next_block_offset = last_block.next_offset().unwrap();
+            let last_block_offset = last_block.offset;
+            let next_block_offset = last_block.next_offset();
             assert_eq!(next_block_offset, segments[1].end);
 
             // validate data using forward and reverse iterators
-            let mut iterator = directory_chain.block_iter(0).unwrap();
+            let iterator = directory_chain.block_iter(0).unwrap();
             validate_iterator(iterator, 1000, 0, last_block_offset, false);
 
             let next_block_offset = segments.last().unwrap().end;
-            let mut reverse_iterator = directory_chain
+            let reverse_iterator = directory_chain
                 .block_iter_reverse(next_block_offset)
                 .unwrap();
             validate_iterator(reverse_iterator, 1000, last_block_offset, 0, true);
@@ -814,8 +832,8 @@ mod tests {
                     .skip(cutoff - 1)
                     .next()
                     .unwrap();
-                let block_n_offset = block_n.get_offset().unwrap();
-                let block_n_plus_offset = block_n.next_offset().unwrap();
+                let block_n_offset = block_n.offset;
+                let block_n_plus_offset = block_n.next_offset();
 
                 directory_chain
                     .truncate_from_offset(block_n_plus_offset)
@@ -824,11 +842,15 @@ mod tests {
                 let segments_after = directory_chain.available_segments();
                 assert_ne!(segments_before, segments_after);
                 assert_eq!(segments_after.last().unwrap().end, block_n_plus_offset);
+                assert_eq!(
+                    directory_chain.get_last_block().unwrap().unwrap().offset,
+                    block_n_offset
+                );
 
-                let mut iter = directory_chain.block_iter(0).unwrap();
+                let iter = directory_chain.block_iter(0).unwrap();
                 validate_iterator(iter, cutoff, 0, block_n_offset, false);
 
-                let mut iter_reverse = directory_chain
+                let iter_reverse = directory_chain
                     .block_iter_reverse(block_n_plus_offset)
                     .unwrap();
                 validate_iterator(iter_reverse, cutoff, block_n_offset, 0, true);
@@ -837,19 +859,24 @@ mod tests {
             };
 
             {
-                let mut directory_chain = DirectoryStore::open(config, dir.path()).unwrap();
+                let directory_chain = DirectoryStore::open(config, dir.path()).unwrap();
 
                 let segments_after = directory_chain.available_segments();
                 assert_ne!(segments_before, segments_after);
                 assert_eq!(segments_after.last().unwrap().end, block_n_plus_offset);
 
-                let mut iter = directory_chain.block_iter(0).unwrap();
+                let iter = directory_chain.block_iter(0).unwrap();
                 validate_iterator(iter, cutoff, 0, block_n_offset, false);
 
-                let mut iter_reverse = directory_chain
+                let iter_reverse = directory_chain
                     .block_iter_reverse(block_n_plus_offset)
                     .unwrap();
                 validate_iterator(iter_reverse, cutoff, block_n_offset, 0, true);
+
+                assert_eq!(
+                    directory_chain.get_last_block().unwrap().unwrap().offset,
+                    block_n_offset
+                );
             }
         }
     }
@@ -868,12 +895,14 @@ mod tests {
 
             let segments_after = directory_chain.available_segments();
             assert!(segments_after.is_empty());
+            assert!(directory_chain.get_last_block().unwrap().is_none());
         }
 
         {
-            let mut directory_chain = DirectoryStore::open(config, dir.path()).unwrap();
+            let directory_chain = DirectoryStore::open(config, dir.path()).unwrap();
             let segments = directory_chain.available_segments();
             assert!(segments.is_empty());
+            assert!(directory_chain.get_last_block().unwrap().is_none());
         }
     }
 
@@ -890,7 +919,6 @@ mod tests {
                 DirectorySegment::create(Default::default(), dir.path(), &block_msg, &sig_msg)
                     .unwrap();
             assert_eq!(segment.first_block_offset, 1234);
-            assert_eq!(segment.last_block_offset, 1234);
             assert_eq!(
                 segment.next_file_offset,
                 block_msg.frame_size() + sig_msg.frame_size()
@@ -909,7 +937,6 @@ mod tests {
             )
             .unwrap();
             assert_eq!(segment.first_block_offset, 1234);
-            assert_eq!(segment.last_block_offset, 1234);
             assert_eq!(
                 segment.next_file_offset,
                 block_msg.frame_size() + sig_msg.frame_size()
@@ -954,7 +981,7 @@ mod tests {
             DirectorySegment::create(Default::default(), dir.path(), &block, &block_sigs).unwrap();
         {
             let block = segment.get_block(offset1).unwrap();
-            assert_eq!(block.get_offset().unwrap(), offset1);
+            assert_eq!(block.offset, offset1);
         }
 
         let offset2 = offset1 + (block.frame_size() + block_sigs.frame_size()) as u64;
@@ -964,7 +991,7 @@ mod tests {
         segment.write_block(&block, &block_sigs).unwrap();
         {
             let block = segment.get_block(offset2).unwrap();
-            assert_eq!(block.get_offset().unwrap(), offset2);
+            assert_eq!(block.offset, offset2);
         }
 
         let offset3 = offset2 + (block.frame_size() + block_sigs.frame_size()) as u64;
@@ -974,7 +1001,7 @@ mod tests {
         segment.write_block(&block, &block_sigs).unwrap();
         {
             let block = segment.get_block(offset3).unwrap();
-            assert_eq!(block.get_offset().unwrap(), offset3);
+            assert_eq!(block.offset, offset3);
         }
 
         assert!(segment.get_block(10).is_err());
@@ -984,7 +1011,7 @@ mod tests {
             let last_block = segment
                 .get_block_from_next_offset(segment.next_block_offset)
                 .unwrap();
-            assert_eq!(last_block.get_offset().unwrap(), offset3);
+            assert_eq!(last_block.offset, offset3);
         }
     }
 
@@ -1084,7 +1111,7 @@ mod tests {
     }
 
     fn create_block_sigs() -> OwnedTypedFrame<block_signatures::Owned> {
-        let mut block_msg_builder = framed::FrameBuilder::<block_signatures::Owned>::new();
+        let block_msg_builder = framed::FrameBuilder::<block_signatures::Owned>::new();
         block_msg_builder.as_owned_unsigned_framed().unwrap()
     }
 
@@ -1117,6 +1144,8 @@ mod tests {
 
             let block_reader = stored_block.block.get_typed_reader().unwrap();
             let current_block_offset = block_reader.get_offset();
+            assert_eq!(stored_block.offset, current_block_offset);
+
             if first_block_offset.is_none() {
                 first_block_offset = Some(current_block_offset);
             }
