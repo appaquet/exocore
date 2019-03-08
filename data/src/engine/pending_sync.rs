@@ -116,7 +116,7 @@ impl<PS: Store> Synchronizer<PS> {
         let mut out_ranges = SyncRangesBuilder::new();
 
         for sync_range_reader in sync_range_iterator {
-            let (bounds, bounds_from, bounds_to) = Self::extract_sync_bounds(&sync_range_reader)?;
+            let (bounds, bounds_from, bounds_to) = Self::extract_sync_2ounds(&sync_range_reader)?;
             if bounds_to < bounds_from && bounds_to != 0 {
                 return Err(Error::InvalidSyncRequest(format!(
                     "Request from={} > to={}",
@@ -163,7 +163,7 @@ impl<PS: Store> Synchronizer<PS> {
                 }
                 out_ranges.set_last_range_to(bounds_to);
             } else if !sync_range_reader.has_operations_headers()
-                && !sync_range_reader.has_operations_headers()
+                && !sync_range_reader.has_operations()
             {
                 // remote has only sent us hash, we reply with headers
                 out_ranges_contains_changes = true;
@@ -173,7 +173,7 @@ impl<PS: Store> Synchronizer<PS> {
                 }
                 out_ranges.set_last_range_to(bounds_to);
             } else {
-                // Remote and local has differences. We do a diff
+                // remote and local has differences. We do a diff
                 out_ranges_contains_changes = true;
                 out_ranges.create_new_range(bounds_from);
 
@@ -211,7 +211,7 @@ impl<PS: Store> Synchronizer<PS> {
         Ok((frame_hasher.into_multihash_bytes(), count))
     }
 
-    fn extract_sync_bounds(
+    fn extract_sync_2ounds(
         sync_range_reader: &pending_sync_range::Reader,
     ) -> Result<
         (
@@ -570,18 +570,18 @@ mod tests {
 
     #[test]
     fn handle_sync_equals() {
-        let mut store_a = crate::pending::memory::MemoryStore::new();
-        let mut store_b = crate::pending::memory::MemoryStore::new();
+        let mut store_1 = crate::pending::memory::MemoryStore::new();
+        let mut store_2 = crate::pending::memory::MemoryStore::new();
         for operation in pending_ops_generator(100) {
-            store_a.put_operation(operation.clone()).unwrap();
-            store_b.put_operation(operation).unwrap();
+            store_1.put_operation(operation.clone()).unwrap();
+            store_2.put_operation(operation).unwrap();
         }
 
-        let mut sync_a = Synchronizer::new();
-        let mut sync_b = Synchronizer::new();
+        let mut sync_1 = Synchronizer::new();
+        let mut sync_2 = Synchronizer::new();
 
         let (count_a_to_b, count_b_to_a) =
-            test_sync_stores(&mut store_a, &mut sync_a, &mut store_b, &mut sync_b);
+            test_sync_stores(&mut store_1, &mut sync_1, &mut store_2, &mut sync_2);
 
         assert_eq!(count_a_to_b, 1);
         assert_eq!(count_b_to_a, 0);
@@ -589,17 +589,17 @@ mod tests {
 
     #[test]
     fn handle_sync_empty_to_many() {
-        let mut store_a = crate::pending::memory::MemoryStore::new();
-        let mut sync_a = Synchronizer::new();
+        let mut store_1 = crate::pending::memory::MemoryStore::new();
+        let mut sync_1 = Synchronizer::new();
         for operation in pending_ops_generator(100) {
-            store_a.put_operation(operation).unwrap();
+            store_1.put_operation(operation).unwrap();
         }
 
-        let mut store_b = crate::pending::memory::MemoryStore::new();
-        let mut sync_b = Synchronizer::new();
+        let mut store_2 = crate::pending::memory::MemoryStore::new();
+        let mut sync_2 = Synchronizer::new();
 
         let (count_a_to_b, count_b_to_a) =
-            test_sync_stores(&mut store_a, &mut sync_a, &mut store_b, &mut sync_b);
+            test_sync_stores(&mut store_1, &mut sync_1, &mut store_2, &mut sync_2);
 
         assert_eq!(count_a_to_b, 2);
         assert_eq!(count_b_to_a, 1);
@@ -607,41 +607,41 @@ mod tests {
 
     #[test]
     fn handle_sync_many_to_empty() {
-        let mut store_a = crate::pending::memory::MemoryStore::new();
-        let mut sync_a = Synchronizer::new();
+        let mut store_1 = crate::pending::memory::MemoryStore::new();
+        let mut sync_1 = Synchronizer::new();
 
-        let mut store_b = crate::pending::memory::MemoryStore::new();
-        let mut sync_b = Synchronizer::new();
+        let mut store_2 = crate::pending::memory::MemoryStore::new();
+        let mut sync_2 = Synchronizer::new();
         for operation in pending_ops_generator(100) {
-            store_b.put_operation(operation).unwrap();
+            store_2.put_operation(operation).unwrap();
         }
 
         let (count_a_to_b, count_b_to_a) =
-            test_sync_stores(&mut store_a, &mut sync_a, &mut store_b, &mut sync_b);
+            test_sync_stores(&mut store_1, &mut sync_1, &mut store_2, &mut sync_2);
 
         assert_eq!(count_a_to_b, 1);
         assert_eq!(count_b_to_a, 1);
     }
 
     #[test]
-    fn handle_sync_all_to_some() {
-        let mut store_a = crate::pending::memory::MemoryStore::new();
-        let mut sync_a = Synchronizer::new();
+    fn handle_sync_1ll_to_some() {
+        let mut store_1 = crate::pending::memory::MemoryStore::new();
+        let mut sync_1 = Synchronizer::new();
         for operation in pending_ops_generator(100) {
-            store_a.put_operation(operation).unwrap();
+            store_1.put_operation(operation).unwrap();
         }
 
-        let mut store_b = crate::pending::memory::MemoryStore::new();
-        let mut sync_b = Synchronizer::new();
+        let mut store_2 = crate::pending::memory::MemoryStore::new();
+        let mut sync_2 = Synchronizer::new();
         for operation in pending_ops_generator(100) {
             let reader = operation.get_typed_reader().unwrap();
             if reader.get_operation_id() % 2 == 0 {
-                store_b.put_operation(operation).unwrap();
+                store_2.put_operation(operation).unwrap();
             }
         }
 
         let (count_a_to_b, count_b_to_a) =
-            test_sync_stores(&mut store_a, &mut sync_a, &mut store_b, &mut sync_b);
+            test_sync_stores(&mut store_1, &mut sync_1, &mut store_2, &mut sync_2);
 
         assert_eq!(count_a_to_b, 2);
         assert_eq!(count_b_to_a, 1);
@@ -649,23 +649,23 @@ mod tests {
 
     #[test]
     fn handle_sync_some_to_all() {
-        let mut store_a = crate::pending::memory::MemoryStore::new();
-        let mut sync_a = Synchronizer::new();
+        let mut store_1 = crate::pending::memory::MemoryStore::new();
+        let mut sync_1 = Synchronizer::new();
         for operation in pending_ops_generator(100) {
             let reader = operation.get_typed_reader().unwrap();
             if reader.get_operation_id() % 2 == 0 {
-                store_a.put_operation(operation).unwrap();
+                store_1.put_operation(operation).unwrap();
             }
         }
 
-        let mut store_b = crate::pending::memory::MemoryStore::new();
-        let mut sync_b = Synchronizer::new();
+        let mut store_2 = crate::pending::memory::MemoryStore::new();
+        let mut sync_2 = Synchronizer::new();
         for operation in pending_ops_generator(100) {
-            store_b.put_operation(operation).unwrap();
+            store_2.put_operation(operation).unwrap();
         }
 
         let (count_a_to_b, count_b_to_a) =
-            test_sync_stores(&mut store_a, &mut sync_a, &mut store_b, &mut sync_b);
+            test_sync_stores(&mut store_1, &mut sync_1, &mut store_2, &mut sync_2);
 
         assert_eq!(count_a_to_b, 2);
         assert_eq!(count_b_to_a, 2);
@@ -749,38 +749,38 @@ mod tests {
     }
 
     fn test_sync_stores<PS>(
-        store_a: &mut PS,
-        sync_a: &mut Synchronizer<PS>,
-        store_b: &mut PS,
-        sync_b: &mut Synchronizer<PS>,
+        store_1: &mut PS,
+        sync_1: &mut Synchronizer<PS>,
+        store_2: &mut PS,
+        sync_2: &mut Synchronizer<PS>,
     ) -> (usize, usize)
     where
         PS: Store,
     {
-        let mut count_a_to_b = 0;
-        let mut count_b_to_a = 0;
+        let mut count_1_to_2 = 0;
+        let mut count_2_to_1 = 0;
 
-        let mut next_request = sync_a
-            .create_sync_request(&store_a)
+        let mut next_request = sync_1
+            .create_sync_request(&store_1)
             .unwrap()
             .as_owned_unsigned_framed()
             .unwrap();
         print_sync_request(&next_request);
 
         loop {
-            count_a_to_b += 1;
-            let resp = sync_b
-                .handle_incoming_sync_request(store_b, next_request)
+            count_1_to_2 += 1;
+            let resp = sync_2
+                .handle_incoming_sync_request(store_2, next_request)
                 .unwrap();
             if resp.is_none() {
                 break;
             }
 
-            count_b_to_a += 1;
+            count_2_to_1 += 1;
             let request = resp.unwrap().as_owned_unsigned_framed().unwrap();
             print_sync_request(&request);
-            let resp = sync_a
-                .handle_incoming_sync_request(store_a, request)
+            let resp = sync_1
+                .handle_incoming_sync_request(store_1, request)
                 .unwrap();
             match resp {
                 Some(resp) => next_request = resp.as_owned_unsigned_framed().unwrap(),
@@ -789,7 +789,7 @@ mod tests {
             print_sync_request(&next_request);
         }
 
-        (count_a_to_b, count_b_to_a)
+        (count_1_to_2, count_2_to_1)
     }
 
     fn build_sync_ranges_frames(

@@ -1,25 +1,26 @@
 
 # Replication
-
-We have 2 data structures to replicate:
-* Chain: immutable collection of blocks that contain entries. Entries can be arbitrary data stored for the index layer,
+The replication is handled by [`Engine`](src/engine/mod.rs).
+ 
+There are 2 data structures to replicate:
+* **Chain**: immutable collection of blocks that contain entries. Entries can be arbitrary data stored for the index layer,
          or metadata entries related to the chain.
          
-* Pending store: transient store in which latest operations are aggregated, to eventually be added to the chain.
+* **Pending store**: transient store in which latest operations are aggregated, to eventually be added to the chain.
 
 ## Pending store replication
-Pending store's replication is handled by the engine's [`Pending Store Synchronizer.`](src/engine/pending_sync.rs)
+Pending store's replication is handled by the [`Pending Store Synchronizer`](src/engine/pending_sync.rs).
 
 ### Messages
-* `PendingSyncRequest`(List<PendingSyncRange>)
-* Each `PendingSyncRange` contains:
-  * The bounds of the range of operations to compare. Bounds can be omitted to represent no boundaries (represented by value 0)
-  * The metadata information of that range in the local store (hash + count)
-  * Operations data that need to be applied before comparing the local store information
-  * Operations headers that are given to compare the local store's operations, resulting in the stores to request or send
-    missing operations to the other nodes.
+* `PendingSyncRequest(List<PendingSyncRange>)`
+    * Each `PendingSyncRange` contains:
+      * The bounds of the range of operations to compare. Bounds can be omitted to represent no boundaries (represented by value 0)
+      * The metadata information of that range in the local store (hash + count)
+      * Operations data that need to be applied before comparing the local store information
+      * Operations headers that are given to compare the local store's operations, resulting in the stores to request or send
+        missing operations to the other nodes.
 
-Example:
+#### Example:
 ```
    A                               B
  0,5,10                          0,5,12
@@ -42,9 +43,9 @@ Per example, operations related to a single block have the same group ID, which 
 
 Operations in pending store can be:
 
-* Entries related (pending entry id = entry id)
+* Entries related (group id = entry id)
     * OperationEntryNew
-* Block related (pending entry id = block id)
+* Block related (group id = block id)
     * BlockPropose
     * BlockProposalSign
     * BlockProposalRefuse (can happen after sign if node detects anomaly or accepts a better block)
