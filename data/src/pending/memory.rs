@@ -98,7 +98,7 @@ impl Store for MemoryStore {
         let mut count = 0;
 
         for (operation_id, pending_id) in self.operations_timeline.range(range) {
-            if let Some(maybe_operation) = self.get_group_operation(pending_id, operation_id) {
+            if let Some(maybe_operation) = self.get_group_operation(*pending_id, *operation_id) {
                 count += 1;
 
                 match maybe_operation.signature_data() {
@@ -128,12 +128,12 @@ impl Store for MemoryStore {
 impl MemoryStore {
     fn get_group_operation(
         &self,
-        group_id: &GroupID,
-        operation_id: &OperationID,
+        group_id: GroupID,
+        operation_id: OperationID,
     ) -> Option<&Arc<framed::OwnedTypedFrame<pending_operation::Owned>>> {
         self.groups_operations
-            .get(group_id)
-            .and_then(|group_ops| group_ops.operations.get(operation_id))
+            .get(&group_id)
+            .and_then(|group_ops| group_ops.operations.get(&operation_id))
     }
 }
 
@@ -165,7 +165,7 @@ impl<'store> Iterator for OperationsIterator<'store> {
 
     fn next(&mut self) -> Option<StoredOperation> {
         let (operation_id, group_id) = self.ids_iterator.next()?;
-        let operation = self.store.get_group_operation(&group_id, &operation_id)?;
+        let operation = self.store.get_group_operation(group_id, operation_id)?;
 
         Some(StoredOperation {
             group_id,

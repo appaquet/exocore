@@ -38,15 +38,28 @@ impl Nodes {
         self.nodes.insert(node.id.clone(), node);
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         self.nodes.len()
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn nodes(&self) -> impl Iterator<Item = &Node> {
         self.nodes.values()
     }
 
+    #[inline]
     pub fn get(&self, node_id: &str) -> Option<&Node> {
         self.nodes.get(node_id)
+    }
+}
+
+impl Default for Nodes {
+    fn default() -> Self {
+        Nodes::new()
     }
 }

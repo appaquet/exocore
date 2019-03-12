@@ -20,7 +20,7 @@ use crate::chain;
 use crate::chain::{BlockOffset, Store, StoredBlock};
 
 ///
-///
+/// Synchronizer's configuration
 ///
 #[derive(Clone, Debug)]
 struct Config {
@@ -100,10 +100,6 @@ impl<CS: Store> Synchronizer<CS> {
         store: &CS,
         nodes: &'n Nodes,
     ) -> Result<Vec<(&'n Node, FrameBuilder<chain_sync_request::Owned>)>, Error> {
-        // TODO: If majority of nodes are offsync or offline, we are offsync, reset leader
-        // TODO: If we're synchronized, we need to make sure we're still in sync with leader or make
-        //       sure we still follow a good leader
-
         let node_id = self.node_id.clone();
         let config = self.config.clone();
         let mut requests_to_send = Vec::new();
@@ -183,10 +179,7 @@ impl<CS: Store> Synchronizer<CS> {
             }
         }
 
-        debug!(
-            "Sync tick ended. current_status={:?}",
-            self.status
-        );
+        debug!("Sync tick ended. current_status={:?}", self.status);
         Ok(requests_to_send)
     }
 
@@ -398,7 +391,8 @@ impl<CS: Store> Synchronizer<CS> {
             None
         };
 
-        // last responded is set at the end so that if fail reading response, it's considered as if we didn't have it
+        // last responded is set at the end so that if we failed reading response, it's considered
+        // as if we didn't receive anything (which will lead to timeout & retries)
         let node_info = self.get_or_create_node_info_mut(&from_node.id());
         node_info.set_last_responded(Instant::now());
 
@@ -500,10 +494,7 @@ impl<CS: Store> Synchronizer<CS> {
         store: &mut CS,
         response_reader: chain_sync_response::Reader,
     ) -> Result<Option<FrameBuilder<chain_sync_request::Owned>>, Error> {
-        let lead_node_id = self
-            .current_leader
-            .as_ref()
-            .map(|lead_node_id| lead_node_id.clone());
+        let lead_node_id = self.current_leader.as_ref().cloned();
         let from_node_info = self.get_or_create_node_info_mut(&from_node.id());
 
         let is_from_leader = lead_node_id
@@ -573,14 +564,14 @@ impl<CS: Store> Synchronizer<CS> {
         }
     }
 
-    fn get_or_create_node_info_mut(&mut self, node_id: &NodeID) -> &mut NodeSyncInfo {
+    fn get_or_create_node_info_mut(&mut self, node_id: &str) -> &mut NodeSyncInfo {
         if self.nodes_info.contains_key(node_id) {
             return self.nodes_info.get_mut(node_id).unwrap();
         }
 
         self.nodes_info
-            .entry(node_id.clone())
-            .or_insert_with(move || NodeSyncInfo::new(node_id))
+            .entry(node_id.to_string())
+            .or_insert_with(move || NodeSyncInfo::new(node_id.to_string()))
     }
 
     fn count_nodes_status(&self, nodes: &Nodes) -> (u16, u16) {
@@ -634,7 +625,7 @@ impl<CS: Store> Synchronizer<CS> {
 }
 
 ///
-///
+/// Synchronization information about a remote node
 ///
 struct NodeSyncInfo {
     node_id: NodeID,
@@ -652,9 +643,9 @@ struct NodeSyncInfo {
 }
 
 impl NodeSyncInfo {
-    fn new(node_id: &NodeID) -> NodeSyncInfo {
+    fn new(node_id: NodeID) -> NodeSyncInfo {
         NodeSyncInfo {
-            node_id: node_id.clone(),
+            node_id,
 
             last_common_block: None,
             last_common_is_known: false,
@@ -668,8 +659,6 @@ impl NodeSyncInfo {
     }
 
     fn chain_metadata_status(&self) -> NodeMetadataStatus {
-        // TODO: Check if considered timed out
-
         if self.last_common_is_known {
             NodeMetadataStatus::Synchronized
         } else {
@@ -717,7 +706,6 @@ impl NodeSyncInfo {
     }
 
     fn request_timeout_duration(&self, config: &Config) -> Duration {
-        // TODO: Exponential back off
         config.base_request_timeout
     }
 
@@ -736,7 +724,7 @@ enum NodeMetadataStatus {
 }
 
 ///
-///
+/// Abstracts block's header coming from local store or remote node
 ///
 #[derive(Debug)]
 struct BlockHeader {
@@ -785,7 +773,7 @@ impl BlockHeader {
 
     #[inline]
     fn next_offset(&self) -> chain::BlockOffset {
-        self.offset + self.block_size + self.signatures_size as chain::BlockOffset
+        self.offset + self.block_size + chain::BlockOffset::from(self.signatures_size)
     }
 
     fn copy_into_builder(&self, builder: &mut block_header::Builder) {
@@ -800,7 +788,7 @@ impl BlockHeader {
 }
 
 ///
-///
+/// Synchronizer's error
 ///
 #[derive(Debug, Fail)]
 enum Error {
@@ -897,15 +885,18 @@ fn chain_sample_block_headers<CS: chain::Store>(
     let range_blocks_count = last_block_depth - first_block_depth;
     let range_blocks_skip = (range_blocks_count / sampled_count).max(1);
 
+    // from which block do we include all headers so that we always include last `end_count` blocks
     let range_blocks_lasts = range_blocks_count
         .checked_sub(end_count)
         .unwrap_or(range_blocks_count);
-    let mut blocks_count = 0;
-    while let Some(current_block) = blocks_iter.next() {
-        if blocks_count > range_blocks_count {
-            break;
-        }
 
+    for (blocks_count, current_block) in blocks_iter
+        .enumerate()
+        .take(range_blocks_count as usize + 1)
+    {
+        // we always include headers if the block is within the first `begin_count` or in the last `end_count`
+        // otherwise, we include if it falls within sampling condition
+        let blocks_count = blocks_count as chain::BlockOffset;
         if blocks_count < begin_count
             || blocks_count > range_blocks_lasts
             || blocks_count % range_blocks_skip == 0
@@ -913,7 +904,6 @@ fn chain_sample_block_headers<CS: chain::Store>(
             let block_header = BlockHeader::from_stored_block(current_block)?;
             headers.push(block_header);
         }
-        blocks_count += 1;
     }
 
     Ok(headers)
