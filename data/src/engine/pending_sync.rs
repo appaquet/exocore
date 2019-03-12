@@ -116,7 +116,7 @@ impl<PS: Store> Synchronizer<PS> {
         let mut out_ranges = SyncRangesBuilder::new();
 
         for sync_range_reader in sync_range_iterator {
-            let (bounds, bounds_from, bounds_to) = Self::extract_sync_2ounds(&sync_range_reader)?;
+            let (bounds, bounds_from, bounds_to) = Self::extract_sync_bounds(&sync_range_reader)?;
             if bounds_to < bounds_from && bounds_to != 0 {
                 return Err(Error::InvalidSyncRequest(format!(
                     "Request from={} > to={}",
@@ -211,16 +211,9 @@ impl<PS: Store> Synchronizer<PS> {
         Ok((frame_hasher.into_multihash_bytes(), count))
     }
 
-    fn extract_sync_2ounds(
+    fn extract_sync_bounds(
         sync_range_reader: &pending_sync_range::Reader,
-    ) -> Result<
-        (
-            (Bound<OperationID>, Bound<OperationID>),
-            OperationID,
-            OperationID,
-        ),
-        Error,
-    > {
+    ) -> Result<SyncBounds, Error> {
         let (from, to) = (
             sync_range_reader.get_from_operation(),
             sync_range_reader.get_to_operation(),
@@ -282,6 +275,12 @@ impl<PS: Store> Synchronizer<PS> {
         Ok(())
     }
 }
+
+type SyncBounds = (
+    (Bound<OperationID>, Bound<OperationID>),
+    OperationID,
+    OperationID,
+);
 
 ///
 /// Collection of SyncRangeBuilder, taking into account maximum operations we want per range.

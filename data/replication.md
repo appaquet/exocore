@@ -57,19 +57,12 @@ Operations in pending store can be:
 * If a node was offline and received data before cleanup point, it will eventually get deleted if it had been put in chain already.
 
 ## Chain replication
-TODO
-
-Start
-1) For each node, ask sync request with their own segments
-2..) Take response, check what's equal to local. What's not equal, ask for details after
-..3) Once we found from which point not equal, ask data from that position
-
-
-* A node that boots needs to be considered a data node at first so that it doesn't prevent quorum
+Chain's replication is handled by the [`Chain Synchronizer`](src/engine/chain_sync.rs).
 
 
 ### Messages
 * ChainSyncRequest
+* ChainSyncResponse
 
 ### Cleanup
 * A node that has access to unencrypted data can decide to cleanup the chain by truncating it, after moving entries around.
@@ -93,6 +86,8 @@ Start
 
 * A node local chain changes after we synced against it
   * TODO:
+
+* A node that boots needs to be considered a data node at first so that it doesn't prevent quorum
 
 
 ## TODO

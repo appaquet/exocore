@@ -87,7 +87,7 @@ struct BlockHeader {
     previousOffset  @2: UInt64;
     previousHash    @3: Data;
     blockSize       @4: UInt64;
-    signaturesSize  @5: UInt16; # TODO: Other name to prevent confusion with frame's signature
+    signaturesSize  @5: UInt16;
     hash            @6: Data;
 
     sourceNodeId    @7: Text;

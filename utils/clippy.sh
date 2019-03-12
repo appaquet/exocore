@@ -12,4 +12,4 @@ cargo check --all
 
 # Then clean common, which will force clippy to run on all its dependencies
 cargo clean -p exocore-common
-cargo clippy --all -- -A clippy::new_ret_no_self
+cargo clippy --all
