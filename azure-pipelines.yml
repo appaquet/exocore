@@ -25,8 +25,9 @@ steps:
       cargo test --all --verbose -- --test-threads=1
     displayName: 'Test all'
 
-  - script: |
-      docker run --security-opt seccomp=unconfined -v "$PWD:/volume" xd009642/tarpaulin cargo tarpaulin --exclude-files=3rd --exclude-files="*_capnp.rs" --all --out Xml -v  -- --test-threads=1
-      bash <(curl -s https://codecov.io/bash)
-    displayName: 'Code coverage'
+    # Disabled until https://github.com/xd009642/tarpaulin/issues/190 is fixed
+    #- script: |
+    #  docker run --security-opt seccomp=unconfined -v "$PWD:/volume" xd009642/tarpaulin cargo tarpaulin --exclude-files=3rd --exclude-files="*_capnp.rs" --all --out Xml -v  -- --test-threads=1
+    #  bash <(curl -s https://codecov.io/bash)
+    #displayName: 'Code coverage'
 
