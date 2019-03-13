@@ -18,4 +18,4 @@ itertools = "0.8.0"
 
 [dev-dependencies]
 tempdir = "0.3"
-stderrlog = "0.4.1"
+exocore-common = { path = "../common", features = ["tests_utils"] }
