@@ -63,3 +63,24 @@ impl Default for Nodes {
         Nodes::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_nodes() {
+        let mut nodes = Nodes::new();
+        assert!(nodes.is_empty());
+
+        nodes.add(Node::new("node1".to_string()));
+
+        assert!(!nodes.is_empty());
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes.nodes.len(), 1);
+
+        assert!(nodes.get("node1").is_some());
+        assert!(nodes.get("blabla").is_none());
+    }
+
+}

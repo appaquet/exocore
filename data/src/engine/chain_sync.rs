@@ -917,6 +917,83 @@ mod tests {
     use exocore_common::serialization::framed::MultihashFrameSigner;
 
     use super::*;
+    use crate::engine::chain_sync::Status::Synchronized;
+
+    #[test]
+    fn test_handle_sync_response_blocks() {
+        crate::utils::setup_logging();
+
+        let mut nodes = Nodes::new();
+        nodes.add(Node::new("node1".to_string()));
+        nodes.add(Node::new("node2".to_string()));
+
+        let mut test_node1 = TestNode::new("node1".to_string());
+        test_node1.generate_chain(10, 1234);
+
+        let mut test_node2 = TestNode::new("node2".to_string());
+        test_node2.generate_chain(100, 1234);
+
+        {
+            test_nodes_run_sync(&mut nodes, &mut test_node1, &mut test_node2).unwrap();
+            test_node1
+                .synchronizer
+                .tick(&test_node1.chain_store, &nodes)
+                .unwrap();
+            assert_eq!(test_node1.synchronizer.status, Status::Downloading);
+            assert_eq!(
+                test_node1.synchronizer.current_leader,
+                Some("node2".to_string())
+            );
+        }
+
+        // response from non-leader should just not reply
+        let mut response = FrameBuilder::new();
+        let mut response_builder = response.get_builder_typed();
+        let mut response_frame = response.as_owned_unsigned_framed().unwrap();
+        let request = test_node1
+            .synchronizer
+            .handle_sync_response(
+                nodes.get("node1").unwrap(),
+                &mut test_node1.chain_store,
+                response_frame,
+            )
+            .unwrap();
+        assert!(request.is_none());
+
+        // response from leader with blocks that aren't next should fail
+        let blocks_iter = test_node2.chain_store.block_iter(0).unwrap();
+        let response = Synchronizer::<DirectoryStore>::create_sync_response_for_blocks(
+            &test_node1.synchronizer.config,
+            10,
+            0,
+            blocks_iter,
+        )
+        .unwrap();
+        let response_frame = response.as_owned_unsigned_framed().unwrap();
+        let request = test_node1.synchronizer.handle_sync_response(
+            nodes.get("node2").unwrap(),
+            &mut test_node1.chain_store,
+            response_frame,
+        );
+        assert!(request.is_err());
+
+        // response from leader with blocks at right position should suceed and append
+        let blocks_iter = test_node2.chain_store.block_iter(0).unwrap().skip(10); // skip 10 will go to 10th block
+        let response = Synchronizer::<DirectoryStore>::create_sync_response_for_blocks(
+            &test_node1.synchronizer.config,
+            10,
+            0,
+            blocks_iter,
+        )
+        .unwrap();
+        let response_frame = response.as_owned_unsigned_framed().unwrap();
+        let request = test_node1.synchronizer.handle_sync_response(
+            nodes.get("node2").unwrap(),
+            &mut test_node1.chain_store,
+            response_frame,
+        );
+        assert!(request.is_ok());
+    }
 
     #[test]
     fn sync_empty_node1_to_full_node2() {
@@ -954,6 +1031,11 @@ mod tests {
             test_node1.synchronizer.current_leader,
             Some("node2".to_string())
         );
+
+        // force status back to downloading to check if tick will turn back to synchronized
+        test_node1.synchronizer.status = Status::Downloading;
+        test_nodes_run_sync(&mut nodes, &mut test_node1, &mut test_node2).unwrap();
+        assert_eq!(test_node1.synchronizer.status, Status::Synchronized);
 
         test_nodes_expect_chain_equals(test_node1, test_node2);
     }
