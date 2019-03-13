@@ -921,8 +921,6 @@ mod tests {
 
     #[test]
     fn test_handle_sync_response_blocks() {
-        crate::utils::setup_logging();
-
         let mut nodes = Nodes::new();
         nodes.add(Node::new("node1".to_string()));
         nodes.add(Node::new("node2".to_string()));
