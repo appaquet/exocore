@@ -3,9 +3,8 @@ use std::ops::RangeBounds;
 use std::sync::Arc;
 
 use exocore_common::data_chain_capnp::pending_operation;
-use exocore_common::security::hash::{Sha3Hasher, StreamHasher};
 use exocore_common::serialization::framed;
-use exocore_common::serialization::framed::{SignedFrame, TypedFrame};
+use exocore_common::serialization::framed::TypedFrame;
 
 use super::*;
 
@@ -38,6 +37,13 @@ impl Store for MemoryStore {
         operation: framed::OwnedTypedFrame<pending_operation::Owned>,
     ) -> Result<(), Error> {
         let operation_reader: pending_operation::Reader = operation.get_typed_reader()?;
+        let operation_type = match operation_reader.get_operation().which()? {
+            pending_operation::operation::Which::BlockSign(_) => OperationType::BlockSign,
+            pending_operation::operation::Which::BlockPropose(_) => OperationType::BlockPropose,
+            pending_operation::operation::Which::BlockRefuse(_) => OperationType::BlockRefuse,
+            pending_operation::operation::Which::PendingIgnore(_) => OperationType::PendingIgnore,
+            pending_operation::operation::Which::EntryNew(_) => OperationType::EntryNew,
+        };
 
         let group_id = operation_reader.get_group_id();
         let group_operations = self
@@ -46,9 +52,14 @@ impl Store for MemoryStore {
             .or_insert_with(GroupOperations::new);
 
         let operation_id = operation_reader.get_operation_id();
-        group_operations
-            .operations
-            .insert(operation_id, Arc::new(operation));
+        group_operations.operations.insert(
+            operation_id,
+            GroupOperation {
+                operation_id,
+                operation_type,
+                frame: Arc::new(operation),
+            },
+        );
 
         self.operations_timeline.insert(operation_id, group_id);
 
@@ -58,15 +69,20 @@ impl Store for MemoryStore {
     fn get_group_operations(
         &self,
         group_id: GroupID,
-    ) -> Result<Option<StoredGroupOperations>, Error> {
+    ) -> Result<Option<StoredOperationsGroup>, Error> {
         let operations = self.groups_operations.get(&group_id).map(|group_ops| {
             let operations = group_ops
                 .operations
                 .values()
-                .map(|op| Arc::clone(op))
+                .map(|op| StoredOperation {
+                    group_id,
+                    operation_id: op.operation_id,
+                    operation_type: op.operation_type,
+                    frame: Arc::clone(&op.frame),
+                })
                 .collect();
 
-            StoredGroupOperations {
+            StoredOperationsGroup {
                 group_id,
                 operations,
             }
@@ -89,40 +105,6 @@ impl Store for MemoryStore {
             ids_iterator: Box::new(ids_iterator),
         }))
     }
-
-    fn operations_range_summary<R>(&self, range: R) -> Result<StoredRangeSummary, Error>
-    where
-        R: RangeBounds<OperationID>,
-    {
-        let mut hasher = Sha3Hasher::new_256();
-        let mut count = 0;
-
-        for (operation_id, pending_id) in self.operations_timeline.range(range) {
-            if let Some(maybe_operation) = self.get_group_operation(*pending_id, *operation_id) {
-                count += 1;
-
-                match maybe_operation.signature_data() {
-                    Some(sig_data) => hasher.consume(sig_data),
-                    None => {
-                        warn!(
-                            "One pending operation didn't have any signature: pending_id={} op_id={}",
-                            pending_id, operation_id
-                        );
-                    }
-                }
-            } else {
-                warn!(
-                    "Couldn't find one of the operation from timeline: pending_id={} op_id={}",
-                    pending_id, operation_id
-                );
-            }
-        }
-
-        Ok(StoredRangeSummary {
-            count,
-            hash: hasher.into_multihash(),
-        })
-    }
 }
 
 impl MemoryStore {
@@ -130,7 +112,7 @@ impl MemoryStore {
         &self,
         group_id: GroupID,
         operation_id: OperationID,
-    ) -> Option<&Arc<framed::OwnedTypedFrame<pending_operation::Owned>>> {
+    ) -> Option<&GroupOperation> {
         self.groups_operations
             .get(&group_id)
             .and_then(|group_ops| group_ops.operations.get(&operation_id))
@@ -141,7 +123,7 @@ impl MemoryStore {
 ///
 ///
 struct GroupOperations {
-    operations: BTreeMap<OperationID, Arc<framed::OwnedTypedFrame<pending_operation::Owned>>>,
+    operations: BTreeMap<OperationID, GroupOperation>,
 }
 
 impl GroupOperations {
@@ -150,6 +132,12 @@ impl GroupOperations {
             operations: BTreeMap::new(),
         }
     }
+}
+
+struct GroupOperation {
+    operation_id: OperationID,
+    operation_type: OperationType,
+    frame: Arc<framed::OwnedTypedFrame<pending_operation::Owned>>,
 }
 
 ///
@@ -165,21 +153,22 @@ impl<'store> Iterator for OperationsIterator<'store> {
 
     fn next(&mut self) -> Option<StoredOperation> {
         let (operation_id, group_id) = self.ids_iterator.next()?;
-        let operation = self.store.get_group_operation(group_id, operation_id)?;
+        let group_operation = self.store.get_group_operation(group_id, operation_id)?;
 
         Some(StoredOperation {
             group_id,
             operation_id,
-            operation: Arc::clone(operation),
+            operation_type: group_operation.operation_type,
+            frame: Arc::clone(&group_operation.frame),
         })
     }
 }
 
 #[cfg(test)]
 mod test {
-    use super::*;
-
     use crate::pending::tests::create_new_entry_op;
+
+    use super::*;
 
     #[test]
     fn put_and_retrieve_operation() {
@@ -203,7 +192,7 @@ mod test {
             .operations
             .iter()
             .map(|op| {
-                let reader = op.get_typed_reader().unwrap();
+                let reader = op.frame.get_typed_reader().unwrap();
                 reader.get_operation_id()
             })
             .collect();
@@ -222,24 +211,5 @@ mod test {
         store.put_operation(create_new_entry_op(110, 203)).unwrap();
 
         assert_eq!(store.operations_iter(..).unwrap().count(), 5);
-    }
-
-    #[test]
-    fn operations_range_summary() {
-        let mut store = MemoryStore::new();
-
-        store.put_operation(create_new_entry_op(105, 200)).unwrap();
-        store.put_operation(create_new_entry_op(100, 200)).unwrap();
-        store.put_operation(create_new_entry_op(102, 201)).unwrap();
-        store.put_operation(create_new_entry_op(107, 202)).unwrap();
-        store.put_operation(create_new_entry_op(110, 203)).unwrap();
-
-        let range1_summary = store.operations_range_summary(100..=102).unwrap();
-        assert_eq!(range1_summary.count, 2);
-
-        let range2_summary = store.operations_range_summary(103..).unwrap();
-        assert_eq!(range2_summary.count, 3);
-
-        assert_ne!(range1_summary.hash, range2_summary.hash);
     }
 }

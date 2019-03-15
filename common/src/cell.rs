@@ -7,5 +7,6 @@ pub struct Cell {
 }
 
 pub struct NodeCellCapability {
-    // TODO: Can it decrypt ?
+    // TODO: bitflags ?
+// TODO: Can it decrypt ?
 }

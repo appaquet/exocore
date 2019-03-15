@@ -1,30 +1,26 @@
-#![allow(dead_code)]
-
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use capnp::traits::ToU16;
 use exocore_common::node::{Node, NodeID, Nodes};
-use exocore_common::serialization::framed::{
-    FrameBuilder, OwnedTypedFrame, SignedFrame, TypedFrame, TypedSliceFrame,
-};
-use exocore_common::serialization::protos::data_chain_capnp::{
-    block, block_header, block_signatures,
-};
+use exocore_common::serialization::framed::{FrameBuilder, SignedFrame, TypedFrame};
+use exocore_common::serialization::protos::data_chain_capnp::{block, block_header};
 use exocore_common::serialization::protos::data_transport_capnp::{
     chain_sync_request, chain_sync_request::RequestedDetails, chain_sync_response,
 };
 use exocore_common::serialization::{capnp, framed};
 
 use crate::chain;
-use crate::chain::{BlockOffset, Store, StoredBlock};
+use crate::chain::{Block, BlockOffset, BlockRef, Store};
+use crate::engine::request_tracker;
+use crate::engine::SyncContext;
 
 ///
 /// Synchronizer's configuration
 ///
-#[derive(Clone, Debug)]
-struct Config {
-    base_request_timeout: Duration,
+#[derive(Copy, Clone, Debug)]
+pub struct Config {
+    request_tracker: request_tracker::Config,
     headers_sync_begin_count: chain::BlockOffset,
     headers_sync_end_count: chain::BlockOffset,
     headers_sync_sampled_count: chain::BlockOffset,
@@ -34,7 +30,7 @@ struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            base_request_timeout: Duration::from_secs(5),
+            request_tracker: request_tracker::Config::default(),
             headers_sync_begin_count: 5,
             headers_sync_end_count: 5,
             headers_sync_sampled_count: 10,
@@ -62,7 +58,7 @@ impl Default for Config {
 /// 4) Once fully downloaded, we keep asking for other nodes' metadata to make sure we progress and
 ///    leadership hasn't changed.
 ///
-struct Synchronizer<CS: Store> {
+pub(super) struct Synchronizer<CS: Store> {
     node_id: NodeID,
     config: Config,
     nodes_info: HashMap<NodeID, NodeSyncInfo>,
@@ -71,8 +67,8 @@ struct Synchronizer<CS: Store> {
     phantom: std::marker::PhantomData<CS>,
 }
 
-#[derive(Debug, PartialEq)]
-enum Status {
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Status {
     Unknown,
     Downloading,
     Synchronized,
@@ -97,12 +93,11 @@ impl<CS: Store> Synchronizer<CS> {
     ///
     pub fn tick<'n>(
         &mut self,
+        sync_context: &mut SyncContext,
         store: &CS,
         nodes: &'n Nodes,
-    ) -> Result<Vec<(&'n Node, FrameBuilder<chain_sync_request::Owned>)>, Error> {
+    ) -> Result<(), Error> {
         let node_id = self.node_id.clone();
-        let config = self.config.clone();
-        let mut requests_to_send = Vec::new();
 
         let (nb_nodes_metadata_sync, nb_nodes) = self.count_nodes_status(nodes);
         let majority_nodes_metadata_sync = nb_nodes_metadata_sync >= nb_nodes / 2;
@@ -114,7 +109,7 @@ impl<CS: Store> Synchronizer<CS> {
         // check if we need to gather data from a leader node
         if self.status != Status::Synchronized && majority_nodes_metadata_sync {
             if self.current_leader.is_none() {
-                self.find_leader_node(store)?;
+                self.find_leader_node(&nodes, store)?;
             }
 
             let im_leader = self
@@ -133,16 +128,14 @@ impl<CS: Store> Synchronizer<CS> {
                     info!("Changing status to synchronized, as chain is full synchronized with leader");
                     self.status = Status::Synchronized
                 } else {
-                    if leader_node_info.last_common_block.as_ref().is_none() {
+                    if leader_node_info.last_common_block.is_none() {
                         if let Some(last_block) = store.get_last_block()? {
                             error!("Leader node has no common block with us. Our last block is at offset {}", last_block.offset);
                             return Err(Error::Diverged(leader));
                         }
                     }
 
-                    let (can_send_request, _last_request_timeout) =
-                        leader_node_info.can_send_request(&config);
-                    if can_send_request {
+                    if leader_node_info.request_tracker.can_send_request() {
                         let leader_node = nodes.get(&node_id).ok_or_else(|| {
                             Error::Other(format!(
                                 "Couldn't find leader node {} in nodes list",
@@ -156,8 +149,10 @@ impl<CS: Store> Synchronizer<CS> {
                             RequestedDetails::Blocks,
                             None,
                         )?;
-                        leader_node_info.set_last_send(Instant::now());
-                        requests_to_send.push((leader_node, request));
+                        leader_node_info
+                            .request_tracker
+                            .set_last_send(Instant::now());
+                        sync_context.push_chain_sync_request(leader_node.id().clone(), request);
                         self.status = Status::Downloading;
                     }
                 }
@@ -170,17 +165,124 @@ impl<CS: Store> Synchronizer<CS> {
         for node in nodes.nodes().filter(|n| n.id != node_id) {
             let node_info = self.get_or_create_node_info_mut(node.id());
 
-            let (can_send_request, _last_request_timeout) = node_info.can_send_request(&config);
-            if can_send_request {
+            if node_info.request_tracker.can_send_request() {
                 let request =
                     Self::create_sync_request(node_info, RequestedDetails::Headers, None)?;
-                node_info.set_last_send(Instant::now());
-                requests_to_send.push((node, request));
+                sync_context.push_chain_sync_request(node.id().clone(), request);
+                node_info.request_tracker.set_last_send(Instant::now());
             }
         }
 
         debug!("Sync tick ended. current_status={:?}", self.status);
-        Ok(requests_to_send)
+        Ok(())
+    }
+
+    ///
+    /// Handles an incoming sync request. This request can be for headers, or could be for blocks.
+    ///
+    pub fn handle_sync_request<R>(
+        &mut self,
+        sync_context: &mut SyncContext,
+        from_node: &Node,
+        store: &mut CS,
+        request: R,
+    ) -> Result<(), Error>
+    where
+        R: TypedFrame<chain_sync_request::Owned>,
+    {
+        let request_reader: chain_sync_request::Reader = request.get_typed_reader()?;
+        let (from_offset, to_offset) = (
+            request_reader.get_from_offset(),
+            request_reader.get_to_offset(),
+        );
+        let requested_details = request_reader.get_requested_details()?;
+        debug!(
+            "Got request from node {} for offset from {} to offset {} requested_details={}",
+            from_node.id,
+            from_offset,
+            to_offset,
+            requested_details.to_u16()
+        );
+
+        let node_info = self.get_or_create_node_info_mut(&from_node.id());
+        node_info.request_tracker.set_last_responded(Instant::now());
+
+        if requested_details == chain_sync_request::RequestedDetails::Headers {
+            let to_offset_opt = if to_offset != 0 {
+                Some(to_offset)
+            } else {
+                None
+            };
+
+            let headers = chain_sample_block_headers(
+                store,
+                from_offset,
+                to_offset_opt,
+                self.config.headers_sync_begin_count,
+                self.config.headers_sync_end_count,
+                self.config.headers_sync_sampled_count,
+            )?;
+
+            let response = Self::create_sync_response_for_headers(from_offset, to_offset, headers)?;
+            sync_context.push_chain_sync_response(from_node.id().clone(), response);
+        } else if requested_details == chain_sync_request::RequestedDetails::Blocks {
+            let blocks_iter = store
+                .block_iter(from_offset)?
+                .filter(|b| to_offset == 0 || b.offset <= to_offset);
+            let response = Self::create_sync_response_for_blocks(
+                &self.config,
+                from_offset,
+                to_offset,
+                blocks_iter,
+            )?;
+            sync_context.push_chain_sync_response(from_node.id().clone(), response);
+        } else {
+            return Err(Error::InvalidSyncRequest(format!(
+                "Unsupported requested details: {:?}",
+                requested_details.to_u16()
+            )));
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// Handles a sync response from a node, that could contain either headers or blocks data.
+    /// If it contains headers, we gather the knowledge about the remote node's chain metadata.
+    /// If it contains data, it means that it comes from the leader node and we need to append data
+    /// to our local chain.
+    ///
+    pub fn handle_sync_response<R>(
+        &mut self,
+        sync_context: &mut SyncContext,
+        from_node: &Node,
+        store: &mut CS,
+        response: R,
+    ) -> Result<(), Error>
+    where
+        R: TypedFrame<chain_sync_response::Owned>,
+    {
+        let response_reader: chain_sync_response::Reader = response.get_typed_reader()?;
+        if response_reader.has_blocks() {
+            debug!("Got blocks response from node {}", from_node.id);
+            self.handle_sync_response_blocks(sync_context, from_node, store, response_reader)?;
+        } else if response_reader.has_headers() {
+            debug!("Got headers response from node {}", from_node.id);
+            self.handle_sync_response_headers(sync_context, from_node, store, response_reader)?;
+        } else {
+            warn!("Got a response without headers and blocks");
+        }
+
+        // last responded is set at the end so that if we failed reading response, it's considered
+        // as if we didn't receive anything (which will lead to timeout & retries)
+        let node_info = self.get_or_create_node_info_mut(&from_node.id());
+        node_info.request_tracker.set_last_responded(Instant::now());
+
+        Ok(())
+    }
+
+    pub fn status(&self) -> Status {
+        self.status
     }
 
     ///
@@ -234,63 +336,6 @@ impl<CS: Store> Synchronizer<CS> {
     }
 
     ///
-    /// Handles an incoming sync request. This request can be for headers, or could be for blocks.
-    ///
-    pub fn handle_sync_request(
-        &mut self,
-        from_node: &Node,
-        store: &mut CS,
-        request: OwnedTypedFrame<chain_sync_request::Owned>,
-    ) -> Result<Option<FrameBuilder<chain_sync_response::Owned>>, Error> {
-        let request_reader: chain_sync_request::Reader = request.get_typed_reader()?;
-        let (from_offset, to_offset) = (
-            request_reader.get_from_offset(),
-            request_reader.get_to_offset(),
-        );
-        let requested_details = request_reader.get_requested_details()?;
-        debug!(
-            "Got request from node {} for offset from {} to offset {} requested_details={}",
-            from_node.id,
-            from_offset,
-            to_offset,
-            requested_details.to_u16()
-        );
-
-        let node_info = self.get_or_create_node_info_mut(&from_node.id());
-        node_info.set_last_responded(Instant::now());
-
-        if requested_details == chain_sync_request::RequestedDetails::Headers {
-            let to_offset_opt = if to_offset != 0 {
-                Some(to_offset)
-            } else {
-                None
-            };
-
-            let headers = chain_sample_block_headers(
-                store,
-                from_offset,
-                to_offset_opt,
-                self.config.headers_sync_begin_count,
-                self.config.headers_sync_end_count,
-                self.config.headers_sync_sampled_count,
-            )?;
-
-            Self::create_sync_response_for_headers(from_offset, to_offset, headers).map(Some)
-        } else if requested_details == chain_sync_request::RequestedDetails::Blocks {
-            let blocks_iter = store
-                .block_iter(from_offset)?
-                .filter(|b| to_offset == 0 || b.offset <= to_offset);
-            Self::create_sync_response_for_blocks(&self.config, from_offset, to_offset, blocks_iter)
-                .map(Some)
-        } else {
-            Err(Error::InvalidSyncRequest(format!(
-                "Unsupported requested details: {:?}",
-                requested_details.to_u16()
-            )))
-        }
-    }
-
-    ///
     /// Creates a response to a request for headers from a remote node.
     ///
     fn create_sync_response_for_headers(
@@ -322,7 +367,7 @@ impl<CS: Store> Synchronizer<CS> {
     /// Creates a response to request for blocks data from a remote node.
     /// If we're asked for data, this means we're the lead.
     ///
-    fn create_sync_response_for_blocks<'s, I: Iterator<Item = StoredBlock<'s>>>(
+    fn create_sync_response_for_blocks<'s, I: Iterator<Item = BlockRef<'s>>>(
         config: &Config,
         from_offset: chain::BlockOffset,
         to_offset: chain::BlockOffset,
@@ -333,7 +378,7 @@ impl<CS: Store> Synchronizer<CS> {
         response_builder.set_from_offset(from_offset);
         response_builder.set_to_offset(to_offset);
 
-        // cumulates blocks' data until we reach max packet size
+        // accumulate blocks' data until we reach max packet size
         let mut data_size = 0;
         let blocks = blocks_iter
             .take_while(|block| {
@@ -347,8 +392,9 @@ impl<CS: Store> Synchronizer<CS> {
             let mut blocks_builder = response_builder.init_blocks(blocks_len);
             for i in 0..blocks_len {
                 let block_and_signatures = vec![
-                    blocks[i as usize].block.frame_data(),
-                    blocks[i as usize].signatures.frame_data(),
+                    blocks[i as usize].block().frame_data(),
+                    blocks[i as usize].entries_data(),
+                    blocks[i as usize].signatures().frame_data(),
                 ]
                 .concat();
 
@@ -368,38 +414,6 @@ impl<CS: Store> Synchronizer<CS> {
     }
 
     ///
-    /// Handles a sync response from a node, that could contain either headers or blocks data.
-    /// If it contains headers, we gather the knowledge about the remote node's chain metadata.
-    /// If it contains data, it means that it comes from the leader node and we need to append data
-    /// to our local chain.
-    ///
-    pub fn handle_sync_response(
-        &mut self,
-        from_node: &Node,
-        store: &mut CS,
-        response: OwnedTypedFrame<chain_sync_response::Owned>,
-    ) -> Result<Option<FrameBuilder<chain_sync_request::Owned>>, Error> {
-        let response_reader: chain_sync_response::Reader = response.get_typed_reader()?;
-        let ret = if response_reader.has_blocks() {
-            debug!("Got blocks response from node {}", from_node.id);
-            self.handle_sync_response_blocks(from_node, store, response_reader)?
-        } else if response_reader.has_headers() {
-            debug!("Got headers response from node {}", from_node.id);
-            self.handle_sync_response_headers(from_node, store, response_reader)?
-        } else {
-            warn!("Got a response without headers and blocks");
-            None
-        };
-
-        // last responded is set at the end so that if we failed reading response, it's considered
-        // as if we didn't receive anything (which will lead to timeout & retries)
-        let node_info = self.get_or_create_node_info_mut(&from_node.id());
-        node_info.set_last_responded(Instant::now());
-
-        Ok(ret)
-    }
-
-    ///
     /// Manages headers response by comparing to local blocks and finding the common ancestor (if any)
     /// and the last block of the node against which we're syncing.
     ///
@@ -408,10 +422,11 @@ impl<CS: Store> Synchronizer<CS> {
     ///
     fn handle_sync_response_headers(
         &mut self,
+        sync_context: &mut SyncContext,
         from_node: &Node,
         store: &mut CS,
         response_reader: chain_sync_response::Reader,
-    ) -> Result<Option<FrameBuilder<chain_sync_request::Owned>>, Error> {
+    ) -> Result<(), Error> {
         let from_node_info = self.get_or_create_node_info_mut(&from_node.id());
 
         let headers_reader = response_reader.get_headers()?;
@@ -429,7 +444,7 @@ impl<CS: Store> Synchronizer<CS> {
                         .block
                         .signature_data()
                         .expect("A stored block didn't have a signature");
-                    if header_reader.get_hash()? == local_block_signature {
+                    if header_reader.get_block_hash()? == local_block_signature {
                         let is_latest_common_offset = from_node_info
                             .last_common_block
                             .as_ref()
@@ -469,7 +484,7 @@ impl<CS: Store> Synchronizer<CS> {
 
             let request =
                 Self::create_sync_request(from_node_info, RequestedDetails::Headers, to_offset)?;
-            return Ok(Some(request));
+            sync_context.push_chain_sync_request(from_node_info.node_id.clone(), request);
         } else {
             debug!(
                 "Finished fetching metadata of node {}. last_known_block={:?}, last_common_ancestor={:?}",
@@ -478,10 +493,10 @@ impl<CS: Store> Synchronizer<CS> {
                 from_node_info.last_common_block
             );
             from_node_info.last_common_is_known = true;
-            from_node_info.force_can_send_request = Some(true);
+            from_node_info.request_tracker.force_next_request();
         }
 
-        Ok(None)
+        Ok(())
     }
 
     ///
@@ -490,10 +505,11 @@ impl<CS: Store> Synchronizer<CS> {
     ///
     fn handle_sync_response_blocks(
         &mut self,
+        sync_context: &mut SyncContext,
         from_node: &Node,
         store: &mut CS,
         response_reader: chain_sync_response::Reader,
-    ) -> Result<Option<FrameBuilder<chain_sync_request::Owned>>, Error> {
+    ) -> Result<(), Error> {
         let lead_node_id = self.current_leader.as_ref().cloned();
         let from_node_info = self.get_or_create_node_info_mut(&from_node.id());
 
@@ -511,37 +527,24 @@ impl<CS: Store> Synchronizer<CS> {
                 // data contains both block + block_signatures
                 let data = data_res?;
 
-                // read block & signatures from data
-                let block_frame = TypedSliceFrame::<block::Owned>::new(data)?;
-                let block_reader: block::Reader = block_frame.get_typed_reader()?;
-                if data.len() < block_frame.frame_size() {
-                    return Err(Error::InvalidSyncResponse(format!(
-                        "Got a block with unexpected size that couldn't have a signature:\
-                         data_len={} block_frame_size={}",
-                        data.len(),
-                        block_frame.frame_size()
-                    )));
-                }
-                let block_signatures_frame = TypedSliceFrame::<block_signatures::Owned>::new(
-                    &data[block_frame.frame_size()..],
-                )?;
+                // read block from data
+                let block = BlockRef::new(data)?;
 
                 // make sure the block was expected in our chain, then add it
                 let next_local_offset = last_local_block
                     .as_ref()
                     .map(|b| b.next_offset())
                     .unwrap_or(0);
-                if block_reader.get_offset() == next_local_offset {
-                    store.write_block(&block_frame, &block_signatures_frame)?;
-                    let new_block = store.get_block(next_local_offset)?;
-                    let new_block_header = BlockHeader::from_stored_block(new_block)?;
+                if block.offset() == next_local_offset {
+                    store.write_block(&block)?;
+                    let new_block_header = BlockHeader::from_stored_block(block)?;
                     last_local_block = Some(new_block_header);
                 } else {
                     return Err(Error::InvalidSyncResponse(format!(
                         "Got a block with data at an invalid offset. \
                          expected_offset={} block_offset={}",
                         next_local_offset,
-                        block_reader.get_offset()
+                        block.offset()
                     )));
                 }
             }
@@ -551,17 +554,17 @@ impl<CS: Store> Synchronizer<CS> {
             if from_node_info.chain_fully_downloaded() {
                 info!("Finished downloading chain from leader node !");
                 self.status = Status::Synchronized;
-                Ok(None)
             } else {
                 let request =
                     Self::create_sync_request(from_node_info, RequestedDetails::Blocks, None)?;
-                from_node_info.set_last_send(Instant::now());
-                Ok(Some(request))
+                sync_context.push_chain_sync_request(from_node_info.node_id.clone(), request);
+                from_node_info.request_tracker.set_last_send(Instant::now());
             }
         } else {
             warn!("Got data from a non-lead node {:?}", from_node_info.node_id);
-            Ok(None)
         }
+
+        Ok(())
     }
 
     fn get_or_create_node_info_mut(&mut self, node_id: &str) -> &mut NodeSyncInfo {
@@ -569,9 +572,10 @@ impl<CS: Store> Synchronizer<CS> {
             return self.nodes_info.get_mut(node_id).unwrap();
         }
 
+        let config = self.config;
         self.nodes_info
             .entry(node_id.to_string())
-            .or_insert_with(move || NodeSyncInfo::new(node_id.to_string()))
+            .or_insert_with(move || NodeSyncInfo::new(node_id.to_string(), &config))
     }
 
     fn count_nodes_status(&self, nodes: &Nodes) -> (u16, u16) {
@@ -594,7 +598,9 @@ impl<CS: Store> Synchronizer<CS> {
         (nodes_metadata_sync, nodes_total)
     }
 
-    fn find_leader_node(&mut self, store: &CS) -> Result<(), Error> {
+    fn find_leader_node(&mut self, nodes: &Nodes, store: &CS) -> Result<(), Error> {
+        let nb_nodes = nodes.len();
+
         let maybe_leader = self
             .nodes_info
             .values()
@@ -611,9 +617,14 @@ impl<CS: Store> Synchronizer<CS> {
 
         let last_local_block = store.get_last_block()?;
         self.current_leader = match (maybe_leader, &last_local_block) {
-            (Some((_node_info, node_offset)), Some(last_last_block))
-                if last_last_block.offset > node_offset =>
+            (Some((_node_info, node_offset)), Some(last_local_block))
+                if last_local_block.offset > node_offset =>
             {
+                // there are other nodes, but i have the longest chain
+                Some(self.node_id.clone())
+            }
+            (None, Some(_last_local_block)) if nb_nodes == 1 => {
+                // i have at least the genesis block, i'm alone, so i'm the leader
                 Some(self.node_id.clone())
             }
             (Some((node_info, _)), _) => Some(node_info.node_id.clone()),
@@ -634,27 +645,19 @@ struct NodeSyncInfo {
     last_common_is_known: bool,
     last_known_block: Option<BlockHeader>,
 
-    last_request_send: Option<Instant>,
-    last_response_receive: Option<Instant>,
-    nb_response_failure: usize,
-
-    // next can_send_request() will return true
-    force_can_send_request: Option<bool>,
+    request_tracker: request_tracker::RequestTracker,
 }
 
 impl NodeSyncInfo {
-    fn new(node_id: NodeID) -> NodeSyncInfo {
+    fn new(node_id: NodeID, config: &Config) -> NodeSyncInfo {
         NodeSyncInfo {
             node_id,
 
             last_common_block: None,
             last_common_is_known: false,
             last_known_block: None,
-            force_can_send_request: None,
 
-            last_request_send: None,
-            last_response_receive: None,
-            nb_response_failure: 0,
+            request_tracker: request_tracker::RequestTracker::new(config.request_tracker),
         }
     }
 
@@ -670,50 +673,6 @@ impl NodeSyncInfo {
         let last_known_offset = self.last_known_block.as_ref().map(|b| b.offset);
         let last_common_offset = self.last_common_block.as_ref().map(|b| b.offset);
         self.last_known_block.is_some() && last_known_offset == last_common_offset
-    }
-
-    fn set_last_send(&mut self, time: Instant) {
-        self.last_request_send = Some(time);
-    }
-
-    fn set_last_responded(&mut self, time: Instant) {
-        self.last_response_receive = Some(time);
-        self.nb_response_failure = 0;
-    }
-
-    fn can_send_request(&mut self, config: &Config) -> (bool, bool) {
-        if let Some(_force) = self.force_can_send_request.take() {
-            return (true, false);
-        }
-
-        let request_timeout_duration = self.request_timeout_duration(config);
-        let should_send_request = self
-            .last_request_send
-            .map(|i| i.elapsed() > request_timeout_duration)
-            .unwrap_or(true);
-
-        let mut last_request_timeout = false;
-        if should_send_request {
-            if !self.has_responded_last_request() {
-                self.nb_response_failure += 1;
-                last_request_timeout = true;
-            }
-
-            (true, last_request_timeout)
-        } else {
-            (false, last_request_timeout)
-        }
-    }
-
-    fn request_timeout_duration(&self, config: &Config) -> Duration {
-        config.base_request_timeout
-    }
-
-    fn has_responded_last_request(&self) -> bool {
-        match (self.last_request_send, self.last_response_receive) {
-            (Some(send), Some(resp)) if resp > send => true,
-            _ => false,
-        }
     }
 }
 
@@ -734,26 +693,29 @@ struct BlockHeader {
     previous_offset: chain::BlockOffset,
     previous_hash: Vec<u8>,
 
-    block_size: chain::BlockOffset,
+    block_size: u32,
+    entries_size: u32,
     signatures_size: chain::BlockSignaturesSize,
 }
 
 impl BlockHeader {
-    fn from_stored_block(stored_block: StoredBlock) -> Result<BlockHeader, Error> {
-        let block_reader: block::Reader = stored_block.block.get_typed_reader()?;
+    fn from_stored_block<B: Block>(stored_block: B) -> Result<BlockHeader, Error> {
+        let block_reader: block::Reader = stored_block.block().get_typed_reader()?;
         let block_signature = stored_block
-            .block
+            .block()
             .signature_data()
             .expect("A stored block didn't signature data");
 
         Ok(BlockHeader {
-            offset: stored_block.offset,
+            offset: stored_block.offset(),
             depth: block_reader.get_depth(),
             hash: block_signature.to_vec(),
             previous_offset: block_reader.get_previous_offset(),
             previous_hash: block_reader.get_previous_hash()?.to_vec(),
-            block_size: stored_block.block.frame_size() as chain::BlockOffset,
-            signatures_size: stored_block.signatures.frame_size() as chain::BlockSignaturesSize,
+
+            block_size: stored_block.block().frame_size() as u32,
+            entries_size: stored_block.entries_data().len() as u32,
+            signatures_size: stored_block.signatures().frame_size() as chain::BlockSignaturesSize,
         })
     }
 
@@ -763,26 +725,31 @@ impl BlockHeader {
         Ok(BlockHeader {
             offset: block_header_reader.get_offset(),
             depth: block_header_reader.get_depth(),
-            hash: block_header_reader.get_hash()?.to_vec(),
+            hash: block_header_reader.get_block_hash()?.to_vec(),
             previous_offset: block_header_reader.get_previous_offset(),
             previous_hash: block_header_reader.get_previous_hash()?.to_vec(),
             block_size: block_header_reader.get_block_size(),
+            entries_size: block_header_reader.get_entries_size(),
             signatures_size: block_header_reader.get_signatures_size(),
         })
     }
 
     #[inline]
     fn next_offset(&self) -> chain::BlockOffset {
-        self.offset + self.block_size + chain::BlockOffset::from(self.signatures_size)
+        self.offset
+            + self.block_size as BlockOffset
+            + self.entries_size as BlockOffset
+            + chain::BlockOffset::from(self.signatures_size)
     }
 
     fn copy_into_builder(&self, builder: &mut block_header::Builder) {
         builder.set_offset(self.offset);
         builder.set_depth(self.depth);
-        builder.set_hash(&self.hash);
+        builder.set_block_hash(&self.hash);
         builder.set_previous_offset(self.previous_offset);
         builder.set_previous_hash(&self.previous_hash);
         builder.set_block_size(self.block_size);
+        builder.set_entries_size(self.entries_size);
         builder.set_signatures_size(self.signatures_size);
     }
 }
@@ -791,7 +758,7 @@ impl BlockHeader {
 /// Synchronizer's error
 ///
 #[derive(Debug, Fail)]
-enum Error {
+pub enum Error {
     #[fail(display = "Error in chain store: {:?}", _0)]
     Store(#[fail(cause)] chain::Error),
     #[fail(display = "Error in framing serialization: {:?}", _0)]
@@ -808,6 +775,15 @@ enum Error {
     Diverged(String),
     #[fail(display = "Got an error: {}", _0)]
     Other(String),
+}
+
+impl Error {
+    pub fn is_fatal(&self) -> bool {
+        match self {
+            Error::Store(inner) => inner.is_fatal(),
+            _ => false,
+        }
+    }
 }
 
 impl From<capnp::Error> for Error {
@@ -913,101 +889,129 @@ fn chain_sample_block_headers<CS: chain::Store>(
 mod tests {
     use tempdir::TempDir;
 
-    use chain::directory::{DirectoryConfig, DirectoryStore};
-    use exocore_common::serialization::framed::MultihashFrameSigner;
+    use chain::directory::{Config as DirectoryConfig, DirectoryStore};
+    use exocore_common::serialization::framed::{MultihashFrameSigner, OwnedTypedFrame};
+    use exocore_common::serialization::protos::data_chain_capnp::block_signatures;
 
+    use super::super::SyncContextMessage;
     use super::*;
-    use crate::engine::chain_sync::Status::Synchronized;
+    use crate::chain::BlockOwned;
+    use crate::ChainDirectoryStore;
 
     #[test]
-    fn test_handle_sync_response_blocks() {
-        let mut nodes = Nodes::new();
-        nodes.add(Node::new("node1".to_string()));
-        nodes.add(Node::new("node2".to_string()));
+    fn test_handle_sync_response_blocks() -> Result<(), failure::Error> {
+        let mut cluster = TestCluster::new(2);
+        cluster.generate_node_chain(0, 10, 1234);
+        cluster.generate_node_chain(1, 100, 1234);
+        let node0 = cluster.get_node(0);
+        let node1 = cluster.get_node(1);
 
-        let mut test_node1 = TestNode::new("node1".to_string());
-        test_node1.generate_chain(10, 1234);
-
-        let mut test_node2 = TestNode::new("node2".to_string());
-        test_node2.generate_chain(100, 1234);
-
-        {
-            test_nodes_run_sync(&mut nodes, &mut test_node1, &mut test_node2).unwrap();
-            test_node1
-                .synchronizer
-                .tick(&test_node1.chain_store, &nodes)
-                .unwrap();
-            assert_eq!(test_node1.synchronizer.status, Status::Downloading);
-            assert_eq!(
-                test_node1.synchronizer.current_leader,
-                Some("node2".to_string())
-            );
-        }
+        test_nodes_run_sync_new(&mut cluster, 0, 1)?;
+        let mut sync_context = SyncContext::new();
+        cluster.sync[0].tick(&mut sync_context, &cluster.stores[0], &cluster.nodes)?;
+        assert_eq!(cluster.sync[0].status, Status::Downloading);
+        assert_eq!(cluster.sync[0].current_leader, Some("node1".to_string()));
 
         // response from non-leader should just not reply
-        let mut response = FrameBuilder::new();
-        let mut response_builder = response.get_builder_typed();
-        let mut response_frame = response.as_owned_unsigned_framed().unwrap();
-        let request = test_node1
-            .synchronizer
-            .handle_sync_response(
-                nodes.get("node1").unwrap(),
-                &mut test_node1.chain_store,
-                response_frame,
-            )
-            .unwrap();
-        assert!(request.is_none());
+        let response = FrameBuilder::new();
+        let response_frame = response.as_owned_unsigned_framed()?;
+        let mut sync_context = SyncContext::new();
+        cluster.sync[0].handle_sync_response(
+            &mut sync_context,
+            &node0,
+            &mut cluster.stores[0],
+            response_frame,
+        )?;
+        assert!(sync_context.messages.is_empty());
 
         // response from leader with blocks that aren't next should fail
-        let blocks_iter = test_node2.chain_store.block_iter(0).unwrap();
+        let blocks_iter = cluster.stores[1].block_iter(0)?;
         let response = Synchronizer::<DirectoryStore>::create_sync_response_for_blocks(
-            &test_node1.synchronizer.config,
+            &cluster.sync[1].config,
             10,
             0,
             blocks_iter,
-        )
-        .unwrap();
-        let response_frame = response.as_owned_unsigned_framed().unwrap();
-        let request = test_node1.synchronizer.handle_sync_response(
-            nodes.get("node2").unwrap(),
-            &mut test_node1.chain_store,
+        )?;
+        let response_frame = response.as_owned_unsigned_framed()?;
+        let mut sync_context = SyncContext::new();
+        let result = cluster.sync[0].handle_sync_response(
+            &mut sync_context,
+            &node1,
+            &mut cluster.stores[0],
             response_frame,
         );
-        assert!(request.is_err());
+        assert!(result.is_err());
 
         // response from leader with blocks at right position should suceed and append
-        let blocks_iter = test_node2.chain_store.block_iter(0).unwrap().skip(10); // skip 10 will go to 10th block
+        let blocks_iter = cluster.stores[1].block_iter(0).unwrap().skip(10); // skip 10 will go to 10th block
         let response = Synchronizer::<DirectoryStore>::create_sync_response_for_blocks(
-            &test_node1.synchronizer.config,
+            &cluster.sync[0].config,
             10,
             0,
             blocks_iter,
-        )
-        .unwrap();
+        )?;
         let response_frame = response.as_owned_unsigned_framed().unwrap();
-        let request = test_node1.synchronizer.handle_sync_response(
-            nodes.get("node2").unwrap(),
-            &mut test_node1.chain_store,
+        let mut sync_context = SyncContext::new();
+        cluster.sync[0].handle_sync_response(
+            &mut sync_context,
+            &node1,
+            &mut cluster.stores[0],
             response_frame,
-        );
-        assert!(request.is_ok());
+        )?;
+
+        Ok(())
     }
 
     #[test]
-    fn sync_empty_node1_to_full_node2() {
-        let mut nodes = Nodes::new();
-        nodes.add(Node::new("node1".to_string()));
-        nodes.add(Node::new("node2".to_string()));
-        let node1 = nodes.get("node1").unwrap();
-        let node2 = nodes.get("node2").unwrap();
+    fn test_chain_sample_block_headers() -> Result<(), failure::Error> {
+        let mut cluster = TestCluster::new(1);
+        cluster.generate_node_chain(0, 100, 3424);
 
-        let mut test_node1 = TestNode::new(node1.id.clone());
-        let mut test_node2 = TestNode::new(node2.id.clone());
-        test_node2.generate_chain(100, 3424);
+        let offsets: Vec<chain::BlockOffset> =
+            cluster.stores[0].block_iter(0)?.map(|b| b.offset).collect();
 
-        test_nodes_run_sync(&mut nodes, &mut test_node1, &mut test_node2).unwrap();
+        let headers = chain_sample_block_headers(&cluster.stores[0], 0, None, 2, 2, 10)?;
+        assert_eq!(
+            headers.iter().map(|b| b.depth).collect::<Vec<_>>(),
+            vec![0, 1, 9, 18, 27, 36, 45, 54, 63, 72, 81, 90, 98, 99]
+        );
+
+        let headers = chain_sample_block_headers(&cluster.stores[0], 0, None, 0, 0, 1)?;
+        assert_eq!(
+            headers.iter().map(|b| b.depth).collect::<Vec<_>>(),
+            vec![0, 99]
+        );
+
+        let headers = chain_sample_block_headers(&cluster.stores[0], offsets[10], None, 5, 5, 10)?;
+        assert_eq!(
+            headers.iter().map(|b| b.depth).collect::<Vec<_>>(),
+            vec![10, 11, 12, 13, 14, 18, 26, 34, 42, 50, 58, 66, 74, 82, 90, 95, 96, 97, 98, 99]
+        );
+
+        let headers = chain_sample_block_headers(
+            &cluster.stores[0],
+            offsets[10],
+            Some(offsets[50]),
+            2,
+            2,
+            5,
+        )?;
+        assert_eq!(
+            headers.iter().map(|b| b.depth).collect::<Vec<_>>(),
+            vec![10, 11, 18, 26, 34, 42, 49, 50]
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn sync_empty_node1_to_full_node2() -> Result<(), failure::Error> {
+        let mut cluster = TestCluster::new(2);
+        cluster.generate_node_chain(1, 100, 3434);
+
+        test_nodes_run_sync_new(&mut cluster, 0, 1)?;
         {
-            let node1_node2_info = test_node1.synchronizer.nodes_info.get("node2").unwrap();
+            let node1_node2_info = cluster.sync[0].nodes_info.get("node1").unwrap();
             assert_eq!(
                 node1_node2_info.chain_metadata_status(),
                 NodeMetadataStatus::Synchronized
@@ -1023,37 +1027,29 @@ mod tests {
         }
 
         // this will sync blocks & mark as synchronized
-        test_nodes_run_sync(&mut nodes, &mut test_node1, &mut test_node2).unwrap();
-        assert_eq!(test_node1.synchronizer.status, Status::Synchronized);
-        assert_eq!(
-            test_node1.synchronizer.current_leader,
-            Some("node2".to_string())
-        );
+        test_nodes_run_sync_new(&mut cluster, 0, 1)?;
+        assert_eq!(cluster.sync[0].status, Status::Synchronized);
+        assert_eq!(cluster.sync[0].current_leader, Some("node1".to_string()));
 
         // force status back to downloading to check if tick will turn back to synchronized
-        test_node1.synchronizer.status = Status::Downloading;
-        test_nodes_run_sync(&mut nodes, &mut test_node1, &mut test_node2).unwrap();
-        assert_eq!(test_node1.synchronizer.status, Status::Synchronized);
+        cluster.sync[0].status = Status::Downloading;
+        test_nodes_run_sync_new(&mut cluster, 0, 1)?;
+        assert_eq!(cluster.sync[0].status, Status::Synchronized);
 
-        test_nodes_expect_chain_equals(test_node1, test_node2);
+        test_nodes_expect_chain_equals_new(&cluster.stores[0], &cluster.stores[1]);
+
+        Ok(())
     }
 
     #[test]
-    fn sync_full_node1_to_empty_node2() {
-        let mut nodes = Nodes::new();
-        nodes.add(Node::new("node1".to_string()));
-        nodes.add(Node::new("node2".to_string()));
-        let node1 = nodes.get("node1").unwrap();
-        let node2 = nodes.get("node2").unwrap();
-
-        let mut test_node1 = TestNode::new(node1.id.clone());
-        let mut test_node2 = TestNode::new(node2.id.clone());
-        test_node1.generate_chain(100, 3424);
+    fn sync_full_node1_to_empty_node2() -> Result<(), failure::Error> {
+        let mut cluster = TestCluster::new(2);
+        cluster.generate_node_chain(0, 100, 3434);
 
         // running sync twice will yield to nothing as node2 is empty
-        for i in 0..2 {
-            test_nodes_run_sync(&mut nodes, &mut test_node1, &mut test_node2).unwrap();
-            let node1_node2_info = test_node1.synchronizer.nodes_info.get("node2").unwrap();
+        for _i in 0..2 {
+            test_nodes_run_sync_new(&mut cluster, 0, 1)?;
+            let node1_node2_info = cluster.sync[0].nodes_info.get("node1").unwrap();
             assert_eq!(
                 node1_node2_info.chain_metadata_status(),
                 NodeMetadataStatus::Synchronized
@@ -1069,26 +1065,21 @@ mod tests {
         }
 
         // unknown, as quorum is not met
-        assert_eq!(test_node1.synchronizer.status, Status::Unknown);
+        assert_eq!(cluster.sync[0].status, Status::Unknown);
+
+        Ok(())
     }
 
     #[test]
-    fn sync_full_node1_to_half_node2() {
-        let mut nodes = Nodes::new();
-        nodes.add(Node::new("node1".to_string()));
-        nodes.add(Node::new("node2".to_string()));
-        let node1 = nodes.get("node1").unwrap();
-        let node2 = nodes.get("node2").unwrap();
-
-        let mut test_node1 = TestNode::new(node1.id.clone());
-        let mut test_node2 = TestNode::new(node2.id.clone());
-        test_node1.generate_chain(100, 3424);
-        test_node2.generate_chain(50, 3424);
+    fn sync_full_node1_to_half_node2() -> Result<(), failure::Error> {
+        let mut cluster = TestCluster::new(2);
+        cluster.generate_node_chain(0, 100, 3434);
+        cluster.generate_node_chain(1, 50, 3434);
 
         // running sync twice will yield to nothing as node1 is leader
-        for i in 0..2 {
-            test_nodes_run_sync(&mut nodes, &mut test_node1, &mut test_node2).unwrap();
-            let node1_node2_info = test_node1.synchronizer.nodes_info.get("node2").unwrap();
+        for _i in 0..2 {
+            test_nodes_run_sync_new(&mut cluster, 0, 1)?;
+            let node1_node2_info = cluster.sync[0].nodes_info.get("node1").unwrap();
             assert_eq!(
                 node1_node2_info.chain_metadata_status(),
                 NodeMetadataStatus::Synchronized
@@ -1104,30 +1095,21 @@ mod tests {
         }
 
         // we're leader and synchronized because of it
-        assert_eq!(
-            test_node1.synchronizer.current_leader,
-            Some("node1".to_string())
-        );
-        assert_eq!(test_node1.synchronizer.status, Status::Synchronized);
+        assert_eq!(cluster.sync[0].current_leader, Some("node0".to_string()));
+        assert_eq!(cluster.sync[0].status, Status::Synchronized);
+
+        Ok(())
     }
 
     #[test]
-    fn sync_half_node1_to_full_node2() {
-        let mut nodes = Nodes::new();
-        nodes.add(Node::new("node1".to_string()));
-        nodes.add(Node::new("node2".to_string()));
-        let node1 = nodes.get("node1").unwrap();
-        let node2 = nodes.get("node2").unwrap();
+    fn sync_half_node1_to_full_node2() -> Result<(), failure::Error> {
+        let mut cluster = TestCluster::new(2);
+        cluster.generate_node_chain(0, 50, 3434);
+        cluster.generate_node_chain(1, 100, 3434);
 
-        let mut test_node1 = TestNode::new(node1.id.clone());
-        test_node1.generate_chain(50, 3424);
-
-        let mut test_node2 = TestNode::new(node2.id.clone());
-        test_node2.generate_chain(100, 3424);
-
-        test_nodes_run_sync(&mut nodes, &mut test_node1, &mut test_node2).unwrap();
+        test_nodes_run_sync_new(&mut cluster, 0, 1)?;
         {
-            let node1_node2_info = test_node1.synchronizer.nodes_info.get("node2").unwrap();
+            let node1_node2_info = cluster.sync[0].nodes_info.get("node1").unwrap();
             assert_eq!(
                 node1_node2_info.chain_metadata_status(),
                 NodeMetadataStatus::Synchronized
@@ -1143,35 +1125,26 @@ mod tests {
         }
 
         // this will sync blocks & mark as synchronized
-        test_nodes_run_sync(&mut nodes, &mut test_node1, &mut test_node2).unwrap();
+        test_nodes_run_sync_new(&mut cluster, 0, 1)?;
 
         // node2 is leader
-        assert_eq!(
-            test_node1.synchronizer.current_leader,
-            Some("node2".to_string())
-        );
-        assert_eq!(test_node1.synchronizer.status, Status::Synchronized);
+        assert_eq!(cluster.sync[0].current_leader, Some("node1".to_string()));
+        assert_eq!(cluster.sync[0].status, Status::Synchronized);
 
-        test_nodes_expect_chain_equals(test_node1, test_node2);
+        test_nodes_expect_chain_equals_new(&cluster.stores[0], &cluster.stores[1]);
+
+        Ok(())
     }
 
     #[test]
-    fn sync_divergent_node1_to_full_node2() {
-        let mut nodes = Nodes::new();
-        nodes.add(Node::new("node1".to_string()));
-        nodes.add(Node::new("node2".to_string()));
-        let node1 = nodes.get("node1").unwrap();
-        let node2 = nodes.get("node2").unwrap();
+    fn sync_divergent_node1_to_full_node2() -> Result<(), failure::Error> {
+        let mut cluster = TestCluster::new(2);
+        cluster.generate_node_chain(0, 100, 1234);
+        cluster.generate_node_chain(1, 100, 9876);
 
-        let mut test_node1 = TestNode::new(node1.id.clone());
-        test_node1.generate_chain(100, 1234);
-
-        let mut test_node2 = TestNode::new(node2.id.clone());
-        test_node2.generate_chain(100, 9876);
-
-        test_nodes_run_sync(&mut nodes, &mut test_node1, &mut test_node2).unwrap();
+        test_nodes_run_sync_new(&mut cluster, 0, 1)?;
         {
-            let node1_node2_info = test_node1.synchronizer.nodes_info.get("node2").unwrap();
+            let node1_node2_info = cluster.sync[0].nodes_info.get("node1").unwrap();
             assert_eq!(
                 node1_node2_info.chain_metadata_status(),
                 NodeMetadataStatus::Synchronized
@@ -1186,90 +1159,55 @@ mod tests {
             );
         }
 
-        match test_nodes_run_sync(&mut nodes, &mut test_node1, &mut test_node2).err() {
+        match test_nodes_run_sync_new(&mut cluster, 0, 1).err() {
             Some(Error::Diverged(_)) => {}
             other => panic!("Expected a diverged error, got {:?}", other),
         }
 
         // still unknown since we don't have a clear leader, as we've diverged from it
-        assert_eq!(test_node1.synchronizer.status, Status::Unknown);
+        assert_eq!(cluster.sync[0].status, Status::Unknown);
+
+        Ok(())
     }
 
-    #[test]
-    fn test_chain_sample_block_headers() {
-        let mut test_node = TestNode::new("node1".to_string());
-        test_node.generate_chain(100, 3424);
-        let offsets: Vec<chain::BlockOffset> = test_node
-            .chain_store
-            .block_iter(0)
-            .unwrap()
-            .map(|b| b.offset)
-            .collect();
-
-        let headers =
-            chain_sample_block_headers(&test_node.chain_store, 0, None, 2, 2, 10).unwrap();
-        assert_eq!(
-            headers.iter().map(|b| b.depth).collect::<Vec<_>>(),
-            vec![0, 1, 9, 18, 27, 36, 45, 54, 63, 72, 81, 90, 98, 99]
-        );
-
-        let headers = chain_sample_block_headers(&test_node.chain_store, 0, None, 0, 0, 1).unwrap();
-        assert_eq!(
-            headers.iter().map(|b| b.depth).collect::<Vec<_>>(),
-            vec![0, 99]
-        );
-
-        let headers =
-            chain_sample_block_headers(&test_node.chain_store, offsets[10], None, 5, 5, 10)
-                .unwrap();
-        assert_eq!(
-            headers.iter().map(|b| b.depth).collect::<Vec<_>>(),
-            vec![10, 11, 12, 13, 14, 18, 26, 34, 42, 50, 58, 66, 74, 82, 90, 95, 96, 97, 98, 99]
-        );
-
-        let headers = chain_sample_block_headers(
-            &test_node.chain_store,
-            offsets[10],
-            Some(offsets[50]),
-            2,
-            2,
-            5,
-        )
-        .unwrap();
-        assert_eq!(
-            headers.iter().map(|b| b.depth).collect::<Vec<_>>(),
-            vec![10, 11, 18, 26, 34, 42, 49, 50]
-        );
+    struct TestCluster {
+        nodes: Nodes,
+        tempdirs: Vec<TempDir>,
+        stores: Vec<DirectoryStore>,
+        sync: Vec<Synchronizer<DirectoryStore>>,
     }
 
-    struct TestNode {
-        node_id: NodeID,
-        tempdir: TempDir,
-        chain_store: DirectoryStore,
-        synchronizer: Synchronizer<DirectoryStore>,
-    }
+    impl TestCluster {
+        fn new(count: usize) -> TestCluster {
+            let mut nodes = Nodes::new();
+            let mut tempdirs = Vec::new();
+            let mut stores = Vec::new();
+            let mut synchronizers = Vec::new();
 
-    impl TestNode {
-        fn new(node_id: NodeID) -> TestNode {
-            let tempdir = TempDir::new("chain_sync").unwrap();
-            let chain_config = DirectoryConfig {
-                segment_max_size: 3000,
-                ..DirectoryConfig::default()
-            };
-            let chain_store = DirectoryStore::create(chain_config, tempdir.as_ref()).unwrap();
+            for i in 0..count {
+                let node_id = format!("node{}", i);
+                nodes.add(Node::new(node_id.clone()));
 
-            let synchronizer_config = Config::default();
-            let synchronizer = Synchronizer::new(node_id.clone(), synchronizer_config);
+                let tempdir = TempDir::new("chain_sync").unwrap();
+                let chain_config = DirectoryConfig {
+                    segment_max_size: 3000,
+                    ..DirectoryConfig::default()
+                };
+                stores.push(DirectoryStore::create(chain_config, tempdir.as_ref()).unwrap());
+                synchronizers.push(Synchronizer::new(node_id.clone(), Config::default()));
 
-            TestNode {
-                node_id,
-                tempdir,
-                chain_store,
-                synchronizer,
+                tempdirs.push(tempdir);
+            }
+
+            TestCluster {
+                nodes,
+                tempdirs,
+                stores,
+                sync: synchronizers,
             }
         }
 
-        fn generate_chain(&mut self, count: usize, seed: u64) {
+        fn generate_node_chain(&mut self, node_id: usize, count: usize, seed: u64) {
             let mut offsets = Vec::new();
             let mut next_offset = 0;
 
@@ -1278,7 +1216,7 @@ mod tests {
 
                 let previous_block = if i != 0 {
                     Some(
-                        self.chain_store
+                        self.stores[node_id]
                             .get_block_from_next_offset(next_offset)
                             .unwrap(),
                     )
@@ -1287,73 +1225,113 @@ mod tests {
                 };
 
                 let prev_block_msg = previous_block.map(|b| b.block);
-                let block = create_block(next_offset, i as u64, prev_block_msg, seed);
-                let block_signature = create_block_sigs();
-                next_offset = self
-                    .chain_store
-                    .write_block(&block, &block_signature)
-                    .unwrap();
+
+                let entries_data = vec![0u8; 123];
+                let signatures = create_block_sigs(entries_data.len() as u32);
+                let block_frame = create_block(
+                    next_offset,
+                    i as u64,
+                    entries_data.len() as u32,
+                    signatures.frame_size() as u16,
+                    prev_block_msg,
+                    seed,
+                );
+                let block = BlockOwned::new(next_offset, block_frame, entries_data, signatures);
+                next_offset = self.stores[node_id].write_block(&block).unwrap();
             }
+        }
+
+        fn get_node(&self, id: usize) -> Node {
+            self.nodes.get(&format!("node{}", id)).unwrap().clone()
         }
     }
 
-    fn test_nodes_run_sync(
-        nodes: &mut Nodes,
-        test_node1: &mut TestNode,
-        test_node2: &mut TestNode,
+    fn extract_request_frame_sync_context(
+        sync_context: &SyncContext,
+    ) -> (NodeID, OwnedTypedFrame<chain_sync_request::Owned>) {
+        match sync_context.messages.last().unwrap() {
+            SyncContextMessage::ChainSyncRequest(to_node, req) => {
+                (to_node.clone(), req.as_owned_unsigned_framed().unwrap())
+            }
+            _other => panic!("Expected a chain sync request, got another type of message"),
+        }
+    }
+
+    fn extract_response_frame_sync_context(
+        sync_context: &SyncContext,
+    ) -> (NodeID, OwnedTypedFrame<chain_sync_response::Owned>) {
+        match sync_context.messages.last().unwrap() {
+            SyncContextMessage::ChainSyncResponse(to_node, req) => {
+                (to_node.clone(), req.as_owned_unsigned_framed().unwrap())
+            }
+            _other => panic!("Expected a chain sync response, got another type of message"),
+        }
+    }
+
+    fn test_nodes_run_sync_new(
+        cluster: &mut TestCluster,
+        node_id_a: usize,
+        node_id_b: usize,
     ) -> Result<(usize, usize), Error> {
+        let node1 = cluster.get_node(node_id_a).clone();
+        let node2 = cluster.get_node(node_id_b).clone();
+
         let mut count_1_to_2 = 0;
         let mut count_2_to_1 = 0;
 
-        let init_requests = test_node1
-            .synchronizer
-            .tick(&test_node1.chain_store, &nodes)?;
-        if init_requests.is_empty() {
+        let mut sync_context = SyncContext::new();
+        cluster.sync[node_id_a].tick(
+            &mut sync_context,
+            &cluster.stores[node_id_a],
+            &cluster.nodes,
+        )?;
+        if sync_context.messages.is_empty() {
             return Ok((count_1_to_2, count_2_to_1));
         }
 
-        let mut request = Some(init_requests[0].1.as_owned_unsigned_framed()?);
+        let (_to_node, message) = extract_request_frame_sync_context(&sync_context);
+        let mut request = Some(message);
         loop {
             count_1_to_2 += 1;
-            let node1 = nodes.get(&test_node1.node_id).unwrap();
-            let response = test_node2.synchronizer.handle_sync_request(
-                node1,
-                &mut test_node2.chain_store,
+            let mut sync_context = SyncContext::new();
+            cluster.sync[node_id_b].handle_sync_request(
+                &mut sync_context,
+                &node1,
+                &mut cluster.stores[node_id_b],
                 request.take().unwrap(),
             )?;
-
-            if let Some(response) = response {
-                count_2_to_1 += 1;
-
-                let response = response.as_owned_unsigned_framed()?;
-                let node2 = nodes.get(&test_node2.node_id).unwrap();
-                let next_request = test_node1.synchronizer.handle_sync_response(
-                    node2,
-                    &mut test_node1.chain_store,
-                    response,
-                )?;
-
-                if let Some(next_request) = next_request {
-                    request = Some(next_request.as_owned_unsigned_framed()?);
-                } else {
-                    break;
-                }
-            } else {
+            if sync_context.messages.is_empty() {
                 break;
             }
+
+            count_2_to_1 += 1;
+            let (_to_node, response) = extract_response_frame_sync_context(&sync_context);
+            let mut sync_context = SyncContext::new();
+            cluster.sync[node_id_a].handle_sync_response(
+                &mut sync_context,
+                &node2,
+                &mut cluster.stores[node_id_a],
+                response,
+            )?;
+            if sync_context.messages.is_empty() {
+                break;
+            }
+            let (_to_node, message) = extract_request_frame_sync_context(&sync_context);
+            request = Some(message);
         }
 
         Ok((count_1_to_2, count_2_to_1))
     }
 
-    fn test_nodes_expect_chain_equals(test_node1: TestNode, test_node2: TestNode) {
-        let node1_last_block = test_node1
-            .chain_store
+    fn test_nodes_expect_chain_equals_new(
+        chain1: &ChainDirectoryStore,
+        chain2: &ChainDirectoryStore,
+    ) {
+        let node1_last_block = chain1
             .get_last_block()
             .unwrap()
             .expect("Node 1 didn't have any data");
-        let node2_last_block = test_node2
-            .chain_store
+        let node2_last_block = chain2
             .get_last_block()
             .unwrap()
             .expect("Node 2 didn't have any data");
@@ -1371,6 +1349,8 @@ mod tests {
     fn create_block<B: TypedFrame<block::Owned>>(
         offset: u64,
         depth: u64,
+        entries_size: u32,
+        signatures_size: u16,
         previous_block: Option<B>,
         seed: u64,
     ) -> OwnedTypedFrame<block::Owned> {
@@ -1380,7 +1360,9 @@ mod tests {
             let mut block_builder: block::Builder = msg_builder.get_builder_typed();
             block_builder.set_offset(offset);
             block_builder.set_depth(depth);
-            block_builder.set_source_node_id(&format!("seed={}", seed));
+            block_builder.set_entries_size(entries_size);
+            block_builder.set_signatures_size(signatures_size);
+            block_builder.set_proposed_node_id(&format!("seed={}", seed));
 
             if let Some(previous_block) = previous_block {
                 let previous_block_reader: block::Reader =
@@ -1394,8 +1376,10 @@ mod tests {
         msg_builder.as_owned_framed(signer).unwrap()
     }
 
-    fn create_block_sigs() -> OwnedTypedFrame<block_signatures::Owned> {
-        let msg_builder = framed::FrameBuilder::<block_signatures::Owned>::new();
+    fn create_block_sigs(entries_size: u32) -> OwnedTypedFrame<block_signatures::Owned> {
+        let mut msg_builder = framed::FrameBuilder::<block_signatures::Owned>::new();
+        let mut block_builder = msg_builder.get_builder_typed();
+        block_builder.set_entries_size(entries_size);
 
         let signer = MultihashFrameSigner::new_sha3256();
         msg_builder.as_owned_framed(signer).unwrap()

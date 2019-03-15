@@ -2,6 +2,7 @@
 use std::time::Duration;
 use std::time::Instant;
 
+#[derive(Clone)]
 pub struct Clock {
     source: Source,
 }
@@ -16,17 +17,18 @@ impl Clock {
     #[cfg(any(test, feature = "tests_utils"))]
     pub fn new_mocked() -> Clock {
         Clock {
-            source: Source::Mocked(std::sync::RwLock::new(Instant::now())),
+            source: Source::Mocked(std::sync::Arc::new(std::sync::RwLock::new(Instant::now()))),
         }
     }
 
     #[cfg(any(test, feature = "tests_utils"))]
     pub fn new_mocked_with_instant(instant: Instant) -> Clock {
         Clock {
-            source: Source::Mocked(std::sync::RwLock::new(instant)),
+            source: Source::Mocked(std::sync::Arc::new(std::sync::RwLock::new(instant))),
         }
     }
 
+    #[inline]
     pub fn instant(&self) -> Instant {
         match &self.source {
             Source::System => Instant::now(),
@@ -49,6 +51,11 @@ impl Clock {
     }
 
     #[cfg(any(test, feature = "tests_utils"))]
+    pub fn set_instant_now(&self) {
+        self.set_instant(Instant::now());
+    }
+
+    #[cfg(any(test, feature = "tests_utils"))]
     pub fn add_instant_duration(&self, duration: Duration) {
         if let Source::Mocked(mocked_instant) = &self.source {
             let mut mocked_instant = mocked_instant.write().expect("Couldn't acquire write lock");
@@ -65,10 +72,11 @@ impl Default for Clock {
     }
 }
 
+#[derive(Clone)]
 enum Source {
     System,
     #[cfg(any(test, feature = "tests_utils"))]
-    Mocked(std::sync::RwLock<Instant>),
+    Mocked(std::sync::Arc<std::sync::RwLock<Instant>>),
 }
 
 #[cfg(test)]

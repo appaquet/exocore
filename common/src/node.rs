@@ -1,3 +1,4 @@
+use crate::serialization::framed::{FrameSigner, MultihashFrameSigner};
 use std::collections::HashMap;
 
 pub type NodeID = String;
@@ -20,6 +21,11 @@ impl Node {
     #[inline]
     pub fn id(&self) -> &NodeID {
         &self.id
+    }
+
+    pub fn frame_signer(&self) -> impl FrameSigner {
+        // TODO: Include signature, not just hash
+        MultihashFrameSigner::new_sha3256()
     }
 }
 

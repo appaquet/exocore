@@ -6,15 +6,18 @@
 struct PendingOperation {
     groupId                @0: UInt64;
     operationId            @1: UInt64;
+    nodeId                 @2: Text;
 
     operation :union {
-        entryNew           @2: OperationEntryNew;
-        blockPropose       @3: OperationBlockPropose;
-        blockSign          @4: OperationBlockSign;
-        blockRefuse        @5: OperationBlockRefuse;
+        entryNew           @3: OperationEntryNew;
+        blockPropose       @4: OperationBlockPropose;
+        blockSign          @5: OperationBlockSign;
+        blockRefuse        @6: OperationBlockRefuse;
+        pendingIgnore      @7: OperationPendingIgnore;
     }
 }
 
+# Used by transport for pending synchronization
 struct PendingOperationHeader {
     groupId                @0: UInt64;
     operationId            @1: UInt64;
@@ -22,82 +25,73 @@ struct PendingOperationHeader {
 }
 
 struct OperationEntryNew {
-    entryHeader     @0: EntryHeader;
-    entryData       @1: Data;
+    data                   @0: Data;
 }
 
 struct OperationBlockPropose {
-    offset           @0: UInt64;
-    previousOffset   @1: UInt64;
-    previousHash     @2: Data;
-    entries          @3: List(EntryHeader);
+    block                  @0: Block;
 }
 
 struct OperationBlockSign {
-    blockHeader    @0: BlockHeader;
-    signatureData  @1: Data;
+    signature              @0: BlockSignature;
 }
 
 struct OperationBlockRefuse {
-    blockHeader   @0: BlockHeader;
+    blockHeader            @0: BlockHeader;
 }
 
+struct OperationPendingIgnore {
+    groupId                @0: UInt64;
+}
 
 #
 # Chain
 #
-struct Entry {
-    id        @0: UInt64;
-    time      @1: UInt64;
-    sourceApp @2: Text;
-    type      @3: EntryType;
+struct Block { # Rename... It's not a block anymore, but a block header
+    offset                 @0: UInt64;
+    depth                  @1: UInt64;
+    previousOffset         @2: UInt64;
+    previousHash           @3: Data;
+    proposedOperationId    @4: UInt64;
+    proposedNodeId         @5: Text;
 
-    data      @4: Data;
+    entriesSize            @6: UInt32;  # Data size
+    entriesHeader          @7: List(BlockEntryHeader);
+    entriesHash            @8: Data;
+
+    signaturesSize         @9: UInt16;
 }
 
-struct EntryHeader {
-    id        @0: UInt64;
-    time      @1: UInt64;
-    sourceApp @2: Text;
-    type      @3: EntryType;
-}
-
-enum EntryType {
-    cellData      @0;
-    cellMeta      @1;
-    entryCopy     @2;
-    chainTruncate @3;
-}
-
-struct Block {
-    offset          @0: UInt64;
-    depth           @1: UInt64;
-    previousOffset  @2: UInt64;
-    previousHash    @3: Data;
-    signaturesSize  @4: UInt16;
-
-    sourceNodeId    @5: Text;
-
-    entries         @6: List(Entry);
-}
-
+# Used by transport for chain synchronization
 struct BlockHeader {
-    offset          @0: UInt64;
-    depth           @1: UInt64;
-    previousOffset  @2: UInt64;
-    previousHash    @3: Data;
-    blockSize       @4: UInt64;
-    signaturesSize  @5: UInt16;
-    hash            @6: Data;
+    offset                 @0: UInt64;
+    depth                  @1: UInt64;
+    previousOffset         @2: UInt64;
+    previousHash           @3: Data;
+    proposedOperationId    @4: UInt64;
+    proposedNodeId         @5: Text;
 
-    sourceNodeId    @7: Text;
+    blockSize              @6: UInt32;
+    blockHash              @7: Data;
+
+    entriesSize            @8: UInt32;
+    signaturesSize         @9: UInt16;
+}
+
+struct BlockEntryHeader {
+    operationId            @0: UInt64;
+    dataOffset             @1: UInt32;
+    dataSize               @2: UInt32;
 }
 
 struct BlockSignatures {
-    signatures @0: List(BlockSignature);
+    entriesSize            @0: UInt32;
+    signatures             @1: List(BlockSignature);
 }
 
+# Represents signature of the Block's frame data
 struct BlockSignature {
-    nodeId         @0: Text;
-    nodeSignature  @1: Data;
+    nodeId                 @0: Text;
+    nodeSignature          @1: Data;
 }
+

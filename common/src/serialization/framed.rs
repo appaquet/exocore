@@ -30,7 +30,7 @@ use crate::security::hash::Multihash;
 /// Used to identify a unique type id for each message and annotate each framed message.
 ///
 pub trait MessageType<'a>: capnp::traits::Owned<'a> {
-    fn message_type() -> u16;
+    const MESSAGE_TYPE: u16;
 }
 
 ///
@@ -95,7 +95,7 @@ where
     T: for<'a> MessageType<'a>,
 {
     pub fn new() -> FrameBuilder<T> {
-        let message_type = <T as MessageType>::message_type();
+        let message_type = <T as MessageType>::MESSAGE_TYPE;
         let mut builder = Builder::new_default();
         builder.init_root::<<T as capnp::traits::Owned>::Builder>();
         FrameBuilder {
@@ -355,7 +355,7 @@ where
     T: MessageType<'a>,
 {
     pub fn new(data: &'a [u8]) -> Result<TypedSliceFrame<'a, T>, Error> {
-        let expected_type = <T as MessageType>::message_type();
+        let expected_type = <T as MessageType>::MESSAGE_TYPE;
         let message = SliceFrame::new(data)?;
         if message.message_type() != expected_type {
             return Err(Error::InvalidData(format!(
@@ -375,7 +375,7 @@ where
         data: &'a [u8],
         next_offset: usize,
     ) -> Result<TypedSliceFrame<'a, T>, Error> {
-        let expected_type = <T as MessageType>::message_type();
+        let expected_type = <T as MessageType>::MESSAGE_TYPE;
         let message = SliceFrame::new_from_next_offset(data, next_offset)?;
         if message.message_type() != expected_type {
             return Err(Error::InvalidData(format!(
@@ -1080,7 +1080,7 @@ pub mod tests {
         let frame_slice = SliceFrame::new(&frame_data).unwrap();
         assert_eq!(
             frame_slice.message_type(),
-            <block::Owned as MessageType>::message_type()
+            <block::Owned as MessageType>::MESSAGE_TYPE
         );
 
         let typed_frame = frame_slice.into_typed::<block::Owned>();
@@ -1096,7 +1096,7 @@ pub mod tests {
         let owned_frame = block_builder.as_owned_unsigned_framed().unwrap();
         assert_eq!(
             owned_frame.message_type(),
-            <block::Owned as MessageType>::message_type()
+            <block::Owned as MessageType>::MESSAGE_TYPE
         );
 
         let block_reader = owned_frame.get_typed_reader().unwrap();
@@ -1195,7 +1195,7 @@ pub mod tests {
 
         // wrong offset tests
         assert!(SliceFrame::new_from_next_offset(&data[0..], 0).is_err());
-        assert!(SliceFrame::new_from_next_offset(&data[0..], 112).is_err());
+        assert!(SliceFrame::new_from_next_offset(&data[0..], 105).is_err());
 
         let frame = SliceFrame::new_from_next_offset(&data[0..], block1_metadata.frame_size())?;
         assert_eq!(frame.message_type(), 123);
@@ -1318,17 +1318,12 @@ pub mod tests {
         assert!(MultihashFrameSigner::validate(&frame).is_err());
     }
 
-    fn build_test_block(block_offset: u64, entry_id: u64) -> FrameBuilder<block::Owned> {
+    fn build_test_block(block_offset: u64, operation_id: u64) -> FrameBuilder<block::Owned> {
         let mut block_msg_builder = FrameBuilder::<block::Owned>::new();
 
-        let mut block_builder = block_msg_builder.get_builder_typed();
+        let mut block_builder: block::Builder = block_msg_builder.get_builder_typed();
         block_builder.set_offset(block_offset);
-
-        let entries = block_builder.init_entries(1);
-        {
-            let mut entry = entries.get(0);
-            entry.set_id(entry_id);
-        }
+        block_builder.set_proposed_operation_id(operation_id);
 
         block_msg_builder
     }

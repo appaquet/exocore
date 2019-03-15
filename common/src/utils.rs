@@ -6,7 +6,7 @@ pub fn setup_logging() {
     use stderrlog;
     stderrlog::new()
         .timestamp(Timestamp::Millisecond)
-        .verbosity(4)
+        .verbosity(3)
         .init()
         .unwrap();
 }
