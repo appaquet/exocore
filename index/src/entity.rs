@@ -16,20 +16,27 @@ pub enum TraitType {
     AsymmetricEdge,
 }
 
-trait Indexable {
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub enum FieldType {
+    Long,
+    Text,
+}
+
+pub trait Indexable {
     fn id_fields(&self) -> Vec<&str>;
     fn sort_fields(&self) -> Option<&str>;
 }
 
-trait FieldAdder {
-    fn with_field(&mut self, field: &str);
+pub trait FieldAdder {
+    fn with_field(&mut self, name: &str, typ: FieldType, indexed: bool, stored: bool);
 }
 
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct Field {
-    name: String,
-    typ: String,
-    indexed: bool,
-    searchable: bool
+    pub name: String,
+    pub typ: FieldType,
+    pub indexed: bool,
+    pub stored: bool
 }
 
 pub struct Entity {
@@ -39,15 +46,13 @@ pub struct Entity {
     traits: Vec<Trait>
 }
 
-static DEFAULT_FIELDS: [&'static str; 2] = ["creation_date", "modification_date"];
-
 // Concrete traits implementation
 pub struct Trait {
     pub name: String,
     pub trait_type: TraitType,
     id_fields: Vec<String>,
     sort_field: Option<String>,
-    pub fields: HashSet<String> // TODO : Change to Field type
+    pub fields: HashSet<Field>
 }
 
 impl Trait {
@@ -60,9 +65,9 @@ impl Trait {
             fields: HashSet::new()
         };
 
-        for f in DEFAULT_FIELDS.iter() {
-            t.fields.insert(f.to_string());
-        };
+        // Default fields
+        t.fields.insert(Field { name: "creation_date".to_owned(), typ: FieldType::Long, indexed: true, stored: true });
+        t.fields.insert(Field { name: "modification_date".to_owned(), typ: FieldType::Long, indexed: true, stored: true });
 
         t
     }
@@ -79,8 +84,8 @@ impl Indexable for Trait {
 }
 
 impl FieldAdder for Trait {
-    fn with_field(&mut self, field: &str) {
-        self.fields.insert(field.to_owned());
+    fn with_field(&mut self, name: &str, typ: FieldType, indexed: bool, stored: bool) {
+        self.fields.insert(Field { name: name.to_owned(), typ, indexed, stored });
     }
 }
 
@@ -91,12 +96,13 @@ mod tests {
     #[test]
     fn build_unique_trait() {
         let mut contact_trait = Trait::new(TraitType::Unique, "contact");
-        contact_trait.with_field("email");
-        contact_trait.with_field("name");
+        contact_trait.with_field("email", FieldType::Text, true, true);
+        contact_trait.with_field("name", FieldType::Text, true, true);
+
 
         assert_eq!(contact_trait.trait_type, TraitType::Unique);
         assert_eq!(contact_trait.name, "contact".to_owned());
-        assert!(contact_trait.fields.contains("email"));
-        assert!(contact_trait.fields.contains("name"));
+        assert!(contact_trait.fields.iter().any(|f| f.name == "email"));
+        assert!(contact_trait.fields.iter().any(|f| f.name == "name"));
     }
 }
