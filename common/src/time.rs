@@ -20,6 +20,13 @@ impl Clock {
         }
     }
 
+    #[cfg(any(test, feature = "tests_utils"))]
+    pub fn new_mocked_with_instant(instant: Instant) -> Clock {
+        Clock {
+            source: Source::Mocked(std::sync::RwLock::new(instant)),
+        }
+    }
+
     pub fn instant(&self) -> Instant {
         match &self.source {
             Source::System => Instant::now(),
@@ -97,6 +104,13 @@ mod tests {
         let dur_2secs = Duration::from_secs(2);
         mocked_clock.add_instant_duration(dur_2secs);
         assert_eq!(mocked_clock.instant(), new_instant + dur_2secs);
+    }
+
+    #[test]
+    fn test_mocked_with_instant() {
+        let past_instant = Instant::now() - Duration::from_secs(1);
+        let mocked_clock = Clock::new_mocked_with_instant(past_instant);
+        assert_eq!(mocked_clock.instant(), past_instant);
     }
 
     #[test]
