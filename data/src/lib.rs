@@ -11,8 +11,6 @@ extern crate log;
 extern crate itertools;
 extern crate memmap;
 #[cfg(test)]
-extern crate stderrlog;
-#[cfg(test)]
 extern crate tempdir;
 extern crate tokio;
 extern crate tokio_io;
@@ -23,4 +21,3 @@ pub mod chain;
 pub mod engine;
 pub mod pending;
 pub mod transport;
-pub mod utils;
