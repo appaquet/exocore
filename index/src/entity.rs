@@ -1,6 +1,7 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::option::Option;
 use std::vec::Vec;
+use std::time::Instant;
 
 trait Record {
     fn name(&self) -> String;
@@ -8,18 +9,19 @@ trait Record {
     fn get_field(&self, name: String) -> Option<Field>;
 }
 
-#[derive(Debug, PartialEq)]
-pub enum TraitType {
-    Unique,
-    Repeated,
-    SymmetricEdge,
-    AsymmetricEdge,
-}
-
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub enum FieldType {
     Long,
     Text,
+    Bool,
+    Date,
+}
+
+pub enum FieldValue {
+    Long(u64),
+    Text(String),
+    Bool(bool),
+    Date(Instant)
 }
 
 pub trait Indexable {
@@ -28,7 +30,7 @@ pub trait Indexable {
 }
 
 pub trait FieldAdder {
-    fn with_field(&mut self, name: &str, typ: FieldType, indexed: bool, stored: bool);
+    fn with_field(&mut self, name: &str, typ: FieldType, value: FieldValue, indexed: bool, stored: bool);
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -46,13 +48,21 @@ pub struct Entity {
     traits: Vec<Trait>
 }
 
+#[derive(Debug, PartialEq)]
+pub enum TraitType {
+    Unique,
+    Repeated,
+    SymmetricEdge,
+    AsymmetricEdge,
+}
+
 // Concrete traits implementation
 pub struct Trait {
     pub name: String,
     pub trait_type: TraitType,
     id_fields: Vec<String>,
     sort_field: Option<String>,
-    pub fields: HashSet<Field>
+    pub fields: HashMap<Field, FieldValue>
 }
 
 impl Trait {
@@ -62,12 +72,12 @@ impl Trait {
             trait_type,
             id_fields: Vec::new(),
             sort_field: None,
-            fields: HashSet::new()
+            fields: HashMap::new()
         };
 
         // Default fields
-        t.fields.insert(Field { name: "creation_date".to_owned(), typ: FieldType::Long, indexed: true, stored: true });
-        t.fields.insert(Field { name: "modification_date".to_owned(), typ: FieldType::Long, indexed: true, stored: true });
+        t.fields.insert(Field { name: "creation_date".to_owned(), typ: FieldType::Long, indexed: true, stored: true }, FieldValue::Long(0));
+        t.fields.insert(Field { name: "modification_date".to_owned(), typ: FieldType::Long, indexed: true, stored: true }, FieldValue::Long(0));
 
         t
     }
@@ -84,8 +94,8 @@ impl Indexable for Trait {
 }
 
 impl FieldAdder for Trait {
-    fn with_field(&mut self, name: &str, typ: FieldType, indexed: bool, stored: bool) {
-        self.fields.insert(Field { name: name.to_owned(), typ, indexed, stored });
+    fn with_field(&mut self, name: &str, typ: FieldType, value: FieldValue, indexed: bool, stored: bool) {
+        self.fields.insert(Field { name: name.to_owned(), typ, indexed, stored }, value);
     }
 }
 
@@ -96,13 +106,13 @@ mod tests {
     #[test]
     fn build_unique_trait() {
         let mut contact_trait = Trait::new(TraitType::Unique, "contact");
-        contact_trait.with_field("email", FieldType::Text, true, true);
-        contact_trait.with_field("name", FieldType::Text, true, true);
+        contact_trait.with_field("email", FieldType::Text, FieldValue::Text("justin.trudeau@gov.ca".to_string()), true, true);
+        contact_trait.with_field("name", FieldType::Text, FieldValue::Text("Justin Trudeau".to_string()), true, true);
 
 
         assert_eq!(contact_trait.trait_type, TraitType::Unique);
         assert_eq!(contact_trait.name, "contact".to_owned());
-        assert!(contact_trait.fields.iter().any(|f| f.name == "email"));
-        assert!(contact_trait.fields.iter().any(|f| f.name == "name"));
+        assert!(contact_trait.fields.iter().any(|(f, v)| f.name == "email"));
+        assert!(contact_trait.fields.iter().any(|(f, v)| f.name == "name"));
     }
 }
