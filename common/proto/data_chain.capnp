@@ -29,7 +29,7 @@ struct OperationEntryNew {
 }
 
 struct OperationBlockPropose {
-    block                  @0: Block;
+    block                  @0: Data; # frame of type Block
 }
 
 struct OperationBlockSign {
@@ -37,7 +37,6 @@ struct OperationBlockSign {
 }
 
 struct OperationBlockRefuse {
-    blockHeader            @0: BlockHeader;
 }
 
 struct OperationPendingIgnore {

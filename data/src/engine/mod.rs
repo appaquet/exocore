@@ -17,7 +17,7 @@ use exocore_common::serialization::capnp;
 use exocore_common::serialization::framed::{
     FrameBuilder, MessageType, OwnedTypedFrame, TypedSliceFrame,
 };
-use exocore_common::serialization::protos::data_chain_capnp::{pending_operation};
+use exocore_common::serialization::protos::data_chain_capnp::pending_operation;
 use exocore_common::serialization::protos::data_transport_capnp::{
     chain_sync_request, chain_sync_response, envelope, pending_sync_request,
 };
@@ -29,6 +29,7 @@ use crate::chain::{Block, BlockOffset};
 use crate::pending;
 use crate::transport;
 use crate::transport::OutMessage;
+use exocore_common::time::Clock;
 
 mod chain_sync;
 mod commit_manager;
@@ -74,6 +75,7 @@ where
 {
     config: Config,
     started: bool,
+    clock: Clock,
     transport: Option<T>,
     inner: Arc<RwLock<Inner<CS, PS>>>,
     completion_receiver: oneshot::Receiver<Result<(), Error>>,
@@ -88,6 +90,7 @@ where
     pub fn new(
         config: Config,
         node_id: NodeID,
+        clock: Clock,
         transport: T,
         chain_store: CS,
         pending_store: PS,
@@ -99,8 +102,11 @@ where
             pending_sync::Synchronizer::new(node_id.clone(), config.pending_synchronizer_config);
         let chain_synchronizer =
             chain_sync::Synchronizer::new(node_id.clone(), config.chain_synchronizer_config);
-        let commit_manager =
-            commit_manager::CommitManager::new(node_id.clone(), config.commit_manager_config);
+        let commit_manager = commit_manager::CommitManager::new(
+            node_id.clone(),
+            config.commit_manager_config,
+            clock.clone(),
+        );
 
         let inner = Arc::new(RwLock::new(Inner {
             config,
@@ -119,6 +125,7 @@ where
         Engine {
             config,
             started: false,
+            clock,
             inner,
             transport: Some(transport),
             completion_receiver,

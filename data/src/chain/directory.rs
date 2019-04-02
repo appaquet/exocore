@@ -420,7 +420,9 @@ impl DirectorySegment {
         // iterate through segments and find the last block and its offset
         let blocks_iterator = ChainBlockIterator::new(&segment_file.mmap[..]);
         let last_block = blocks_iterator.last().ok_or_else(|| {
-            Error::Integrity(format!("Couldn't find last block of segment: no blocks returned by iterator"))
+            Error::Integrity(
+                "Couldn't find last block of segment: no blocks returned by iterator".to_string()
+            )
         })?;
 
         let next_block_offset = last_block.offset + last_block.total_size() as BlockOffset;
@@ -713,8 +715,6 @@ mod tests {
     use super::*;
     use exocore_common::range;
     use exocore_common::serialization::framed::TypedFrame;
-
-    use super::*;
 
     #[test]
     fn directory_chain_create_and_open() -> Result<(), failure::Error> {
@@ -1093,10 +1093,14 @@ mod tests {
         let node1 = Node::new("node1".to_string());
         nodes.add(node1.clone());
 
+        // only true for tests
+        let operation_id = offset as u64;
+
         let mut operations = Vec::new();
-        let operation = crate::pending::PendingOperation::new_entry(b"some_data")
-            .as_owned_framed(node1.frame_signer())
-            .unwrap();
+        let operation =
+            crate::pending::PendingOperation::new_entry(operation_id, "node1", b"some_data")
+                .as_owned_framed(node1.frame_signer())
+                .unwrap();
         operations.push(operation);
 
         BlockOwned::new_from_operations(

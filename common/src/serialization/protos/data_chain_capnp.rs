@@ -1116,8 +1116,10 @@ pub mod operation_block_propose {
             self.reader.total_size()
         }
         #[inline]
-        pub fn get_block(self) -> ::capnp::Result<crate::data_chain_capnp::block::Reader<'a>> {
-            ::capnp::traits::FromPointerReader::get_from_pointer(&self.reader.get_pointer_field(0))
+        pub fn get_block(self) -> ::capnp::Result<::capnp::data::Reader<'a>> {
+            self.reader
+                .get_pointer_field(0)
+                .get_data(::std::ptr::null(), 0)
         }
         pub fn has_block(&self) -> bool {
             !self.reader.get_pointer_field(0).is_null()
@@ -1197,23 +1199,18 @@ pub mod operation_block_propose {
             self.builder.into_reader().total_size()
         }
         #[inline]
-        pub fn get_block(self) -> ::capnp::Result<crate::data_chain_capnp::block::Builder<'a>> {
-            ::capnp::traits::FromPointerBuilder::get_from_pointer(self.builder.get_pointer_field(0))
+        pub fn get_block(self) -> ::capnp::Result<::capnp::data::Builder<'a>> {
+            self.builder
+                .get_pointer_field(0)
+                .get_data(::std::ptr::null(), 0)
         }
         #[inline]
-        pub fn set_block<'b>(
-            &mut self,
-            value: crate::data_chain_capnp::block::Reader<'b>,
-        ) -> ::capnp::Result<()> {
-            ::capnp::traits::SetPointerBuilder::set_pointer_builder(
-                self.builder.get_pointer_field(0),
-                value,
-                false,
-            )
+        pub fn set_block(&mut self, value: ::capnp::data::Reader) {
+            self.builder.get_pointer_field(0).set_data(value);
         }
         #[inline]
-        pub fn init_block(self) -> crate::data_chain_capnp::block::Builder<'a> {
-            ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(0), 0)
+        pub fn init_block(self, size: u32) -> ::capnp::data::Builder<'a> {
+            self.builder.get_pointer_field(0).init_data(size)
         }
         pub fn has_block(&self) -> bool {
             !self.builder.get_pointer_field(0).is_null()
@@ -1230,11 +1227,7 @@ pub mod operation_block_propose {
             }
         }
     }
-    impl Pipeline {
-        pub fn get_block(&self) -> crate::data_chain_capnp::block::Pipeline {
-            ::capnp::capability::FromTypelessPipeline::new(self._typeless.get_pointer_field(0))
-        }
-    }
+    impl Pipeline {}
     mod _private {
         use capnp::private::layout;
         pub const STRUCT_SIZE: layout::StructSize = layout::StructSize {
@@ -1505,15 +1498,6 @@ pub mod operation_block_refuse {
         pub fn total_size(&self) -> ::capnp::Result<::capnp::MessageSize> {
             self.reader.total_size()
         }
-        #[inline]
-        pub fn get_block_header(
-            self,
-        ) -> ::capnp::Result<crate::data_chain_capnp::block_header::Reader<'a>> {
-            ::capnp::traits::FromPointerReader::get_from_pointer(&self.reader.get_pointer_field(0))
-        }
-        pub fn has_block_header(&self) -> bool {
-            !self.reader.get_pointer_field(0).is_null()
-        }
     }
 
     pub struct Builder<'a> {
@@ -1588,30 +1572,6 @@ pub mod operation_block_refuse {
         pub fn total_size(&self) -> ::capnp::Result<::capnp::MessageSize> {
             self.builder.into_reader().total_size()
         }
-        #[inline]
-        pub fn get_block_header(
-            self,
-        ) -> ::capnp::Result<crate::data_chain_capnp::block_header::Builder<'a>> {
-            ::capnp::traits::FromPointerBuilder::get_from_pointer(self.builder.get_pointer_field(0))
-        }
-        #[inline]
-        pub fn set_block_header<'b>(
-            &mut self,
-            value: crate::data_chain_capnp::block_header::Reader<'b>,
-        ) -> ::capnp::Result<()> {
-            ::capnp::traits::SetPointerBuilder::set_pointer_builder(
-                self.builder.get_pointer_field(0),
-                value,
-                false,
-            )
-        }
-        #[inline]
-        pub fn init_block_header(self) -> crate::data_chain_capnp::block_header::Builder<'a> {
-            ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(0), 0)
-        }
-        pub fn has_block_header(&self) -> bool {
-            !self.builder.get_pointer_field(0).is_null()
-        }
     }
 
     pub struct Pipeline {
@@ -1624,16 +1584,12 @@ pub mod operation_block_refuse {
             }
         }
     }
-    impl Pipeline {
-        pub fn get_block_header(&self) -> crate::data_chain_capnp::block_header::Pipeline {
-            ::capnp::capability::FromTypelessPipeline::new(self._typeless.get_pointer_field(0))
-        }
-    }
+    impl Pipeline {}
     mod _private {
         use capnp::private::layout;
         pub const STRUCT_SIZE: layout::StructSize = layout::StructSize {
             data: 0,
-            pointers: 1,
+            pointers: 0,
         };
         pub const TYPE_ID: u64 = 0xa331_e858_deb0_3ce5;
     }

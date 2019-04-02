@@ -6,6 +6,7 @@ use tempdir;
 use tokio::runtime::Runtime;
 
 use exocore_common::node::{Node, Nodes};
+use exocore_common::time::Clock;
 use exocore_data::chain::Store;
 use exocore_data::{
     ChainDirectoryConfig, ChainDirectoryStore, Engine, EngineConfig, MemoryPendingStore,
@@ -37,9 +38,12 @@ fn test_engine_integration_single_node() -> Result<(), failure::Error> {
 
     let pending = MemoryPendingStore::new();
 
+    let clock = Clock::new();
+
     let mut engine = Engine::new(
         engine_config,
         "node1".to_string(),
+        clock,
         transport,
         chain,
         pending,
@@ -70,7 +74,7 @@ fn test_engine_integration_single_node() -> Result<(), failure::Error> {
         "i love jello".as_bytes().to_vec(),
     ))?;
 
-    std::thread::sleep(Duration::from_millis(300));
+    std::thread::sleep(Duration::from_millis(1000));
 
     let pending_operations = engine_handle.get_pending_operations(..)?;
     info!("Got {} pending op", pending_operations.len());

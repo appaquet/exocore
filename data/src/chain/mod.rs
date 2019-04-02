@@ -242,7 +242,7 @@ impl BlockOwned {
         block_builder.set_previous_offset(previous_offset);
         block_builder.set_previous_hash(previous_hash);
         block_builder.set_proposed_operation_id(proposed_operation_id);
-        block_builder.set_proposed_node_id(&node.id);
+        block_builder.set_proposed_node_id(&node.id());
         block_builder.set_entries_size(entries_data.len() as u32);
         block_builder.set_entries_hash(&hasher.into_multihash_bytes());
 
@@ -320,7 +320,11 @@ impl<'a> BlockRef<'a> {
         let signatures_offset = entries_offset + entries_size;
 
         if signatures_offset >= data.len() {
-            return Err(Error::OutOfBound(format!("Signature offset {} is after data len {}", signatures_offset, data.len())));
+            return Err(Error::OutOfBound(format!(
+                "Signature offset {} is after data len {}",
+                signatures_offset,
+                data.len()
+            )));
         }
 
         let entries_data = &data[entries_offset..entries_offset + entries_size];
@@ -501,8 +505,8 @@ mod tests {
         let first_block = BlockOwned::new_genesis(&nodes, &node1)?;
 
         let mut operations: Vec<OwnedTypedFrame<pending_operation::Owned>> = Vec::new();
-        let operation =
-            PendingOperation::new_entry(b"some_data").as_owned_framed(node1.frame_signer())?;
+        let operation = PendingOperation::new_entry(123, "node1", b"some_data")
+            .as_owned_framed(node1.frame_signer())?;
         operations.push(operation);
         let second_block = BlockOwned::new_from_previous_and_operations(
             &nodes,
@@ -574,9 +578,9 @@ mod tests {
 
         // 5 operations
         let mut operations: Vec<OwnedTypedFrame<pending_operation::Owned>> = Vec::new();
-        for _i in 0..5 {
-            let operation =
-                PendingOperation::new_entry(b"op1").as_owned_framed(node1.frame_signer())?;
+        for i in 0..5 {
+            let operation = PendingOperation::new_entry(i, "node1", b"op1")
+                .as_owned_framed(node1.frame_signer())?;
             operations.push(operation);
         }
         let block = BlockOwned::new_from_previous_and_operations(

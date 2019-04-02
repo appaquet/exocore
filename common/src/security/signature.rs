@@ -1,4 +1,3 @@
-
 pub struct Message {}
 
 pub struct Signature {
@@ -30,4 +29,3 @@ impl Signature {
         unimplemented!()
     }
 }
-

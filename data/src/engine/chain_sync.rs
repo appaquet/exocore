@@ -382,7 +382,7 @@ impl<CS: Store> Synchronizer<CS> {
         let mut data_size = 0;
         let blocks = blocks_iter
             .take_while(|block| {
-                data_size += block.block.frame_size() + block.signatures.frame_size();
+                data_size += block.total_size();
                 data_size < config.blocks_max_send_size
             })
             .collect::<Vec<_>>();
@@ -737,8 +737,8 @@ impl BlockHeader {
     #[inline]
     fn next_offset(&self) -> chain::BlockOffset {
         self.offset
-            + self.block_size as BlockOffset
-            + self.entries_size as BlockOffset
+            + chain::BlockOffset::from(self.block_size)
+            + chain::BlockOffset::from(self.entries_size)
             + chain::BlockOffset::from(self.signatures_size)
     }
 

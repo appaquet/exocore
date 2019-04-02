@@ -1,6 +1,8 @@
 #[cfg(any(test, feature = "tests_utils"))]
 use std::time::Duration;
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+
+use crate::node::Node;
 
 #[derive(Clone)]
 pub struct Clock {
@@ -38,6 +40,13 @@ impl Clock {
                 *mocked_instant
             }
         }
+    }
+
+    pub fn consistent_time(&self, _node: &Node) -> u64 {
+        // TODO: This is foobar
+        // TODO: This should be in Cell ?
+        let elaps = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        elaps.as_secs() * 1000 + u64::from(elaps.subsec_millis())
     }
 
     #[cfg(any(test, feature = "tests_utils"))]

@@ -3,7 +3,7 @@ extern crate criterion_bencher_compat;
 
 use criterion_bencher_compat::{black_box, Bencher};
 
-use exocore_common::data_chain_capnp::{block};
+use exocore_common::data_chain_capnp::block;
 use exocore_common::serialization::framed::{Frame, FrameBuilder, OwnedFrame, SliceFrame};
 
 fn bench_build_message(b: &mut Bencher) {

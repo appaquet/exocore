@@ -40,3 +40,4 @@ steps:
       docker run --security-opt seccomp=unconfined --cpuset-cpus="0" -v "$PWD:/volume" xd009642/tarpaulin cargo tarpaulin --exclude-files=3rd --exclude-files="*_capnp.rs" --all --out Xml -v  -- --test-threads=1
       bash <(curl -s https://codecov.io/bash)
     displayName: 'Code coverage'
+

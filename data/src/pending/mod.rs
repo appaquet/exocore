@@ -2,8 +2,9 @@ use std::ops::RangeBounds;
 use std::sync::Arc;
 use std::vec::Vec;
 
-use exocore_common::data_chain_capnp::{operation_entry_new, pending_operation};
-use exocore_common::serialization::framed::FrameBuilder;
+use exocore_common::data_chain_capnp::{block, block_signature, pending_operation};
+use exocore_common::security::signature::Signature;
+use exocore_common::serialization::framed::{FrameBuilder, TypedFrame};
 use exocore_common::serialization::protos::{GroupID, OperationID};
 use exocore_common::serialization::{capnp, framed};
 
@@ -64,17 +65,74 @@ pub enum OperationType {
 pub struct PendingOperation {}
 
 impl PendingOperation {
-    pub fn new_entry(data: &[u8]) -> FrameBuilder<pending_operation::Owned> {
+    pub fn new_entry(
+        operation_id: OperationID,
+        node_id: &str,
+        data: &[u8],
+    ) -> FrameBuilder<pending_operation::Owned> {
         let mut frame_builder = FrameBuilder::new();
-        let operation_builder: pending_operation::Builder = frame_builder.get_builder_typed();
 
-        let inner_operation_builder: pending_operation::operation::Builder =
-            operation_builder.init_operation();
-        let mut new_entry_builder: operation_entry_new::Builder =
-            inner_operation_builder.init_entry_new();
+        let mut operation_builder: pending_operation::Builder = frame_builder.get_builder_typed();
+        operation_builder.set_operation_id(operation_id);
+        operation_builder.set_group_id(operation_id);
+        operation_builder.set_node_id(node_id);
+
+        let inner_operation_builder = operation_builder.init_operation();
+
+        let mut new_entry_builder = inner_operation_builder.init_entry_new();
         new_entry_builder.set_data(data);
 
         frame_builder
+    }
+
+    pub fn new_signature_for_block<B>(
+        group_id: OperationID,
+        operation_id: OperationID,
+        node_id: &str,
+        block: B,
+    ) -> Result<FrameBuilder<pending_operation::Owned>, Error>
+    where
+        B: TypedFrame<block::Owned>,
+    {
+        let mut frame_builder = FrameBuilder::new();
+
+        let mut operation_builder: pending_operation::Builder = frame_builder.get_builder_typed();
+        operation_builder.set_operation_id(operation_id);
+        operation_builder.set_group_id(group_id);
+        operation_builder.set_node_id(node_id);
+
+        let inner_operation_builder = operation_builder.init_operation();
+        let new_sig_builder = inner_operation_builder.init_block_sign();
+
+        // TODO: Create signature for real
+        let signature = Signature::empty();
+        let _block_hash = block.signature_data().ok_or_else(|| {
+            Error::Other("Tried to create a signature from a block without hash".to_string())
+        })?;
+
+        let mut sig_builder: block_signature::Builder = new_sig_builder.init_signature();
+        sig_builder.set_node_id(node_id);
+        sig_builder.set_node_signature(signature.get_bytes());
+
+        Ok(frame_builder)
+    }
+
+    pub fn new_refusal(
+        group_id: OperationID,
+        operation_id: OperationID,
+        node_id: &str,
+    ) -> Result<FrameBuilder<pending_operation::Owned>, Error> {
+        let mut frame_builder = FrameBuilder::new();
+
+        let mut operation_builder: pending_operation::Builder = frame_builder.get_builder_typed();
+        operation_builder.set_operation_id(operation_id);
+        operation_builder.set_group_id(group_id);
+        operation_builder.set_node_id(node_id);
+
+        let inner_operation_builder = operation_builder.init_operation();
+        let _new_refuse_builder = inner_operation_builder.init_block_refuse();
+
+        Ok(frame_builder)
     }
 }
 
@@ -87,6 +145,8 @@ pub enum Error {
     Serialization(#[fail(cause)] framed::Error),
     #[fail(display = "Field is not in capnp schema: code={}", _0)]
     SerializationNotInSchema(u16),
+    #[fail(display = "Got an error: {}", _0)]
+    Other(String),
 }
 
 impl Error {
