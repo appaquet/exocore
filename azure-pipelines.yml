@@ -18,6 +18,8 @@ steps:
 
       export PATH=$PATH:$HOME/.cargo/bin
       rustc --version && cargo --version
+      rustup component add rustfmt
+      rustup component add clippy
     displayName: 'Install dependencies'
 
   - script: |
