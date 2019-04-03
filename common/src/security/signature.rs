@@ -1,5 +1,6 @@
-pub struct Message {}
+use crate::node::Node;
 
+#[derive(Clone)]
 pub struct Signature {
     bytes: Vec<u8>,
 }
@@ -25,7 +26,9 @@ impl Signature {
         &self.bytes
     }
 
-    pub fn validate(&self, _message: &Message) -> bool {
-        unimplemented!()
+    pub fn validate(&self, _node: &Node, _message: &[u8]) -> bool {
+        // TODO: Validate for real against node's public signature
+
+        true
     }
 }

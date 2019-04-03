@@ -2,6 +2,7 @@ use std::ops::RangeBounds;
 use std::sync::Arc;
 use std::vec::Vec;
 
+use crate::chain;
 use exocore_common::data_chain_capnp::{block, block_signature, pending_operation};
 use exocore_common::security::signature::Signature;
 use exocore_common::serialization::framed::{FrameBuilder, TypedFrame};
@@ -18,6 +19,8 @@ pub trait Store: Send + Sync + 'static {
         &mut self,
         operation: framed::OwnedTypedFrame<pending_operation::Owned>,
     ) -> Result<(), Error>;
+
+    fn get_operation(&self, operation_id: OperationID) -> Result<Option<StoredOperation>, Error>;
 
     fn get_group_operations(
         &self,
@@ -85,11 +88,30 @@ impl PendingOperation {
         frame_builder
     }
 
+    pub fn new_block_proposal<B: chain::Block>(
+        operation_id: OperationID,
+        node_id: &str,
+        block: &B,
+    ) -> Result<FrameBuilder<pending_operation::Owned>, Error> {
+        let mut frame_builder = FrameBuilder::new();
+
+        let mut operation_builder: pending_operation::Builder = frame_builder.get_builder_typed();
+        operation_builder.set_operation_id(operation_id);
+        operation_builder.set_group_id(operation_id);
+        operation_builder.set_node_id(node_id);
+
+        let inner_operation_builder = operation_builder.init_operation();
+        let mut new_block_builder = inner_operation_builder.init_block_propose();
+        new_block_builder.set_block(&block.as_data_vec());
+
+        Ok(frame_builder)
+    }
+
     pub fn new_signature_for_block<B>(
         group_id: OperationID,
         operation_id: OperationID,
         node_id: &str,
-        block: B,
+        block: &B,
     ) -> Result<FrameBuilder<pending_operation::Owned>, Error>
     where
         B: TypedFrame<block::Owned>,

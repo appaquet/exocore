@@ -649,6 +649,50 @@ where
     }
 }
 
+impl<T> TypedFrame<T> for std::sync::Arc<OwnedTypedFrame<T>>
+where
+    T: for<'a> MessageType<'a>,
+{
+    fn message_type(&self) -> u16 {
+        <OwnedTypedFrame<T>>::message_type(self)
+    }
+
+    fn message_size(&self) -> usize {
+        <OwnedTypedFrame<T>>::message_size(self)
+    }
+
+    fn frame_size(&self) -> usize {
+        <OwnedTypedFrame<T>>::frame_size(self)
+    }
+
+    fn frame_data(&self) -> &[u8] {
+        <OwnedTypedFrame<T>>::frame_data(self)
+    }
+
+    fn get_typed_reader(&self) -> Result<<T as capnp::traits::Owned>::Reader, Error> {
+        <OwnedTypedFrame<T>>::get_typed_reader(self)
+    }
+
+    fn to_owned(&self) -> OwnedTypedFrame<T> {
+        <OwnedTypedFrame<T>>::to_owned(self)
+    }
+}
+
+impl<T> SignedFrame for std::sync::Arc<OwnedTypedFrame<T>>
+where
+    T: for<'b> MessageType<'b>,
+{
+    #[inline]
+    fn message_data(&self) -> &[u8] {
+        <OwnedTypedFrame<T>>::message_data(self)
+    }
+
+    #[inline]
+    fn signature_data(&self) -> Option<&[u8]> {
+        <OwnedTypedFrame<T>>::signature_data(self)
+    }
+}
+
 ///
 /// Framed message writer that wraps a slice, that should have enough capacity, and exposes a Write implementation used by capnp
 ///
@@ -972,9 +1016,9 @@ impl MultihashFrameSigner<crate::security::hash::Sha3Hasher> {
     pub fn validate<S: SignedFrame>(frame: &S) -> Result<Multihash, Error> {
         frame
             .signature_data()
-            .ok_or(Error::InvalidSignature(
-                "Frame doesn't contain signature data".to_string(),
-            ))
+            .ok_or_else(|| {
+                Error::InvalidSignature("Frame doesn't contain signature data".to_string())
+            })
             .and_then(|data| {
                 let hash_msg = Multihash::from_bytes(data.to_vec()).map_err(|err| {
                     Error::InvalidSignature(format!(

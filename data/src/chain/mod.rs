@@ -4,10 +4,10 @@ use exocore_common::data_chain_capnp::{
     block, block_entry_header, block_signature, block_signatures,
 };
 use exocore_common::node::{Node, NodeID, Nodes};
-use exocore_common::security::hash::{Sha3Hasher, StreamHasher};
+use exocore_common::security::hash::{Multihash, Sha3Hasher, StreamHasher};
 use exocore_common::security::signature::Signature;
 use exocore_common::serialization::framed::{
-    FrameBuilder, OwnedTypedFrame, SignedFrame, TypedFrame, TypedSliceFrame,
+    FrameBuilder, OwnedFrame, OwnedTypedFrame, SignedFrame, TypedFrame, TypedSliceFrame,
 };
 use exocore_common::serialization::protos::data_chain_capnp::pending_operation;
 use exocore_common::serialization::{capnp, framed};
@@ -65,7 +65,7 @@ pub trait Block {
     }
 
     #[inline]
-    fn copy_into(&self, data: &mut [u8]) {
+    fn copy_data_into(&self, data: &mut [u8]) {
         let entries_data = self.entries_data();
         let entries_offset = self.block().frame_size();
         let signatures_offset = entries_offset + entries_data.len();
@@ -73,6 +73,15 @@ pub trait Block {
         self.block().copy_into(data);
         (&mut data[entries_offset..signatures_offset]).copy_from_slice(entries_data);
         self.signatures().copy_into(&mut data[signatures_offset..]);
+    }
+
+    fn as_data_vec(&self) -> Vec<u8> {
+        vec![
+            self.block().frame_data(),
+            self.entries_data(),
+            self.signatures().frame_data(),
+        ]
+        .concat()
     }
 
     fn entries_iter(&self) -> Result<BlockEntriesIterator, Error> {
@@ -89,11 +98,6 @@ pub trait Block {
             entries_data: self.entries_data(),
             last_error: None,
         })
-    }
-
-    fn validate(&self) -> Result<(), Error> {
-        // TODO: check signature size in block and signatures
-        Ok(())
     }
 }
 
@@ -162,36 +166,36 @@ impl BlockOwned {
     }
 
     pub fn new_genesis(nodes: &Nodes, node: &Node) -> Result<BlockOwned, Error> {
-        let operations: Vec<OwnedTypedFrame<pending_operation::Owned>> = Vec::new();
-        let block =
-            Self::new_from_operations(nodes, node, 0, 0, 0, &[], 0, operations.into_iter())?;
+        let entries = BlockEntries::empty();
+        let block = Self::new_with_prev_info(nodes, node, 0, 0, 0, &[], 0, entries)?;
 
         // TODO: Add master signature
 
         Ok(block)
     }
 
-    pub fn new_from_previous_and_operations<B, I, O>(
+    pub fn new_with_prev_block<B>(
         nodes: &Nodes,
         node: &Node,
-        offset: BlockOffset,
-        depth: BlockDepth,
         previous_block: &B,
         proposed_operation_id: u64,
-        operations: I,
+        entries: BlockEntries,
     ) -> Result<BlockOwned, Error>
     where
         B: Block,
-        I: Iterator<Item = O>,
-        O: TypedFrame<pending_operation::Owned>,
     {
+        let previous_block_reader = previous_block.block().get_typed_reader()?;
+
         let previous_offset = previous_block.offset();
         let previous_hash = previous_block
             .block()
             .signature_data()
             .expect("Previous block didn't have a signature");
 
-        Self::new_from_operations(
+        let offset = previous_block.next_offset();
+        let depth = previous_block_reader.get_depth();
+
+        Self::new_with_prev_info(
             nodes,
             node,
             offset,
@@ -199,11 +203,13 @@ impl BlockOwned {
             previous_offset,
             previous_hash,
             proposed_operation_id,
-            operations,
+            entries,
         )
     }
 
-    pub fn new_from_operations<I, O>(
+    // TODO: Should be fixed once we do https://github.com/appaquet/exocore/issues/37
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_prev_info(
         nodes: &Nodes,
         node: &Node,
         offset: BlockOffset,
@@ -211,28 +217,9 @@ impl BlockOwned {
         previous_offset: BlockOffset,
         previous_hash: &[u8],
         proposed_operation_id: u64,
-        operations: I,
-    ) -> Result<BlockOwned, Error>
-    where
-        I: Iterator<Item = O>,
-        O: TypedFrame<pending_operation::Owned>,
-    {
-        let mut hasher = Sha3Hasher::new_256();
-        let mut entries_header = Vec::new();
-        let mut entries_data = Vec::new();
-        for operation in operations {
-            let operation_reader = operation.get_typed_reader()?;
-            let offset = entries_data.len();
-            let data = operation.frame_data();
-            hasher.consume(data);
-            entries_data.extend_from_slice(data);
-
-            entries_header.push(EntryHeader {
-                operation_id: operation_reader.get_operation_id(),
-                data_offset: offset as u32,
-                data_size: data.len() as u32,
-            });
-        }
+        entries: BlockEntries,
+    ) -> Result<BlockOwned, Error> {
+        let entries_data_size = entries.data.len() as u32;
 
         // initialize block
         let mut block_frame_builder = FrameBuilder::<block::Owned>::new();
@@ -243,14 +230,13 @@ impl BlockOwned {
         block_builder.set_previous_hash(previous_hash);
         block_builder.set_proposed_operation_id(proposed_operation_id);
         block_builder.set_proposed_node_id(&node.id());
-        block_builder.set_entries_size(entries_data.len() as u32);
-        block_builder.set_entries_hash(&hasher.into_multihash_bytes());
+        block_builder.set_entries_size(entries_data_size);
+        block_builder.set_entries_hash(&entries.multihash_bytes);
 
-        // TODO: Operations should be sorted
         let mut entries_builder = block_builder
             .reborrow()
-            .init_entries_header(entries_header.len() as u32);
-        for (i, header_builder) in entries_header.iter().enumerate() {
+            .init_entries_header(entries.headers.len() as u32);
+        for (i, header_builder) in entries.headers.iter().enumerate() {
             let mut entry_builder = entries_builder.reborrow().get(i as u32);
             header_builder.copy_into_builder(&mut entry_builder);
         }
@@ -259,7 +245,7 @@ impl BlockOwned {
         let mut signature_frame_builder =
             BlockSignatures::empty_signatures_for_nodes(nodes).to_frame_builder();
         let mut signature_builder = signature_frame_builder.get_builder_typed();
-        signature_builder.set_entries_size(entries_data.len() as u32);
+        signature_builder.set_entries_size(entries_data_size);
         let signature_frame = signature_frame_builder.as_owned_framed(node.frame_signer())?;
 
         // set signature size in block
@@ -269,7 +255,7 @@ impl BlockOwned {
         Ok(BlockOwned {
             offset,
             block: block_frame,
-            entries_data,
+            entries_data: entries.data,
             signatures: signature_frame,
         })
     }
@@ -392,11 +378,84 @@ impl EntryHeader {
 ///
 ///
 ///
+pub struct BlockEntries {
+    multihash_bytes: Vec<u8>,
+    headers: Vec<EntryHeader>,
+    data: Vec<u8>,
+}
+
+impl BlockEntries {
+    fn empty() -> BlockEntries {
+        BlockEntries {
+            multihash_bytes: Vec::new(),
+            headers: Vec::new(),
+            data: Vec::new(),
+        }
+    }
+
+    pub fn from_operations<I, F>(sorted_operations: I) -> Result<BlockEntries, Error>
+    where
+        I: Iterator<Item = F>,
+        F: TypedFrame<pending_operation::Owned>,
+    {
+        let mut hasher = Sha3Hasher::new_256();
+        let mut headers = Vec::new();
+        let mut data = Vec::new();
+
+        for operation in sorted_operations {
+            let operation_reader = operation.get_typed_reader()?;
+            let offset = data.len();
+            let entry_data = operation.frame_data();
+            hasher.consume(entry_data);
+            data.extend_from_slice(entry_data);
+
+            headers.push(EntryHeader {
+                operation_id: operation_reader.get_operation_id(),
+                data_offset: offset as u32,
+                data_size: (data.len() - offset) as u32,
+            });
+        }
+
+        Ok(BlockEntries {
+            multihash_bytes: hasher.into_multihash_bytes(),
+            headers,
+            data,
+        })
+    }
+
+    pub fn hash_operations<I, F>(sorted_operations: I) -> Result<Multihash, Error>
+    where
+        I: Iterator<Item = F>,
+        F: TypedFrame<pending_operation::Owned>,
+    {
+        let mut hasher = Sha3Hasher::new_256();
+        for operation in sorted_operations {
+            hasher.consume_signed_frame(&operation);
+        }
+        Ok(hasher.into_multihash())
+    }
+
+    pub fn multihash_bytes(&self) -> &[u8] {
+        &self.multihash_bytes
+    }
+
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+}
+
+///
+///
+///
 pub struct BlockSignatures {
     signatures: Vec<BlockSignature>,
 }
 
 impl BlockSignatures {
+    pub fn new_from_signatures(signatures: Vec<BlockSignature>) -> BlockSignatures {
+        BlockSignatures { signatures }
+    }
+
     pub fn empty_signatures_for_nodes(nodes: &Nodes) -> BlockSignatures {
         let signatures = nodes
             .nodes()
@@ -420,6 +479,38 @@ impl BlockSignatures {
         }
 
         frame_builder
+    }
+
+    pub fn to_frame_for_existing_block(
+        &self,
+        node: &Node,
+        block_reader: &block::Reader,
+    ) -> Result<OwnedTypedFrame<block_signatures::Owned>, Error> {
+        let expected_signatures_size = usize::from(block_reader.get_signatures_size());
+
+        let mut signatures_frame_builder = self.to_frame_builder();
+        let mut signatures_builder: block_signatures::Builder =
+            signatures_frame_builder.get_builder_typed();
+        signatures_builder.set_entries_size(block_reader.get_entries_size());
+        let signatures_frame = signatures_frame_builder.as_owned_framed(node.frame_signer())?;
+
+        // make sure that the signatures frame size is not higher than pre-allocated space in block
+        if signatures_frame.frame_size() > expected_signatures_size {
+            return Err(Error::Integrity(format!(
+                "Block local signatures are taking more space than allocated space ({} > {})",
+                signatures_frame.frame_size(),
+                block_reader.get_signatures_size()
+            )));
+        }
+
+        // build a signatures frame that has the right amount of space as defined at the block
+        let mut signatures_data = signatures_frame.frame_data().to_vec();
+        while signatures_data.len() != expected_signatures_size {
+            signatures_data.push(0);
+        }
+        let signatures_frame_padded = OwnedFrame::new(signatures_data)?.into_typed();
+
+        Ok(signatures_frame_padded)
     }
 }
 
@@ -504,22 +595,15 @@ mod tests {
 
         let first_block = BlockOwned::new_genesis(&nodes, &node1)?;
 
-        let mut operations: Vec<OwnedTypedFrame<pending_operation::Owned>> = Vec::new();
-        let operation = PendingOperation::new_entry(123, "node1", b"some_data")
-            .as_owned_framed(node1.frame_signer())?;
-        operations.push(operation);
-        let second_block = BlockOwned::new_from_previous_and_operations(
-            &nodes,
-            &node1,
-            first_block.next_offset(),
-            1,
-            &first_block,
-            0,
-            operations.into_iter(),
-        )?;
+        let operations = vec![PendingOperation::new_entry(123, "node1", b"some_data")
+            .as_owned_framed(node1.frame_signer())?];
+        let entries = BlockEntries::from_operations(operations.into_iter())?;
+
+        let second_block =
+            BlockOwned::new_with_prev_block(&nodes, &node1, &first_block, 0, entries)?;
 
         let mut data = [0u8; 5000];
-        second_block.copy_into(&mut data);
+        second_block.copy_data_into(&mut data);
 
         let read_second_block = BlockRef::new(&data[0..second_block.total_size()])?;
         assert_eq!(
@@ -564,34 +648,21 @@ mod tests {
         let genesis = BlockOwned::new_genesis(&nodes, &node1)?;
 
         // 0 operations
-        let operations: Vec<OwnedTypedFrame<pending_operation::Owned>> = Vec::new();
-        let block = BlockOwned::new_from_previous_and_operations(
-            &nodes,
-            &node1,
-            genesis.next_offset(),
-            1,
-            &genesis,
-            0,
-            operations.into_iter(),
-        )?;
+        let block =
+            BlockOwned::new_with_prev_block(&nodes, &node1, &genesis, 0, BlockEntries::empty())?;
         assert_eq!(block.entries_iter()?.count(), 0);
 
         // 5 operations
-        let mut operations: Vec<OwnedTypedFrame<pending_operation::Owned>> = Vec::new();
-        for i in 0..5 {
-            let operation = PendingOperation::new_entry(i, "node1", b"op1")
-                .as_owned_framed(node1.frame_signer())?;
-            operations.push(operation);
-        }
-        let block = BlockOwned::new_from_previous_and_operations(
-            &nodes,
-            &node1,
-            genesis.next_offset(),
-            1,
-            &genesis,
-            0,
-            operations.into_iter(),
-        )?;
+        let operations = (0..5)
+            .map(|i| {
+                PendingOperation::new_entry(i, "node1", b"op1")
+                    .as_owned_framed(node1.frame_signer())
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+
+        let block_entries = BlockEntries::from_operations(operations.into_iter())?;
+        let block = BlockOwned::new_with_prev_block(&nodes, &node1, &genesis, 0, block_entries)?;
         assert_eq!(block.entries_iter()?.count(), 5);
 
         Ok(())

@@ -371,7 +371,7 @@ impl DirectorySegment {
             directory, first_block_offset
         );
         let mut segment_file = SegmentFile::open(&segment_path, config.segment_over_allocate_size)?;
-        block.copy_into(&mut segment_file.mmap[0..]);
+        block.copy_data_into(&mut segment_file.mmap[0..]);
         let written_data_size = block.total_size();
 
         Ok(DirectorySegment {
@@ -421,7 +421,7 @@ impl DirectorySegment {
         let blocks_iterator = ChainBlockIterator::new(&segment_file.mmap[..]);
         let last_block = blocks_iterator.last().ok_or_else(|| {
             Error::Integrity(
-                "Couldn't find last block of segment: no blocks returned by iterator".to_string()
+                "Couldn't find last block of segment: no blocks returned by iterator".to_string(),
             )
         })?;
 
@@ -474,7 +474,7 @@ impl DirectorySegment {
 
         {
             self.ensure_file_size(block_size)?;
-            block.copy_into(&mut self.segment_file.mmap[next_file_offset..]);
+            block.copy_data_into(&mut self.segment_file.mmap[next_file_offset..]);
         }
 
         self.next_file_offset += block_size;
@@ -831,11 +831,7 @@ mod tests {
                 append_blocks_to_directory(&mut directory_chain, 50, 0);
                 let segments_before = directory_chain.available_segments();
 
-                let block_n = directory_chain
-                    .block_iter(0)?
-                    .skip(cutoff - 1)
-                    .next()
-                    .unwrap();
+                let block_n = directory_chain.block_iter(0)?.nth(cutoff - 1).unwrap();
                 let block_n_offset = block_n.offset;
                 let block_n_plus_offset = block_n.next_offset();
 
@@ -1095,25 +1091,15 @@ mod tests {
 
         // only true for tests
         let operation_id = offset as u64;
+        let operations =
+            vec![
+                crate::pending::PendingOperation::new_entry(operation_id, "node1", b"some_data")
+                    .as_owned_framed(node1.frame_signer())
+                    .unwrap(),
+            ];
 
-        let mut operations = Vec::new();
-        let operation =
-            crate::pending::PendingOperation::new_entry(operation_id, "node1", b"some_data")
-                .as_owned_framed(node1.frame_signer())
-                .unwrap();
-        operations.push(operation);
-
-        BlockOwned::new_from_operations(
-            &nodes,
-            &node1,
-            offset,
-            0,
-            0,
-            &[],
-            0,
-            operations.into_iter(),
-        )
-        .unwrap()
+        let block_entries = BlockEntries::from_operations(operations.into_iter()).unwrap();
+        BlockOwned::new_with_prev_info(&nodes, &node1, offset, 0, 0, &[], 0, block_entries).unwrap()
     }
 
     fn append_blocks_to_directory(

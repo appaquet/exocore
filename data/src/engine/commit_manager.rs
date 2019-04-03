@@ -1,22 +1,13 @@
-#![allow(dead_code)]
-#![allow(unused_variables)]
-#![allow(unused_imports)]
-#![allow(unused_mut)]
-
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
 use itertools::Itertools;
 
-use exocore_common::node::{Node, NodeID, Nodes};
+use exocore_common::node::{NodeID, Nodes};
 use exocore_common::security::signature::Signature;
-use exocore_common::serialization::framed::{
-    FrameBuilder, OwnedTypedFrame, TypedFrame, TypedSliceFrame,
-};
+use exocore_common::serialization::framed::{TypedFrame, TypedSliceFrame};
 use exocore_common::serialization::protos::data_chain_capnp::{
-    block, block_entry_header, block_header, block_signature, block_signatures,
-    operation_block_propose, operation_block_refuse, operation_block_sign, operation_entry_new,
-    operation_pending_ignore, pending_operation, pending_operation::operation,
+    block, block_signature, operation_block_propose, operation_block_sign, pending_operation,
 };
 use exocore_common::serialization::protos::OperationID;
 use exocore_common::time::Clock;
@@ -27,7 +18,6 @@ use crate::chain::BlockOffset;
 use crate::engine::{chain_sync, pending_sync, SyncContext};
 use crate::pending;
 use crate::pending::OperationType;
-use crate::pending::OperationType::BlockSign;
 
 use super::Error;
 
@@ -72,18 +62,15 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
         chain_store: &mut CS,
         nodes: &Nodes,
     ) -> Result<(), Error> {
-        // TODO: The chain sync needs to make sure it keeps this synchronized state
         if chain_synchronizer.status() != chain_sync::Status::Synchronized {
             // we need to be synchronized in order to do any progress
             return Ok(());
         }
 
-        let nb_nodes_concensus = nodes.len() / 2;
-
+        let nb_nodes_concensus = (nodes.len() / 2).max(1);
         let last_stored_block = chain_store.get_last_block()?.ok_or_else(|| {
             Error::Other("Chain doesn't contain any block. Cannot progress on commits.".to_string())
         })?;
-        let next_offset = last_stored_block.next_offset();
 
         // find blocks
         let mut pending_blocks =
@@ -117,47 +104,53 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
 
         if let Some(ref mut next_block) = potential_next_blocks.first_mut() {
             if !next_block.has_my_signature && !next_block.has_my_refusal {
-                if self.check_should_sign_block(next_block, &blocks_status, &operations_blocks) {
-                    self.sign_block(
-                        sync_context,
-                        pending_synchronizer,
-                        pending_store,
-                        nodes,
-                        next_block,
-                    )?;
-                } else {
-                    self.refuse_block(
-                        sync_context,
-                        pending_synchronizer,
-                        pending_store,
-                        nodes,
-                        next_block,
-                    )?;
+                if let Ok(should_sign) = self.check_should_sign_block(
+                    next_block,
+                    &blocks_status,
+                    &operations_blocks,
+                    pending_store,
+                ) {
+                    if should_sign {
+                        self.sign_block(
+                            sync_context,
+                            pending_synchronizer,
+                            pending_store,
+                            nodes,
+                            next_block,
+                        )?;
+                    } else {
+                        self.refuse_block(
+                            sync_context,
+                            pending_synchronizer,
+                            pending_store,
+                            nodes,
+                            next_block,
+                        )?;
+                    }
                 }
             }
 
-            if next_block.signatures.len() > nb_nodes_concensus {
-                // TODO: chain_store.write_block()
-                // TODO: notify the chain_synchronizer
+            if next_block.has_my_signature && next_block.signatures.len() >= nb_nodes_concensus {
+                debug!("Block has enough signatures ! We should commit!");
+                self.commit_block(next_block, pending_store, chain_store, nodes)?;
             }
         } else if self.should_propose_block() {
             debug!("No current block, and we can propose one");
-            self.create_block(
+            self.create_block_proposal(
                 sync_context,
                 &operations_blocks,
                 &blocks_status,
                 pending_synchronizer,
                 pending_store,
+                chain_store,
                 nodes,
             )?;
         }
 
         // TODO: Check if we can advance the last block mark in pending store
-
         // TODO: Emit "PendingIgnore" for
         //        - Operations that are now in the chain
         //        - Blocks that got refused after more than X
-
         // TODO: Cleanup committed stuff OR ignored stuff
 
         Ok(())
@@ -180,165 +173,6 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
         a.group_id.cmp(&b.group_id)
     }
 
-    fn should_propose_block(&self) -> bool {
-        // TODO: I'm synchronized
-        // TODO: I have full access
-        // TODO: Last block time + duration + hash(nodeid) % 5 secs
-        //       - Perhaps we should take current time into consideration so that we don't have 2 nodes proposing at the timeout
-        true
-    }
-
-    fn check_should_sign_block(
-        &self,
-        block: &PendingBlock,
-        blocks_status: &HashMap<OperationID, BlockStatus>,
-        operations_blocks: &HashMap<OperationID, HashSet<OperationID>>,
-    ) -> bool {
-        // TODO: Hash operations
-        // TODO: Validate block hash
-
-        // make sure we don't have operations that are already committed
-        for operation in &block.operations {
-            for block_id in operations_blocks
-                .get(operation)
-                .expect("Operation was not in map")
-            {
-                let op_block = blocks_status.get(block_id).expect("Couldn't find block");
-                if *op_block == BlockStatus::PastCommitted {
-                    return false;
-                }
-
-                // TODO: When chain will be indexed, we need to check if they aren't in the chain for real
-            }
-        }
-
-        true
-    }
-
-    fn sign_block(
-        &mut self,
-        sync_context: &mut SyncContext,
-        pending_synchronizer: &mut pending_sync::Synchronizer<PS>,
-        pending_store: &mut PS,
-        nodes: &Nodes,
-        next_block: &mut PendingBlock,
-    ) -> Result<(), Error> {
-        let my_node = nodes
-            .get(&self.node_id)
-            .ok_or_else(|| Error::Other("Couldn't find my node in nodes list".to_string()))?;
-
-        let block_reader = next_block.proposal.get_block()?;
-
-        let operation_id = self.clock.consistent_time(&my_node);
-        let signature_frame_builder = pending::PendingOperation::new_signature_for_block(
-            next_block.group_id,
-            operation_id,
-            &self.node_id,
-            block_reader,
-        )?;
-
-        let signature_frame = signature_frame_builder.as_owned_framed(my_node.frame_signer())?;
-        let signature_reader = signature_frame.get_typed_reader()?;
-        let pending_signature = PendingBlockSignature::from_pending_operation(signature_reader)?;
-
-        next_block.add_my_signature(pending_signature);
-
-        pending_synchronizer.handle_new_operation(
-            sync_context,
-            nodes,
-            pending_store,
-            signature_frame,
-        )?;
-
-        Ok(())
-    }
-
-    fn refuse_block(
-        &mut self,
-        sync_context: &mut SyncContext,
-        pending_synchronizer: &mut pending_sync::Synchronizer<PS>,
-        pending_store: &mut PS,
-        nodes: &Nodes,
-        next_block: &mut PendingBlock,
-    ) -> Result<(), Error> {
-        let my_node = nodes
-            .get(&self.node_id)
-            .ok_or_else(|| Error::Other("Couldn't find my node in nodes list".to_string()))?;
-
-        let operation_id = self.clock.consistent_time(&my_node);
-
-        let refusal_frame_builder = pending::PendingOperation::new_refusal(
-            next_block.group_id,
-            operation_id,
-            &self.node_id,
-        )?;
-        let refusal_frame = refusal_frame_builder.as_owned_framed(my_node.frame_signer())?;
-        let refusal_reader = refusal_frame.get_typed_reader()?;
-        let pending_refusal = PendingBlockRefusal::from_pending_operation(refusal_reader)?;
-
-        next_block.add_my_refusal(pending_refusal);
-
-        pending_synchronizer.handle_new_operation(
-            sync_context,
-            nodes,
-            pending_store,
-            refusal_frame,
-        )?;
-
-        Ok(())
-    }
-
-    fn create_block(
-        &mut self,
-        sync_context: &mut SyncContext,
-        operations_blocks: &HashMap<OperationID, HashSet<OperationID>>,
-        blocks_status: &HashMap<OperationID, BlockStatus>,
-        pending_synchronizer: &mut pending_sync::Synchronizer<PS>,
-        pending_store: &mut PS,
-        nodes: &Nodes,
-    ) -> Result<(), Error> {
-        let block_operations = pending_store
-            .operations_iter(..)?
-            .filter(|operation| {
-                // only include new entries or pending ignore entries
-                match operation.operation_type {
-                    OperationType::EntryNew | OperationType::PendingIgnore => true,
-                    _ => false,
-                }
-            })
-            .filter(|operation| {
-                // check if operation was committed to any previous block
-                let operation_is_committed = operations_blocks
-                    .get(&operation.operation_id)
-                    .map(|blocks| {
-                        blocks.iter().any(|block| {
-                            let block_status = blocks_status
-                                .get(block)
-                                .expect("Couldn't find status of a current block");
-                            *block_status == BlockStatus::PastCommitted
-                        })
-                    })
-                    .unwrap_or(false);
-
-                // TODO: Double-check if it's in the chain
-
-                !operation_is_committed
-            });
-
-        for operation in block_operations {
-            debug!(
-                "Alright, we can include operation {}",
-                operation.operation_id
-            );
-        }
-
-        // TODO: get operations by asc timeline
-        // TODO: get operations group for each operation
-        // TODO: find all entries that weren't comitted yet
-
-        Ok(())
-    }
-
     fn collect_blocks(
         &self,
         last_stored_block: &chain::BlockRef,
@@ -354,7 +188,7 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
             }
         }
 
-        let nb_nodes_concensus = nodes.len() / 2;
+        let nb_nodes_concensus = (nodes.len() / 2).max(1);
         let next_offset = last_stored_block.next_offset();
 
         // then we get all operations for each block proposal
@@ -393,7 +227,7 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
                                 operation_reader,
                             )?);
                         }
-                        pending_operation::operation::Which::BlockRefuse(reader) => {
+                        pending_operation::operation::Which::BlockRefuse(_reader) => {
                             refusals.push(PendingBlockRefusal::from_pending_operation(
                                 operation_reader,
                             )?);
@@ -459,6 +293,306 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
 
         Ok(blocks)
     }
+
+    fn check_should_sign_block(
+        &self,
+        block: &PendingBlock,
+        blocks_status: &HashMap<OperationID, BlockStatus>,
+        operations_blocks: &HashMap<OperationID, HashSet<OperationID>>,
+        pending_store: &PS,
+    ) -> Result<bool, Error> {
+        let block_frame = block.proposal.get_block()?;
+
+        // make sure we don't have operations that are already committed
+        for operation in &block.operations {
+            for block_id in operations_blocks
+                .get(operation)
+                .expect("Operation was not in map")
+            {
+                let op_block = blocks_status.get(block_id).expect("Couldn't find block");
+                if *op_block == BlockStatus::PastCommitted {
+                    return Ok(false);
+                }
+
+                // TODO: When chain will be indexed, we need to check if they aren't in the chain for real
+            }
+        }
+
+        // validate hash of entries of block
+        let block_operations = Self::get_block_operations(block, pending_store)?.map(|op| op.frame);
+        let entries_hash = chain::BlockEntries::hash_operations(block_operations)?;
+        let block_reader = block_frame.get_typed_reader()?;
+        if entries_hash.as_bytes() != block_reader.get_entries_hash()? {
+            // if we reached here, it means we had all operations locally, but their hash didn't match local hash
+            return Ok(false);
+        }
+
+        Ok(true)
+    }
+
+    fn sign_block(
+        &mut self,
+        sync_context: &mut SyncContext,
+        pending_synchronizer: &mut pending_sync::Synchronizer<PS>,
+        pending_store: &mut PS,
+        nodes: &Nodes,
+        next_block: &mut PendingBlock,
+    ) -> Result<(), Error> {
+        let my_node = nodes
+            .get(&self.node_id)
+            .ok_or_else(|| Error::Other("Couldn't find my node in nodes list".to_string()))?;
+
+        let operation_id = self.clock.consistent_time(&my_node);
+        let signature_frame_builder = pending::PendingOperation::new_signature_for_block(
+            next_block.group_id,
+            operation_id,
+            &self.node_id,
+            &next_block.proposal.get_block()?,
+        )?;
+
+        let signature_frame = signature_frame_builder.as_owned_framed(my_node.frame_signer())?;
+        let signature_reader = signature_frame.get_typed_reader()?;
+        let pending_signature = PendingBlockSignature::from_pending_operation(signature_reader)?;
+
+        next_block.add_my_signature(pending_signature);
+
+        pending_synchronizer.handle_new_operation(
+            sync_context,
+            nodes,
+            pending_store,
+            signature_frame,
+        )?;
+
+        Ok(())
+    }
+
+    fn refuse_block(
+        &mut self,
+        sync_context: &mut SyncContext,
+        pending_synchronizer: &mut pending_sync::Synchronizer<PS>,
+        pending_store: &mut PS,
+        nodes: &Nodes,
+        next_block: &mut PendingBlock,
+    ) -> Result<(), Error> {
+        let my_node = nodes
+            .get(&self.node_id)
+            .ok_or_else(|| Error::Other("Couldn't find my node in nodes list".to_string()))?;
+
+        let operation_id = self.clock.consistent_time(&my_node);
+        let refusal_frame_builder = pending::PendingOperation::new_refusal(
+            next_block.group_id,
+            operation_id,
+            &self.node_id,
+        )?;
+        let refusal_frame = refusal_frame_builder.as_owned_framed(my_node.frame_signer())?;
+        let refusal_reader = refusal_frame.get_typed_reader()?;
+        let pending_refusal = PendingBlockRefusal::from_pending_operation(refusal_reader)?;
+
+        next_block.add_my_refusal(pending_refusal);
+
+        pending_synchronizer.handle_new_operation(
+            sync_context,
+            nodes,
+            pending_store,
+            refusal_frame,
+        )?;
+
+        Ok(())
+    }
+
+    fn should_propose_block(&self) -> bool {
+        // TODO: I'm synchronized
+        // TODO: I have full access
+        // TODO: Last block time + duration + hash(nodeid) % 5 secs
+        //       - Perhaps we should take current time into consideration so that we don't have 2 nodes proposing at the timeout
+        true
+    }
+
+    // TODO: Should be fixed once we do https://github.com/appaquet/exocore/issues/37
+    #[allow(clippy::too_many_arguments)]
+    fn create_block_proposal(
+        &mut self,
+        sync_context: &mut SyncContext,
+        operations_blocks: &HashMap<OperationID, HashSet<OperationID>>,
+        blocks_status: &HashMap<OperationID, BlockStatus>,
+        pending_synchronizer: &mut pending_sync::Synchronizer<PS>,
+        pending_store: &mut PS,
+        chain_store: &mut CS,
+        nodes: &Nodes,
+    ) -> Result<(), Error> {
+        let my_node = nodes
+            .get(&self.node_id)
+            .ok_or_else(|| Error::Other("Couldn't find my node in nodes list".to_string()))?;
+
+        let previous_block = chain_store.get_last_block()?.ok_or_else(|| {
+            Error::Other(
+                "Tried to create a new block, but couldn't find any block in chain".to_string(),
+            )
+        })?;
+
+        let block_operations = pending_store
+            .operations_iter(..)?
+            .filter(|operation| {
+                // only include new entries or pending ignore entries
+                match operation.operation_type {
+                    OperationType::EntryNew | OperationType::PendingIgnore => true,
+                    _ => false,
+                }
+            })
+            .filter(|operation| {
+                // check if operation was committed to any previous block
+                let operation_is_committed = operations_blocks
+                    .get(&operation.operation_id)
+                    .map(|blocks| {
+                        blocks.iter().any(|block| {
+                            let block_status = blocks_status
+                                .get(block)
+                                .expect("Couldn't find status of a current block");
+                            *block_status == BlockStatus::PastCommitted
+                        })
+                    })
+                    .unwrap_or(false);
+
+                // TODO: Double-check if it's in the chain
+
+                !operation_is_committed
+            })
+            .sorted_by_key(|operation| operation.operation_id)
+            .map(|operation| operation.frame);
+
+        let block_entries = chain::BlockEntries::from_operations(block_operations)?;
+        let block_operation_id = self.clock.consistent_time(&my_node);
+        let block = chain::BlockOwned::new_with_prev_block(
+            nodes,
+            my_node,
+            &previous_block,
+            block_operation_id,
+            block_entries,
+        )?;
+        if block.entries_iter()?.next().is_none() {
+            debug!("No operations need to be committed, so won't be proposing any block");
+            return Ok(());
+        }
+
+        let block_proposal_frame_builder = pending::PendingOperation::new_block_proposal(
+            block_operation_id,
+            &self.node_id,
+            &block,
+        )?;
+        let block_proposal_frame =
+            block_proposal_frame_builder.as_owned_framed(my_node.frame_signer())?;
+
+        debug!(
+            "Proposed block with operation_id {} for offset {}",
+            block_operation_id,
+            previous_block.next_offset()
+        );
+        pending_synchronizer.handle_new_operation(
+            sync_context,
+            nodes,
+            pending_store,
+            block_proposal_frame,
+        )?;
+
+        // generate signature for this block
+        let signature_operation_id = self.clock.consistent_time(&my_node);
+        let signature_frame_builder = pending::PendingOperation::new_signature_for_block(
+            block_operation_id,
+            signature_operation_id,
+            &self.node_id,
+            &block.block,
+        )?;
+        let signature_frame = signature_frame_builder.as_owned_framed(my_node.frame_signer())?;
+
+        pending_synchronizer.handle_new_operation(
+            sync_context,
+            nodes,
+            pending_store,
+            signature_frame,
+        )?;
+
+        Ok(())
+    }
+
+    fn commit_block(
+        &mut self,
+        next_block: &PendingBlock,
+        pending_store: &mut PS,
+        chain_store: &mut CS,
+        nodes: &Nodes,
+    ) -> Result<(), Error> {
+        let my_node = nodes
+            .get(&self.node_id)
+            .ok_or_else(|| Error::Other("Couldn't find my node in nodes list".to_string()))?;
+
+        let block_frame = next_block.proposal.get_block()?;
+        let block_reader: block::Reader = block_frame.get_typed_reader()?;
+
+        // fetch block's operations from the pending store
+        let block_operations =
+            Self::get_block_operations(next_block, pending_store)?.map(|operation| operation.frame);
+
+        // make sure that the hash of operations is same as defined by the block
+        let block_entries = chain::BlockEntries::from_operations(block_operations)?;
+        if block_entries.multihash_bytes() != block_reader.get_entries_hash()? {
+            return Err(Error::Other(
+                "Block hash for local entries didn't match block hash".to_string(),
+            ));
+        }
+
+        // build signatures frame
+        let signatures = next_block
+            .signatures
+            .iter()
+            .map(|pending_signature| {
+                // TODO: Validate signatures
+                chain::BlockSignature::new(
+                    pending_signature.node_id.clone(),
+                    pending_signature.signature.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let block_signatures = chain::BlockSignatures::new_from_signatures(signatures);
+        let signatures_frame =
+            block_signatures.to_frame_for_existing_block(my_node, &block_reader)?;
+
+        // finally build the frame
+        let block = chain::BlockOwned::new(
+            next_block.proposal.offset,
+            block_frame.to_owned(),
+            block_entries.data().to_vec(),
+            signatures_frame,
+        );
+
+        debug!("Writing with offset={} to chain", block.offset());
+        chain_store.write_block(&block)?;
+
+        Ok(())
+    }
+
+    fn get_block_operations(
+        next_block: &PendingBlock,
+        pending_store: &PS,
+    ) -> Result<impl Iterator<Item = pending::StoredOperation>, Error> {
+        let operations = next_block
+            .operations
+            .iter()
+            .map(|operation| {
+                pending_store
+                    .get_operation(*operation)
+                    .map_err(|err| err.into())
+                    .and_then(|op| {
+                        op.ok_or_else(|| Error::Other(
+                            "An operation in block to commit is missing from local pending store".to_string()
+                        ))
+                    })
+            })
+            .collect::<Result<Vec<_>, Error>>()? // collect automatically flatten result into Result<Vec<_>>
+            .into_iter()
+            .sorted_by_key(|operation| operation.operation_id);
+
+        Ok(operations)
+    }
 }
 
 ///
@@ -486,13 +620,6 @@ impl PendingBlock {
     fn add_my_refusal(&mut self, refusal: PendingBlockRefusal) {
         self.refusals.push(refusal);
         self.has_my_refusal = true;
-    }
-
-    fn to_store_block(&self) -> Result<chain::BlockOwned, Error> {
-        let operation_reader: pending_operation::Reader =
-            self.proposal.operation.frame.get_typed_reader()?;
-
-        unimplemented!()
     }
 }
 
@@ -541,7 +668,7 @@ impl PendingBlockRefusal {
         let inner_operation: pending_operation::operation::Reader =
             operation_reader.get_operation();
         match inner_operation.which()? {
-            pending_operation::operation::Which::BlockRefuse(sig) => {
+            pending_operation::operation::Which::BlockRefuse(_sig) => {
                 let node_id = operation_reader.get_node_id()?.to_string();
                 Ok(PendingBlockRefusal { node_id })
             }

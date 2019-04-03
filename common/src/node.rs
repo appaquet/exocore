@@ -1,3 +1,4 @@
+use crate::security::signature::Signature;
 use crate::serialization::framed::{FrameSigner, MultihashFrameSigner};
 use std::collections::HashMap;
 
@@ -26,6 +27,12 @@ impl Node {
     pub fn frame_signer(&self) -> impl FrameSigner {
         // TODO: Include signature, not just hash
         MultihashFrameSigner::new_sha3256()
+    }
+
+    pub fn sign_message(&self, _message: &[u8]) -> Signature {
+        // TODO: make sure we're local and we have access to private key
+        // TODO: do it for real
+        Signature::empty()
     }
 }
 

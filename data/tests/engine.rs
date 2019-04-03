@@ -6,6 +6,7 @@ use tempdir;
 use tokio::runtime::Runtime;
 
 use exocore_common::node::{Node, Nodes};
+use exocore_common::serialization::framed::TypedFrame;
 use exocore_common::time::Clock;
 use exocore_data::chain::Store;
 use exocore_data::{
@@ -16,7 +17,7 @@ use std::time::Duration;
 
 #[test]
 fn test_engine_integration_single_node() -> Result<(), failure::Error> {
-    //exocore_common::utils::setup_logging();
+    exocore_common::utils::setup_logging();
 
     let data_dir = tempdir::TempDir::new("engine_tests")?;
     let mut rt = Runtime::new()?;
@@ -57,27 +58,24 @@ fn test_engine_integration_single_node() -> Result<(), failure::Error> {
 
     std::thread::sleep(Duration::from_millis(300));
 
-    engine_handle.write_entry(NewEntry::new_cell_data(
-        1,
-        "i love jello".as_bytes().to_vec(),
-    ))?;
-    engine_handle.write_entry(NewEntry::new_cell_data(
-        2,
-        "i love jello".as_bytes().to_vec(),
-    ))?;
-    engine_handle.write_entry(NewEntry::new_cell_data(
-        3,
-        "i love jello".as_bytes().to_vec(),
-    ))?;
-    engine_handle.write_entry(NewEntry::new_cell_data(
-        4,
-        "i love jello".as_bytes().to_vec(),
-    ))?;
+    engine_handle.write_entry(NewEntry::new_cell_data(1, b"i love jello".to_vec()))?;
+    engine_handle.write_entry(NewEntry::new_cell_data(2, b"i love jello".to_vec()))?;
+    engine_handle.write_entry(NewEntry::new_cell_data(3, b"i love jello".to_vec()))?;
+    engine_handle.write_entry(NewEntry::new_cell_data(4, b"i love jello".to_vec()))?;
 
-    std::thread::sleep(Duration::from_millis(1000));
+    std::thread::sleep(Duration::from_millis(5000));
 
     let pending_operations = engine_handle.get_pending_operations(..)?;
     info!("Got {} pending op", pending_operations.len());
+
+    let segments = engine_handle.get_chain_available_segments()?;
+    info!("Available segments: {:?}", segments);
+
+    let entry = engine_handle.get_chain_entry(332, 2).unwrap();
+    info!(
+        "Chain op: {:?}",
+        String::from_utf8_lossy(entry.operation_frame.frame_data())
+    );
 
     Ok(())
 }

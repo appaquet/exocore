@@ -66,6 +66,30 @@ impl Store for MemoryStore {
         Ok(())
     }
 
+    fn get_operation(&self, operation_id: OperationID) -> Result<Option<StoredOperation>, Error> {
+        let operation = self
+            .operations_timeline
+            .get(&operation_id)
+            .and_then(|group_id| {
+                self.groups_operations
+                    .get(group_id)
+                    .and_then(|group_operations| {
+                        group_operations
+                            .operations
+                            .get(&operation_id)
+                            .map(|op| (*group_id, op))
+                    })
+            })
+            .map(|(group_id, op)| StoredOperation {
+                group_id,
+                operation_id: op.operation_id,
+                operation_type: op.operation_type,
+                frame: Arc::clone(&op.frame),
+            });
+
+        Ok(operation)
+    }
+
     fn get_group_operations(
         &self,
         group_id: GroupID,
@@ -184,6 +208,8 @@ mod test {
             .map(|op| (op.operation_id, op.group_id))
             .collect();
         assert_eq!(timeline, vec![(100, 200), (102, 201), (105, 200),]);
+
+        assert!(store.get_operation(42).unwrap().is_none());
 
         let group_operations = store.get_group_operations(200).unwrap().unwrap();
         assert_eq!(group_operations.group_id, 200);
