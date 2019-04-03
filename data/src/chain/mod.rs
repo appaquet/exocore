@@ -11,6 +11,7 @@ use exocore_common::serialization::framed::{
 };
 use exocore_common::serialization::protos::data_chain_capnp::pending_operation;
 use exocore_common::serialization::{capnp, framed};
+use exocore_common::serialization::protos::OperationID;
 
 pub type BlockOffset = u64;
 pub type BlockDepth = u64;
@@ -19,7 +20,6 @@ pub type BlockSignaturesSize = u16;
 pub mod directory;
 
 pub trait Store: Send + Sync + 'static {
-    // TODO: Validate that the block signature has same size as the actual signatures
     fn write_block<B: Block>(&mut self, block: &B) -> Result<BlockOffset, Error>;
 
     fn available_segments(&self) -> Vec<Range<BlockOffset>>;
@@ -36,6 +36,8 @@ pub trait Store: Send + Sync + 'static {
     fn get_block_from_next_offset(&self, next_offset: BlockOffset) -> Result<BlockRef, Error>;
 
     fn get_last_block(&self) -> Result<Option<BlockRef>, Error>;
+
+    fn get_block_by_operation_id(&self, operation_id: OperationID) -> Result<Option<BlockRef>, Error>;
 
     fn truncate_from_offset(&mut self, offset: BlockOffset) -> Result<(), Error>;
 }
@@ -406,7 +408,7 @@ impl BlockEntries {
             let operation_reader = operation.get_typed_reader()?;
             let offset = data.len();
             let entry_data = operation.frame_data();
-            hasher.consume(entry_data);
+            hasher.consume_signed_frame(&operation);
             data.extend_from_slice(entry_data);
 
             headers.push(EntryHeader {

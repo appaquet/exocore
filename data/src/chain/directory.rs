@@ -234,6 +234,11 @@ impl Store for DirectoryStore {
         Ok(Some(last_block))
     }
 
+    fn get_block_by_operation_id(&self, _operation_id: OperationID) -> Result<Option<BlockRef>, Error> {
+        // TODO: Implement index by operation id: https://github.com/appaquet/exocore/issues/33
+        Ok(None)
+    }
+
     fn truncate_from_offset(&mut self, offset: BlockOffset) -> Result<(), Error> {
         let segment_index = self
             .get_segment_index_for_block_offset(offset)
@@ -338,7 +343,6 @@ impl<'pers> Iterator for DirectoryBlockIterator<'pers> {
 ///
 /// As mmap can only accessed allocated space in the file, we need to pre-allocate space in the file.
 /// When a block would exceed this pre-allocated space, we re-size and re-open the file.
-///
 ///
 struct DirectorySegment {
     config: Config,
