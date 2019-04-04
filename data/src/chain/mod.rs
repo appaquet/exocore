@@ -10,8 +10,8 @@ use exocore_common::serialization::framed::{
     FrameBuilder, OwnedFrame, OwnedTypedFrame, SignedFrame, TypedFrame, TypedSliceFrame,
 };
 use exocore_common::serialization::protos::data_chain_capnp::pending_operation;
-use exocore_common::serialization::{capnp, framed};
 use exocore_common::serialization::protos::OperationID;
+use exocore_common::serialization::{capnp, framed};
 
 pub type BlockOffset = u64;
 pub type BlockDepth = u64;
@@ -37,7 +37,10 @@ pub trait Store: Send + Sync + 'static {
 
     fn get_last_block(&self) -> Result<Option<BlockRef>, Error>;
 
-    fn get_block_by_operation_id(&self, operation_id: OperationID) -> Result<Option<BlockRef>, Error>;
+    fn get_block_by_operation_id(
+        &self,
+        operation_id: OperationID,
+    ) -> Result<Option<BlockRef>, Error>;
 
     fn truncate_from_offset(&mut self, offset: BlockOffset) -> Result<(), Error>;
 }
@@ -86,7 +89,7 @@ pub trait Block {
         .concat()
     }
 
-    fn entries_iter(&self) -> Result<BlockEntriesIterator, Error> {
+    fn operations_iter(&self) -> Result<BlockOperationsIterator, Error> {
         let block_reader: block::Reader = self.block().get_typed_reader()?;
         let entries_header = block_reader
             .get_entries_header()?
@@ -94,26 +97,42 @@ pub trait Block {
             .map(|reader| EntryHeader::from_reader(&reader))
             .collect::<Vec<_>>();
 
-        Ok(BlockEntriesIterator {
+        Ok(BlockOperationsIterator {
             index: 0,
             entries_header,
             entries_data: self.entries_data(),
             last_error: None,
         })
     }
+
+    fn get_operation(
+        &self,
+        operation_id: OperationID,
+    ) -> Result<Option<TypedSliceFrame<pending_operation::Owned>>, Error> {
+        // TODO: Implement binary search in operations, since they are sorted.
+        let operation = self.operations_iter()?.find(|operation| {
+            if let Ok(operation_reader) = operation.get_typed_reader() {
+                operation_reader.get_operation_id() == operation_id
+            } else {
+                false
+            }
+        });
+
+        Ok(operation)
+    }
 }
 
 ///
 ///
 ///
-pub struct BlockEntriesIterator<'a> {
+pub struct BlockOperationsIterator<'a> {
     index: usize,
     entries_header: Vec<EntryHeader>,
     entries_data: &'a [u8],
     last_error: Option<Error>,
 }
 
-impl<'a> Iterator for BlockEntriesIterator<'a> {
+impl<'a> Iterator for BlockOperationsIterator<'a> {
     type Item = TypedSliceFrame<'a, pending_operation::Owned>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -652,7 +671,7 @@ mod tests {
         // 0 operations
         let block =
             BlockOwned::new_with_prev_block(&nodes, &node1, &genesis, 0, BlockEntries::empty())?;
-        assert_eq!(block.entries_iter()?.count(), 0);
+        assert_eq!(block.operations_iter()?.count(), 0);
 
         // 5 operations
         let operations = (0..5)
@@ -665,7 +684,7 @@ mod tests {
 
         let block_entries = BlockEntries::from_operations(operations.into_iter())?;
         let block = BlockOwned::new_with_prev_block(&nodes, &node1, &genesis, 0, block_entries)?;
-        assert_eq!(block.entries_iter()?.count(), 5);
+        assert_eq!(block.operations_iter()?.count(), 5);
 
         Ok(())
     }

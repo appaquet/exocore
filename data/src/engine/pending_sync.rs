@@ -704,9 +704,9 @@ mod tests {
 
     use crate::engine::testing::create_dummy_new_entry_op;
 
+    use super::*;
     use crate::engine::testing::*;
     use crate::engine::SyncContextMessage;
-    use super::*;
     use crate::pending::OperationType;
 
     #[test]
@@ -714,13 +714,21 @@ mod tests {
         // only one node, shouldn't send to ourself
         let mut cluster = TestCluster::new(1);
         let mut sync_context = SyncContext::new();
-        cluster.pending_stores_synchronizer[0].tick(&mut sync_context, & cluster.pending_stores[0], &cluster.nodes)?;
+        cluster.pending_stores_synchronizer[0].tick(
+            &mut sync_context,
+            &cluster.pending_stores[0],
+            &cluster.nodes,
+        )?;
         assert_eq!(sync_context.messages.len(), 0);
 
         // two nodes should send to other node
         let mut cluster = TestCluster::new(2);
         let mut sync_context = SyncContext::new();
-        cluster.pending_stores_synchronizer[0].tick(&mut sync_context, & cluster.pending_stores[0], &cluster.nodes)?;
+        cluster.pending_stores_synchronizer[0].tick(
+            &mut sync_context,
+            &cluster.pending_stores[0],
+            &cluster.nodes,
+        )?;
         assert_eq!(sync_context.messages.len(), 1);
 
         Ok(())
@@ -729,10 +737,14 @@ mod tests {
     #[test]
     fn create_sync_range_request() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_dummy_node_operations(0, 100);
+        cluster.pending_generate_dummy(0, 100);
 
         let mut sync_context = SyncContext::new();
-        cluster.pending_stores_synchronizer[0].tick(&mut sync_context, & cluster.pending_stores[0], &cluster.nodes)?;
+        cluster.pending_stores_synchronizer[0].tick(
+            &mut sync_context,
+            &cluster.pending_stores[0],
+            &cluster.nodes,
+        )?;
         let sync_request_frame = extract_request_from_result(&sync_context);
         let sync_request_reader = sync_request_frame.get_typed_reader()?;
 
@@ -754,8 +766,8 @@ mod tests {
     #[test]
     fn new_operation_after_last_operation() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_dummy_node_operations(0, 50);
-        cluster.generate_dummy_node_operations(1, 50);
+        cluster.pending_generate_dummy(0, 50);
+        cluster.pending_generate_dummy(1, 50);
 
         // create operation after last operation id
         let new_operation = create_dummy_new_entry_op(52, 52);
@@ -802,7 +814,7 @@ mod tests {
         let new_operation = create_dummy_new_entry_op(51, 51);
         cluster.pending_stores_synchronizer[0].handle_new_operation(
             &mut sync_context,
-            & cluster.nodes,
+            &cluster.nodes,
             &mut cluster.pending_stores[0],
             new_operation,
         )?;
@@ -825,8 +837,8 @@ mod tests {
     #[test]
     fn handle_sync_equals() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_dummy_node_operations(0, 100);
-        cluster.generate_dummy_node_operations(1, 100);
+        cluster.pending_generate_dummy(0, 100);
+        cluster.pending_generate_dummy(1, 100);
 
         let (count_a_to_b, count_b_to_a) = sync_nodes(&mut cluster, 0, 1)?;
         assert_eq!(count_a_to_b, 1);
@@ -838,7 +850,7 @@ mod tests {
     #[test]
     fn handle_sync_empty_to_many() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_dummy_node_operations(0, 100);
+        cluster.pending_generate_dummy(0, 100);
 
         let (count_a_to_b, count_b_to_a) = sync_nodes(&mut cluster, 0, 1)?;
         assert_eq!(count_a_to_b, 2);
@@ -850,7 +862,7 @@ mod tests {
     #[test]
     fn handle_sync_many_to_empty() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_dummy_node_operations(1, 100);
+        cluster.pending_generate_dummy(1, 100);
 
         let (count_a_to_b, count_b_to_a) = sync_nodes(&mut cluster, 0, 1)?;
         assert_eq!(count_a_to_b, 1);
@@ -862,7 +874,7 @@ mod tests {
     #[test]
     fn handle_sync_full_to_some() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_dummy_node_operations(0, 100);
+        cluster.pending_generate_dummy(0, 100);
 
         // insert 1/2 operations in second node
         for operation in pending_ops_generator(100) {
@@ -882,7 +894,7 @@ mod tests {
     #[test]
     fn handle_sync_some_to_all() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_dummy_node_operations(1, 100);
+        cluster.pending_generate_dummy(1, 100);
 
         // insert 1/2 operations in first node
         for operation in pending_ops_generator(100) {
@@ -997,7 +1009,7 @@ mod tests {
         // tick the first node, which will generate a sync request
         cluster.pending_stores_synchronizer[node_id_a].tick(
             &mut sync_context,
-            & cluster.pending_stores[node_id_a],
+            &cluster.pending_stores[node_id_a],
             &cluster.nodes,
         )?;
         let initial_request = extract_request_from_result(&sync_context);

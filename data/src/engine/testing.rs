@@ -11,37 +11,47 @@ use exocore_common::serialization::protos::data_chain_capnp::{
 use crate::chain;
 use crate::chain::directory::{Config as DirectoryConfig, DirectoryStore};
 use crate::chain::{BlockOwned, Store as ChainStore};
-use crate::engine::chain_sync;
+use crate::engine::commit_manager::CommitManager;
 use crate::engine::pending_sync;
+use crate::engine::{chain_sync, SyncContext};
 use crate::pending::memory::MemoryStore;
 use crate::pending::Store as PendingStore;
 use exocore_common::serialization::protos::{GroupID, OperationID};
+use exocore_common::time::Clock;
 
-pub(crate) struct TestCluster {
+pub(super) struct TestCluster {
     pub nodes: Nodes,
     pub temp_dirs: Vec<TempDir>,
 
+    pub clocks: Vec<Clock>,
     pub chains: Vec<DirectoryStore>,
-    pub(super) chains_synchronizer: Vec<chain_sync::Synchronizer<DirectoryStore>>,
+    pub chains_synchronizer: Vec<chain_sync::Synchronizer<DirectoryStore>>,
 
     pub pending_stores: Vec<MemoryStore>,
-    pub(super) pending_stores_synchronizer: Vec<pending_sync::Synchronizer<MemoryStore>>,
+    pub pending_stores_synchronizer: Vec<pending_sync::Synchronizer<MemoryStore>>,
+
+    pub commit_managers: Vec<CommitManager<MemoryStore, DirectoryStore>>,
 }
 
 impl TestCluster {
     pub fn new(count: usize) -> TestCluster {
         let mut nodes = Nodes::new();
         let mut temp_dirs = Vec::new();
+        let mut clocks = Vec::new();
         let mut chains = Vec::new();
         let mut chains_synchronizer = Vec::new();
         let mut pending_stores = Vec::new();
         let mut pending_stores_synchronizer = Vec::new();
+        let mut commit_managers = Vec::new();
 
         for i in 0..count {
             let node_id = format!("node{}", i);
             nodes.add(Node::new(node_id.clone()));
 
             let tempdir = TempDir::new("test_cluster").unwrap();
+
+            let clock = Clock::new_mocked();
+            clocks.push(clock.clone());
 
             let chain_config = DirectoryConfig {
                 segment_max_size: 3000,
@@ -55,8 +65,14 @@ impl TestCluster {
 
             pending_stores.push(MemoryStore::new());
             pending_stores_synchronizer.push(pending_sync::Synchronizer::new(
-                node_id,
+                node_id.clone(),
                 pending_sync::Config::default(),
+            ));
+
+            commit_managers.push(CommitManager::new(
+                node_id.clone(),
+                crate::engine::commit_manager::Config::default(),
+                clock.clone(),
             ));
 
             temp_dirs.push(tempdir);
@@ -65,18 +81,23 @@ impl TestCluster {
         TestCluster {
             nodes,
             temp_dirs,
+            clocks,
             chains,
             chains_synchronizer,
             pending_stores,
             pending_stores_synchronizer,
+            commit_managers,
         }
     }
 
-    pub fn get_node(&self, id: usize) -> Node {
-        self.nodes.get(&format!("node{}", id)).unwrap().clone()
+    pub fn get_node(&self, node_idx: usize) -> Node {
+        self.nodes
+            .get(&format!("node{}", node_idx))
+            .unwrap()
+            .clone()
     }
 
-    pub fn generate_dummy_chain(&mut self, node_id: usize, count: usize, seed: u64) {
+    pub fn chain_generate_dummy(&mut self, node_idx: usize, count: usize, seed: u64) {
         let mut offsets = Vec::new();
         let mut next_offset = 0;
 
@@ -85,7 +106,7 @@ impl TestCluster {
 
             let previous_block = if i != 0 {
                 Some(
-                    self.chains[node_id]
+                    self.chains[node_idx]
                         .get_block_from_next_offset(next_offset)
                         .unwrap(),
                 )
@@ -105,20 +126,58 @@ impl TestCluster {
                 seed,
             );
             let block = BlockOwned::new(next_offset, block_frame, entries_data, signatures);
-            next_offset = self.chains[node_id].write_block(&block).unwrap();
+            next_offset = self.chains[node_idx].write_block(&block).unwrap();
         }
     }
 
-    pub fn generate_dummy_node_operations(&mut self, node_id: usize, count: usize) {
+    pub fn pending_generate_dummy(&mut self, node_idx: usize, count: usize) {
         for operation in dummy_pending_ops_generator(count) {
-            self.pending_stores[node_id].put_operation(operation).unwrap();
+            self.pending_stores[node_idx]
+                .put_operation(operation)
+                .unwrap();
         }
     }
 
-    pub fn add_genesis_block(&mut self, node_id: usize) {
-        let my_node = self.get_node(node_id);
+    pub fn chain_add_genesis_block(&mut self, node_idx: usize) {
+        let my_node = self.get_node(node_idx);
         let block = chain::BlockOwned::new_genesis(&self.nodes, &my_node).unwrap();
-        self.chains[node_id].write_block(&block).unwrap();
+        self.chains[node_idx].write_block(&block).unwrap();
+    }
+
+    pub fn tick_chain_synchronizer(
+        &mut self,
+        node_idx: usize,
+    ) -> Result<SyncContext, chain_sync::Error> {
+        let mut sync_context = SyncContext::new();
+
+        self.chains_synchronizer[node_idx].tick(
+            &mut sync_context,
+            &self.chains[node_idx],
+            &self.nodes,
+        )?;
+        Ok(sync_context)
+    }
+
+    pub fn tick_commit_manager(
+        &mut self,
+        node_idx: usize,
+    ) -> Result<SyncContext, crate::engine::Error> {
+        let mut sync_context = SyncContext::new();
+
+        self.commit_managers[node_idx].tick(
+            &mut sync_context,
+            &mut self.pending_stores_synchronizer[node_idx],
+            &mut self.pending_stores[node_idx],
+            &mut self.chains_synchronizer[node_idx],
+            &mut self.chains[node_idx],
+            &self.nodes,
+        )?;
+
+        Ok(sync_context)
+    }
+
+    pub fn consistent_clock(&self, node_idx: usize) -> u64 {
+        self.clocks[node_idx].consistent_time(&self.get_node(node_idx))
     }
 }
 

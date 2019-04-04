@@ -198,9 +198,15 @@ mod test {
     fn put_and_retrieve_operation() {
         let mut store = MemoryStore::new();
 
-        store.put_operation(create_dummy_new_entry_op(105, 200)).unwrap();
-        store.put_operation(create_dummy_new_entry_op(100, 200)).unwrap();
-        store.put_operation(create_dummy_new_entry_op(102, 201)).unwrap();
+        store
+            .put_operation(create_dummy_new_entry_op(105, 200))
+            .unwrap();
+        store
+            .put_operation(create_dummy_new_entry_op(100, 200))
+            .unwrap();
+        store
+            .put_operation(create_dummy_new_entry_op(102, 201))
+            .unwrap();
 
         let timeline: Vec<(OperationID, GroupID)> = store
             .operations_iter(..)
@@ -230,11 +236,21 @@ mod test {
     fn operations_iteration() {
         let mut store = MemoryStore::new();
 
-        store.put_operation(create_dummy_new_entry_op(105, 200)).unwrap();
-        store.put_operation(create_dummy_new_entry_op(100, 200)).unwrap();
-        store.put_operation(create_dummy_new_entry_op(102, 201)).unwrap();
-        store.put_operation(create_dummy_new_entry_op(107, 202)).unwrap();
-        store.put_operation(create_dummy_new_entry_op(110, 203)).unwrap();
+        store
+            .put_operation(create_dummy_new_entry_op(105, 200))
+            .unwrap();
+        store
+            .put_operation(create_dummy_new_entry_op(100, 200))
+            .unwrap();
+        store
+            .put_operation(create_dummy_new_entry_op(102, 201))
+            .unwrap();
+        store
+            .put_operation(create_dummy_new_entry_op(107, 202))
+            .unwrap();
+        store
+            .put_operation(create_dummy_new_entry_op(110, 203))
+            .unwrap();
 
         assert_eq!(store.operations_iter(..).unwrap().count(), 5);
     }

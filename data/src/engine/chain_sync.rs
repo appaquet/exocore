@@ -899,18 +899,13 @@ mod tests {
     #[test]
     fn test_handle_sync_response_blocks() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_dummy_chain(0, 10, 1234);
-        cluster.generate_dummy_chain(1, 100, 1234);
+        cluster.chain_generate_dummy(0, 10, 1234);
+        cluster.chain_generate_dummy(1, 100, 1234);
         let node0 = cluster.get_node(0);
         let node1 = cluster.get_node(1);
 
         test_nodes_run_sync_new(&mut cluster, 0, 1)?;
-        let mut sync_context = SyncContext::new();
-        cluster.chains_synchronizer[0].tick(
-            &mut sync_context,
-            &cluster.chains[0],
-            &cluster.nodes,
-        )?;
+        cluster.tick_chain_synchronizer(0)?;
         assert_eq!(cluster.chains_synchronizer[0].status, Status::Downloading);
         assert_eq!(
             cluster.chains_synchronizer[0].current_leader,
@@ -970,7 +965,7 @@ mod tests {
     #[test]
     fn test_chain_sample_block_headers() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(1);
-        cluster.generate_dummy_chain(0, 100, 3424);
+        cluster.chain_generate_dummy(0, 100, 3424);
 
         let offsets: Vec<chain::BlockOffset> =
             cluster.chains[0].block_iter(0)?.map(|b| b.offset).collect();
@@ -1012,12 +1007,11 @@ mod tests {
     #[test]
     fn sync_empty_node1_to_full_node2() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_dummy_chain(1, 100, 3434);
+        cluster.chain_generate_dummy(1, 100, 3434);
 
         test_nodes_run_sync_new(&mut cluster, 0, 1)?;
         {
-            let node1_node2_info = &cluster.chains_synchronizer[0]
-                .nodes_info["node1"];
+            let node1_node2_info = &cluster.chains_synchronizer[0].nodes_info["node1"];
             assert_eq!(
                 node1_node2_info.chain_metadata_status(),
                 NodeMetadataStatus::Synchronized
@@ -1053,13 +1047,12 @@ mod tests {
     #[test]
     fn sync_full_node1_to_empty_node2() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_dummy_chain(0, 100, 3434);
+        cluster.chain_generate_dummy(0, 100, 3434);
 
         // running sync twice will yield to nothing as node2 is empty
         for _i in 0..2 {
             test_nodes_run_sync_new(&mut cluster, 0, 1)?;
-            let node1_node2_info = &cluster.chains_synchronizer[0]
-                .nodes_info["node1"];
+            let node1_node2_info = &cluster.chains_synchronizer[0].nodes_info["node1"];
             assert_eq!(
                 node1_node2_info.chain_metadata_status(),
                 NodeMetadataStatus::Synchronized
@@ -1083,14 +1076,13 @@ mod tests {
     #[test]
     fn sync_full_node1_to_half_node2() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_dummy_chain(0, 100, 3434);
-        cluster.generate_dummy_chain(1, 50, 3434);
+        cluster.chain_generate_dummy(0, 100, 3434);
+        cluster.chain_generate_dummy(1, 50, 3434);
 
         // running sync twice will yield to nothing as node1 is leader
         for _i in 0..2 {
             test_nodes_run_sync_new(&mut cluster, 0, 1)?;
-            let node1_node2_info = &cluster.chains_synchronizer[0]
-                .nodes_info["node1"];
+            let node1_node2_info = &cluster.chains_synchronizer[0].nodes_info["node1"];
             assert_eq!(
                 node1_node2_info.chain_metadata_status(),
                 NodeMetadataStatus::Synchronized
@@ -1118,13 +1110,12 @@ mod tests {
     #[test]
     fn sync_half_node1_to_full_node2() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_dummy_chain(0, 50, 3434);
-        cluster.generate_dummy_chain(1, 100, 3434);
+        cluster.chain_generate_dummy(0, 50, 3434);
+        cluster.chain_generate_dummy(1, 100, 3434);
 
         test_nodes_run_sync_new(&mut cluster, 0, 1)?;
         {
-            let node1_node2_info = &cluster.chains_synchronizer[0]
-                .nodes_info["node1"];
+            let node1_node2_info = &cluster.chains_synchronizer[0].nodes_info["node1"];
             assert_eq!(
                 node1_node2_info.chain_metadata_status(),
                 NodeMetadataStatus::Synchronized
@@ -1157,8 +1148,8 @@ mod tests {
     #[test]
     fn sync_divergent_node1_to_full_node2() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_dummy_chain(0, 100, 1234);
-        cluster.generate_dummy_chain(1, 100, 9876);
+        cluster.chain_generate_dummy(0, 100, 1234);
+        cluster.chain_generate_dummy(1, 100, 9876);
 
         test_nodes_run_sync_new(&mut cluster, 0, 1)?;
         {
@@ -1221,12 +1212,7 @@ mod tests {
         let mut count_1_to_2 = 0;
         let mut count_2_to_1 = 0;
 
-        let mut sync_context = SyncContext::new();
-        cluster.chains_synchronizer[node_id_a].tick(
-            &mut sync_context,
-            &cluster.chains[node_id_a],
-            &cluster.nodes,
-        )?;
+        let sync_context = cluster.tick_chain_synchronizer(node_id_a)?;
         if sync_context.messages.is_empty() {
             return Ok((count_1_to_2, count_2_to_1));
         }

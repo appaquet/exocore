@@ -571,21 +571,12 @@ where
 
         // TODO: Do a binary lookup after we sorted it
         let block = unlocked_inner.chain_store.get_block(block_offset)?;
-        let operation = block
-            .entries_iter()?
-            .find(|operation| {
-                if let Ok(operation_reader) = operation.get_typed_reader() {
-                    operation_reader.get_operation_id() == operation_id
-                } else {
-                    false
-                }
-            })
-            .ok_or_else(|| {
-                Error::NotFound(format!(
-                    "block_offset={} operation_id={}",
-                    block_offset, operation_id
-                ))
-            })?;
+        let operation = block.get_operation(operation_id)?.ok_or_else(|| {
+            Error::NotFound(format!(
+                "block_offset={} operation_id={}",
+                block_offset, operation_id
+            ))
+        })?;
 
         Ok(ChainOperation {
             operation_id,

@@ -120,7 +120,7 @@ mod tests {
         assert!(!tracker.has_responded_last_request());
 
         // after timeout, we should be able to make query, but then # failures is increased
-        mock_clock.set_instant(Instant::now() + Duration::from_millis(5001));
+        mock_clock.set_fixed_instant(Instant::now() + Duration::from_millis(5001));
         assert!(tracker.can_send_request());
         assert!(!tracker.has_responded_last_request());
         assert_eq!(tracker.nb_response_failure, 1);
@@ -141,21 +141,22 @@ mod tests {
 
     #[test]
     fn test_can_send_request_timeout_backoff() {
-        let mock_clock = Clock::new_mocked();
+        let mock_clock = Clock::new_fixed_mocked(Instant::now());
         let mut tracker = RequestTracker::new_with_clock(mock_clock.clone(), Config::default());
 
         tracker.can_send_request();
         tracker.set_last_send(mock_clock.instant());
         assert_eq!(tracker.next_request_interval(), Duration::from_secs(5));
 
-        mock_clock.add_instant_duration(Duration::from_millis(5001));
+        mock_clock.add_fixed_instant_duration(Duration::from_millis(5001));
         tracker.can_send_request();
         tracker.set_last_send(mock_clock.instant());
         assert_eq!(tracker.next_request_interval(), Duration::from_secs(10));
 
         for _i in 0..10 {
-            mock_clock
-                .add_instant_duration(tracker.next_request_interval() + Duration::from_millis(1));
+            mock_clock.add_fixed_instant_duration(
+                tracker.next_request_interval() + Duration::from_millis(1),
+            );
             tracker.can_send_request();
             tracker.set_last_send(mock_clock.instant());
         }

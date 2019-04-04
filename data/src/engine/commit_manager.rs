@@ -499,7 +499,7 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
             block_operation_id,
             block_entries,
         )?;
-        if block.entries_iter()?.next().is_none() {
+        if block.operations_iter()?.next().is_none() {
             debug!("No operations need to be committed, so won't be proposing any block");
             return Ok(());
         }
@@ -773,94 +773,59 @@ impl PendingBlockSignature {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use crate::chain::Store as ChainStore;
     use crate::engine::testing::*;
+    use crate::pending::PendingOperation;
     use crate::pending::Store as PendingStore;
-    use chain::directory::DirectoryStore;
-    use pending::memory::MemoryStore;
+
+    use super::*;
+    use failure::format_err;
 
     #[test]
     fn should_propose_block_on_new_operations() -> Result<(), failure::Error> {
-        exocore_common::utils::setup_logging();
-        let mut test_cluster = TestCluster::new(1);
-        test_cluster.add_genesis_block(0);
-
-        let my_node = test_cluster.get_node(0);
-        let my_node_id = my_node.id();
-
-        let clock = Clock::new_mocked();
-        let config = Config::default();
-        let mut commit_manager = CommitManager::<MemoryStore, DirectoryStore>::new(
-            my_node_id.clone(),
-            config,
-            clock.clone(),
-        );
-
-        let mut sync_context = SyncContext::new();
-        let pending_store = &mut test_cluster.pending_stores[0];
-        let pending_synchronizer = &mut test_cluster.pending_stores_synchronizer[0];
-        let chain_store = &mut test_cluster.chains[0];
-        let chain_synchronizer = &mut test_cluster.chains_synchronizer[0];
+        let mut cluster = TestCluster::new(1);
+        let node = cluster.get_node(0);
+        cluster.chain_add_genesis_block(0);
 
         // this will mark chain synchronizer as synchronized as we are the sole node
-        chain_synchronizer.tick(&mut sync_context, chain_store, &test_cluster.nodes)?;
+        cluster.tick_chain_synchronizer(0)?;
 
-        commit_manager.tick(
-            &mut sync_context,
-            pending_synchronizer,
-            pending_store,
-            chain_synchronizer,
-            chain_store,
-            &test_cluster.nodes,
-        )?;
-
-        let operations = pending_store.operations_iter(..)?;
+        // nothing will be done since nothing is in pending store
+        cluster.tick_commit_manager(0)?;
+        let operations = cluster.pending_stores[0].operations_iter(..)?;
         assert_eq!(operations.count(), 0);
 
-        let operation_id = clock.consistent_time(&my_node) - 1;
-        let data = b"some_data";
-        let op_builder = pending::PendingOperation::new_entry(operation_id, my_node_id, data);
-        let op_frame = op_builder.as_owned_framed(my_node.frame_signer())?;
-        pending_store.put_operation(op_frame)?;
+        let op_id = cluster.consistent_clock(0) - 1;
+        let op_data = b"some_data";
+        let op_builder = PendingOperation::new_entry(op_id, node.id(), op_data);
+        let op_frame = op_builder.as_owned_framed(node.frame_signer())?;
+        cluster.pending_stores[0].put_operation(op_frame)?;
 
-        commit_manager.tick(
-            &mut sync_context,
-            pending_synchronizer,
-            pending_store,
-            chain_synchronizer,
-            chain_store,
-            &test_cluster.nodes,
-        )?;
-
-        // should have generate a block proposal from it
-        let operations = pending_store.operations_iter(..)?;
+        // this should create a block proposal (2nd op in pending store)
+        cluster.tick_commit_manager(0)?;
+        let operations = cluster.pending_stores[0].operations_iter(..)?;
         assert_eq!(operations.count(), 2);
 
-        commit_manager.tick(
-            &mut sync_context,
-            pending_synchronizer,
-            pending_store,
-            chain_synchronizer,
-            chain_store,
-            &test_cluster.nodes,
-        )?;
+        // this should commit block to chain
+        cluster.tick_commit_manager(0)?;
 
         // a new block should have been added with the entry
-        // TODO: Create an entry extractor in pending/mod.rs
-        let last_block = chain_store.get_last_block()?.unwrap();
-        assert_ne!(last_block.offset, 0);
-        let entries = last_block.entries_iter()?.collect_vec();
-        let entry: pending_operation::Reader = entries[0].get_typed_reader()?;
-        assert_eq!(entry.get_operation_id(), operation_id);
-        match entry.get_operation().which()? {
-            pending_operation::operation::Which::EntryNew(entry_reader) => {
-                assert_eq!(data, entry_reader?.get_data()?);
-            }
-            _ => panic!(),
-        }
+        let last_block = cluster.chains[0].get_last_block()?.unwrap();
+        let operation = last_block.get_operation(op_id)?.unwrap();
+        assert_eq!(extract_entry_data(operation)?, op_data);
 
         Ok(())
+    }
+
+    fn extract_entry_data(
+        operation_frame: TypedSliceFrame<pending_operation::Owned>,
+    ) -> Result<Vec<u8>, failure::Error> {
+        let entry_reader = operation_frame.get_typed_reader()?;
+        match entry_reader.get_operation().which()? {
+            pending_operation::operation::Which::EntryNew(entry_reader) => {
+                Ok(entry_reader?.get_data()?.to_vec())
+            }
+            _ => Err(format_err!("not found")),
+        }
     }
 }

@@ -234,7 +234,10 @@ impl Store for DirectoryStore {
         Ok(Some(last_block))
     }
 
-    fn get_block_by_operation_id(&self, _operation_id: OperationID) -> Result<Option<BlockRef>, Error> {
+    fn get_block_by_operation_id(
+        &self,
+        _operation_id: OperationID,
+    ) -> Result<Option<BlockRef>, Error> {
         // TODO: Implement index by operation id: https://github.com/appaquet/exocore/issues/33
         Ok(None)
     }
