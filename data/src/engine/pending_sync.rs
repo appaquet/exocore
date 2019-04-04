@@ -702,8 +702,7 @@ mod tests {
         pending_operation, pending_operation_header,
     };
 
-
-    use crate::pending::tests::create_new_entry_op;
+    use crate::engine::testing::create_dummy_new_entry_op;
 
     use crate::engine::testing::*;
     use crate::engine::SyncContextMessage;
@@ -730,7 +729,7 @@ mod tests {
     #[test]
     fn create_sync_range_request() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_node_ops(0, 100);
+        cluster.generate_dummy_node_operations(0, 100);
 
         let mut sync_context = SyncContext::new();
         cluster.pending_stores_synchronizer[0].tick(&mut sync_context, & cluster.pending_stores[0], &cluster.nodes)?;
@@ -755,11 +754,11 @@ mod tests {
     #[test]
     fn new_operation_after_last_operation() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_node_ops(0, 50);
-        cluster.generate_node_ops(1, 50);
+        cluster.generate_dummy_node_operations(0, 50);
+        cluster.generate_dummy_node_operations(1, 50);
 
         // create operation after last operation id
-        let new_operation = create_new_entry_op(52, 52);
+        let new_operation = create_dummy_new_entry_op(52, 52);
         let mut sync_context = SyncContext::new();
         cluster.pending_stores_synchronizer[0].handle_new_operation(
             &mut sync_context,
@@ -790,7 +789,7 @@ mod tests {
         // generate operations with even operation id
         let ops_generator = (0..=50).map(|i| {
             let (group_id, operation_id) = (((i * 2) % 10 + 1) as u64, i * 2 as u64);
-            create_new_entry_op(operation_id, group_id)
+            create_dummy_new_entry_op(operation_id, group_id)
         });
 
         for operation in ops_generator {
@@ -800,7 +799,7 @@ mod tests {
 
         // create operation in middle of current ranges, with odd operation id
         let mut sync_context = SyncContext::new();
-        let new_operation = create_new_entry_op(51, 51);
+        let new_operation = create_dummy_new_entry_op(51, 51);
         cluster.pending_stores_synchronizer[0].handle_new_operation(
             &mut sync_context,
             & cluster.nodes,
@@ -826,8 +825,8 @@ mod tests {
     #[test]
     fn handle_sync_equals() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_node_ops(0, 100);
-        cluster.generate_node_ops(1, 100);
+        cluster.generate_dummy_node_operations(0, 100);
+        cluster.generate_dummy_node_operations(1, 100);
 
         let (count_a_to_b, count_b_to_a) = sync_nodes(&mut cluster, 0, 1)?;
         assert_eq!(count_a_to_b, 1);
@@ -839,7 +838,7 @@ mod tests {
     #[test]
     fn handle_sync_empty_to_many() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_node_ops(0, 100);
+        cluster.generate_dummy_node_operations(0, 100);
 
         let (count_a_to_b, count_b_to_a) = sync_nodes(&mut cluster, 0, 1)?;
         assert_eq!(count_a_to_b, 2);
@@ -851,7 +850,7 @@ mod tests {
     #[test]
     fn handle_sync_many_to_empty() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_node_ops(1, 100);
+        cluster.generate_dummy_node_operations(1, 100);
 
         let (count_a_to_b, count_b_to_a) = sync_nodes(&mut cluster, 0, 1)?;
         assert_eq!(count_a_to_b, 1);
@@ -863,7 +862,7 @@ mod tests {
     #[test]
     fn handle_sync_full_to_some() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_node_ops(0, 100);
+        cluster.generate_dummy_node_operations(0, 100);
 
         // insert 1/2 operations in second node
         for operation in pending_ops_generator(100) {
@@ -883,7 +882,7 @@ mod tests {
     #[test]
     fn handle_sync_some_to_all() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_node_ops(1, 100);
+        cluster.generate_dummy_node_operations(1, 100);
 
         // insert 1/2 operations in first node
         for operation in pending_ops_generator(100) {
@@ -1098,14 +1097,14 @@ mod tests {
     ) -> impl Iterator<Item = OwnedTypedFrame<pending_operation::Owned>> {
         (1..=count).map(|i| {
             let (group_id, operation_id) = ((i % 10 + 1) as u64, i as u64);
-            create_new_entry_op(operation_id, group_id)
+            create_dummy_new_entry_op(operation_id, group_id)
         })
     }
 
     fn stored_ops_generator(count: usize) -> impl Iterator<Item = StoredOperation> {
         (1..=count).map(|i| {
             let (group_id, operation_id) = ((i % 10 + 1) as u64, i as u64);
-            let operation = Arc::new(create_new_entry_op(operation_id, group_id));
+            let operation = Arc::new(create_dummy_new_entry_op(operation_id, group_id));
 
             StoredOperation {
                 group_id,

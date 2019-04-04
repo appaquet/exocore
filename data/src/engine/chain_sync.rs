@@ -899,8 +899,8 @@ mod tests {
     #[test]
     fn test_handle_sync_response_blocks() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_node_chain(0, 10, 1234);
-        cluster.generate_node_chain(1, 100, 1234);
+        cluster.generate_dummy_chain(0, 10, 1234);
+        cluster.generate_dummy_chain(1, 100, 1234);
         let node0 = cluster.get_node(0);
         let node1 = cluster.get_node(1);
 
@@ -970,7 +970,7 @@ mod tests {
     #[test]
     fn test_chain_sample_block_headers() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(1);
-        cluster.generate_node_chain(0, 100, 3424);
+        cluster.generate_dummy_chain(0, 100, 3424);
 
         let offsets: Vec<chain::BlockOffset> =
             cluster.chains[0].block_iter(0)?.map(|b| b.offset).collect();
@@ -1012,7 +1012,7 @@ mod tests {
     #[test]
     fn sync_empty_node1_to_full_node2() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_node_chain(1, 100, 3434);
+        cluster.generate_dummy_chain(1, 100, 3434);
 
         test_nodes_run_sync_new(&mut cluster, 0, 1)?;
         {
@@ -1053,7 +1053,7 @@ mod tests {
     #[test]
     fn sync_full_node1_to_empty_node2() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_node_chain(0, 100, 3434);
+        cluster.generate_dummy_chain(0, 100, 3434);
 
         // running sync twice will yield to nothing as node2 is empty
         for _i in 0..2 {
@@ -1083,8 +1083,8 @@ mod tests {
     #[test]
     fn sync_full_node1_to_half_node2() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_node_chain(0, 100, 3434);
-        cluster.generate_node_chain(1, 50, 3434);
+        cluster.generate_dummy_chain(0, 100, 3434);
+        cluster.generate_dummy_chain(1, 50, 3434);
 
         // running sync twice will yield to nothing as node1 is leader
         for _i in 0..2 {
@@ -1118,8 +1118,8 @@ mod tests {
     #[test]
     fn sync_half_node1_to_full_node2() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_node_chain(0, 50, 3434);
-        cluster.generate_node_chain(1, 100, 3434);
+        cluster.generate_dummy_chain(0, 50, 3434);
+        cluster.generate_dummy_chain(1, 100, 3434);
 
         test_nodes_run_sync_new(&mut cluster, 0, 1)?;
         {
@@ -1157,8 +1157,8 @@ mod tests {
     #[test]
     fn sync_divergent_node1_to_full_node2() -> Result<(), failure::Error> {
         let mut cluster = TestCluster::new(2);
-        cluster.generate_node_chain(0, 100, 1234);
-        cluster.generate_node_chain(1, 100, 9876);
+        cluster.generate_dummy_chain(0, 100, 1234);
+        cluster.generate_dummy_chain(1, 100, 9876);
 
         test_nodes_run_sync_new(&mut cluster, 0, 1)?;
         {

@@ -188,31 +188,3 @@ impl From<capnp::NotInSchema> for Error {
         Error::SerializationNotInSchema(err.0)
     }
 }
-
-#[cfg(test)]
-pub mod tests {
-    use exocore_common::serialization::framed::{FrameBuilder, MultihashFrameSigner};
-
-    use super::*;
-
-    pub fn create_new_entry_op(
-        operation_id: OperationID,
-        group_id: GroupID,
-    ) -> framed::OwnedTypedFrame<pending_operation::Owned> {
-        let mut msg_builder = FrameBuilder::<pending_operation::Owned>::new();
-
-        {
-            let mut op_builder: pending_operation::Builder = msg_builder.get_builder_typed();
-            op_builder.set_group_id(group_id);
-            op_builder.set_operation_id(operation_id);
-
-            let inner_op_builder = op_builder.init_operation();
-            let mut new_entry_builder = inner_op_builder.init_entry_new();
-
-            new_entry_builder.set_data(b"bob");
-        }
-
-        let frame_signer = MultihashFrameSigner::new_sha3256();
-        msg_builder.as_owned_framed(frame_signer).unwrap()
-    }
-}

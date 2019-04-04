@@ -8,6 +8,7 @@ use exocore_common::serialization::protos::data_chain_capnp::{
     block, block_signatures, pending_operation,
 };
 
+use crate::chain;
 use crate::chain::directory::{Config as DirectoryConfig, DirectoryStore};
 use crate::chain::{BlockOwned, Store as ChainStore};
 use crate::engine::chain_sync;
@@ -75,7 +76,7 @@ impl TestCluster {
         self.nodes.get(&format!("node{}", id)).unwrap().clone()
     }
 
-    pub fn generate_node_chain(&mut self, node_id: usize, count: usize, seed: u64) {
+    pub fn generate_dummy_chain(&mut self, node_id: usize, count: usize, seed: u64) {
         let mut offsets = Vec::new();
         let mut next_offset = 0;
 
@@ -93,10 +94,9 @@ impl TestCluster {
             };
 
             let prev_block_msg = previous_block.map(|b| b.block);
-
             let entries_data = vec![0u8; 123];
-            let signatures = create_block_sigs(entries_data.len() as u32);
-            let block_frame = create_block(
+            let signatures = create_dummy_block_sigs(entries_data.len() as u32);
+            let block_frame = create_dummy_block(
                 next_offset,
                 i as u64,
                 entries_data.len() as u32,
@@ -109,14 +109,20 @@ impl TestCluster {
         }
     }
 
-    pub fn generate_node_ops(&mut self, id: usize, count: usize) {
+    pub fn generate_dummy_node_operations(&mut self, node_id: usize, count: usize) {
         for operation in dummy_pending_ops_generator(count) {
-            self.pending_stores[id].put_operation(operation).unwrap();
+            self.pending_stores[node_id].put_operation(operation).unwrap();
         }
+    }
+
+    pub fn add_genesis_block(&mut self, node_id: usize) {
+        let my_node = self.get_node(node_id);
+        let block = chain::BlockOwned::new_genesis(&self.nodes, &my_node).unwrap();
+        self.chains[node_id].write_block(&block).unwrap();
     }
 }
 
-pub fn create_block<B: TypedFrame<block::Owned>>(
+pub fn create_dummy_block<B: TypedFrame<block::Owned>>(
     offset: u64,
     depth: u64,
     entries_size: u32,
@@ -145,7 +151,7 @@ pub fn create_block<B: TypedFrame<block::Owned>>(
     msg_builder.as_owned_framed(signer).unwrap()
 }
 
-pub fn create_block_sigs(entries_size: u32) -> OwnedTypedFrame<block_signatures::Owned> {
+pub fn create_dummy_block_sigs(entries_size: u32) -> OwnedTypedFrame<block_signatures::Owned> {
     let mut msg_builder = FrameBuilder::<block_signatures::Owned>::new();
     let mut block_builder = msg_builder.get_builder_typed();
     block_builder.set_entries_size(entries_size);
@@ -173,6 +179,7 @@ pub fn create_dummy_new_entry_op(
         let mut op_builder: pending_operation::Builder = msg_builder.get_builder_typed();
         op_builder.set_group_id(group_id);
         op_builder.set_operation_id(operation_id);
+        op_builder.set_node_id("node_id");
 
         let inner_op_builder = op_builder.init_operation();
         let mut new_entry_builder = inner_op_builder.init_entry_new();

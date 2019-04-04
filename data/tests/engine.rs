@@ -17,7 +17,7 @@ use std::time::Duration;
 
 #[test]
 fn test_engine_integration_single_node() -> Result<(), failure::Error> {
-    exocore_common::utils::setup_logging();
+    //exocore_common::utils::setup_logging();
 
     let data_dir = tempdir::TempDir::new("engine_tests")?;
     let mut rt = Runtime::new()?;

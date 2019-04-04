@@ -37,7 +37,7 @@ mod pending_sync;
 mod request_tracker;
 
 #[cfg(any(test, feature = "tests_utils"))]
-mod testing;
+pub(crate) mod testing;
 
 ///
 /// Data engine's configuration
@@ -641,7 +641,7 @@ where
 }
 
 ///
-///
+/// Engine errors
 ///
 #[derive(Debug, Fail)]
 pub enum Error {

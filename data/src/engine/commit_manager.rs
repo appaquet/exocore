@@ -144,7 +144,7 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
                 debug!("Block has enough signatures ! We should commit!");
                 self.commit_block(next_block, pending_store, chain_store, nodes)?;
             }
-        } else if self.should_propose_block() {
+        } else if self.should_propose_block(nodes, chain_store, &pending_blocks)? {
             debug!("No current block, and we can propose one");
             self.create_block_proposal(
                 sync_context,
@@ -360,7 +360,7 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
     ) -> Result<(), Error> {
         let my_node = nodes
             .get(&self.node_id)
-            .ok_or_else(|| Error::Other("Couldn't find my node in nodes list".to_string()))?;
+            .ok_or_else(|| Error::Fatal("Couldn't find my node in nodes list".to_string()))?;
 
         let operation_id = self.clock.consistent_time(&my_node);
         let signature_frame_builder = pending::PendingOperation::new_signature_for_block(
@@ -396,7 +396,7 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
     ) -> Result<(), Error> {
         let my_node = nodes
             .get(&self.node_id)
-            .ok_or_else(|| Error::Other("Couldn't find my node in nodes list".to_string()))?;
+            .ok_or_else(|| Error::Fatal("Couldn't find my node in nodes list".to_string()))?;
 
         let operation_id = self.clock.consistent_time(&my_node);
         let refusal_frame_builder = pending::PendingOperation::new_refusal(
@@ -420,12 +420,18 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
         Ok(())
     }
 
-    fn should_propose_block(&self) -> bool {
+    fn should_propose_block(
+        &self,
+        _nodes: &Nodes,
+        _chain_store: &CS,
+        _pending_blocks: &HashMap<OperationID, PendingBlock>,
+    ) -> Result<bool, Error> {
         // TODO: I'm synchronized
         // TODO: I have full access
         // TODO: Last block time + duration + hash(nodeid) % 5 secs
         //       - Perhaps we should take current time into consideration so that we don't have 2 nodes proposing at the timeout
-        true
+
+        Ok(true)
     }
 
     // TODO: Should be fixed once we do https://github.com/appaquet/exocore/issues/37
@@ -442,7 +448,7 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
     ) -> Result<(), Error> {
         let my_node = nodes
             .get(&self.node_id)
-            .ok_or_else(|| Error::Other("Couldn't find my node in nodes list".to_string()))?;
+            .ok_or_else(|| Error::Fatal("Couldn't find my node in nodes list".to_string()))?;
 
         let previous_block = chain_store.get_last_block()?.ok_or_else(|| {
             Error::Other(
@@ -530,7 +536,7 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
     ) -> Result<(), Error> {
         let my_node = nodes
             .get(&self.node_id)
-            .ok_or_else(|| Error::Other("Couldn't find my node in nodes list".to_string()))?;
+            .ok_or_else(|| Error::Fatal("Couldn't find my node in nodes list".to_string()))?;
 
         let block_frame = next_block.proposal.get_block()?;
         let block_reader: block::Reader = block_frame.get_typed_reader()?;
@@ -767,8 +773,94 @@ impl PendingBlockSignature {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    use crate::chain::Store as ChainStore;
+    use crate::engine::testing::*;
+    use crate::pending::Store as PendingStore;
+    use chain::directory::DirectoryStore;
+    use pending::memory::MemoryStore;
+
     #[test]
-    fn test_blabla() {
-        // TODO:
+    fn should_propose_block_on_new_operations() -> Result<(), failure::Error> {
+        exocore_common::utils::setup_logging();
+        let mut test_cluster = TestCluster::new(1);
+        test_cluster.add_genesis_block(0);
+
+        let my_node = test_cluster.get_node(0);
+        let my_node_id = my_node.id();
+
+        let clock = Clock::new_mocked();
+        let config = Config::default();
+        let mut commit_manager = CommitManager::<MemoryStore, DirectoryStore>::new(
+            my_node_id.clone(),
+            config,
+            clock.clone(),
+        );
+
+        let mut sync_context = SyncContext::new();
+        let pending_store = &mut test_cluster.pending_stores[0];
+        let pending_synchronizer = &mut test_cluster.pending_stores_synchronizer[0];
+        let chain_store = &mut test_cluster.chains[0];
+        let chain_synchronizer = &mut test_cluster.chains_synchronizer[0];
+
+        // this will mark chain synchronizer as synchronized as we are the sole node
+        chain_synchronizer.tick(&mut sync_context, chain_store, &test_cluster.nodes)?;
+
+        commit_manager.tick(
+            &mut sync_context,
+            pending_synchronizer,
+            pending_store,
+            chain_synchronizer,
+            chain_store,
+            &test_cluster.nodes,
+        )?;
+
+        let operations = pending_store.operations_iter(..)?;
+        assert_eq!(operations.count(), 0);
+
+        let operation_id = clock.consistent_time(&my_node) - 1;
+        let data = b"some_data";
+        let op_builder = pending::PendingOperation::new_entry(operation_id, my_node_id, data);
+        let op_frame = op_builder.as_owned_framed(my_node.frame_signer())?;
+        pending_store.put_operation(op_frame)?;
+
+        commit_manager.tick(
+            &mut sync_context,
+            pending_synchronizer,
+            pending_store,
+            chain_synchronizer,
+            chain_store,
+            &test_cluster.nodes,
+        )?;
+
+        // should have generate a block proposal from it
+        let operations = pending_store.operations_iter(..)?;
+        assert_eq!(operations.count(), 2);
+
+        commit_manager.tick(
+            &mut sync_context,
+            pending_synchronizer,
+            pending_store,
+            chain_synchronizer,
+            chain_store,
+            &test_cluster.nodes,
+        )?;
+
+        // a new block should have been added with the entry
+        // TODO: Create an entry extractor in pending/mod.rs
+        let last_block = chain_store.get_last_block()?.unwrap();
+        assert_ne!(last_block.offset, 0);
+        let entries = last_block.entries_iter()?.collect_vec();
+        let entry: pending_operation::Reader = entries[0].get_typed_reader()?;
+        assert_eq!(entry.get_operation_id(), operation_id);
+        match entry.get_operation().which()? {
+            pending_operation::operation::Which::EntryNew(entry_reader) => {
+                assert_eq!(data, entry_reader?.get_data()?);
+            }
+            _ => panic!(),
+        }
+
+        Ok(())
     }
 }
