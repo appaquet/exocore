@@ -5,7 +5,7 @@ use itertools::Itertools;
 
 use exocore_common::node::{NodeID, Nodes};
 use exocore_common::security::signature::Signature;
-use exocore_common::serialization::framed::{TypedFrame, TypedSliceFrame};
+use exocore_common::serialization::framed::{SignedFrame, TypedFrame, TypedSliceFrame};
 use exocore_common::serialization::protos::data_chain_capnp::{
     block, block_signature, operation_block_propose, operation_block_sign, pending_operation,
 };
@@ -75,7 +75,6 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
             return Ok(());
         }
 
-        let nb_nodes_consensus = (nodes.len() / 2).max(1);
         let last_stored_block = chain_store.get_last_block()?.ok_or_else(|| {
             Error::Other("Chain doesn't contain any block. Cannot progress on commits.".to_string())
         })?;
@@ -137,7 +136,11 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
                 }
             }
 
-            if next_block.has_my_signature && next_block.signatures.len() >= nb_nodes_consensus {
+            let valid_signatures = next_block
+                .signatures
+                .iter()
+                .filter(|sig| next_block.validate_signature(nodes, sig));
+            if next_block.has_my_signature && nodes.is_quorum(valid_signatures.count()) {
                 debug!("Block has enough signatures ! We should commit!");
                 self.commit_block(next_block, pending_store, chain_store, nodes)?;
             }
@@ -548,8 +551,8 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
         let signatures = next_block
             .signatures
             .iter()
+            .filter(|pending_signature| next_block.validate_signature(nodes, pending_signature))
             .map(|pending_signature| {
-                // TODO: Validate signatures
                 chain::BlockSignature::new(
                     pending_signature.node_id.clone(),
                     pending_signature.signature.clone(),
@@ -643,6 +646,26 @@ impl PendingBlock {
     fn add_my_refusal(&mut self, refusal: PendingBlockRefusal) {
         self.refusals.push(refusal);
         self.has_my_refusal = true;
+    }
+
+    fn validate_signature(&self, nodes: &Nodes, signature: &PendingBlockSignature) -> bool {
+        let node = if let Some(node) = nodes.get(&signature.node_id) {
+            node
+        } else {
+            return false;
+        };
+
+        let block = if let Ok(block) = self.proposal.get_block() {
+            block
+        } else {
+            return false;
+        };
+
+        if let Some(signature_data) = block.signature_data() {
+            signature.signature.validate(node, signature_data)
+        } else {
+            return false;
+        }
     }
 }
 
@@ -744,8 +767,6 @@ impl PendingBlockSignature {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_blabla() {
         // TODO:

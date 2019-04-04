@@ -702,10 +702,11 @@ mod tests {
         pending_operation, pending_operation_header,
     };
 
-    use crate::pending::memory::MemoryStore;
+
     use crate::pending::tests::create_new_entry_op;
 
-    use super::super::SyncContextMessage;
+    use crate::engine::testing::*;
+    use crate::engine::SyncContextMessage;
     use super::*;
     use crate::pending::OperationType;
 
@@ -714,13 +715,13 @@ mod tests {
         // only one node, shouldn't send to ourself
         let mut cluster = TestCluster::new(1);
         let mut sync_context = SyncContext::new();
-        cluster.synchronizers[0].tick(&mut sync_context, &mut cluster.stores[0], &cluster.nodes)?;
+        cluster.pending_stores_synchronizer[0].tick(&mut sync_context, & cluster.pending_stores[0], &cluster.nodes)?;
         assert_eq!(sync_context.messages.len(), 0);
 
         // two nodes should send to other node
         let mut cluster = TestCluster::new(2);
         let mut sync_context = SyncContext::new();
-        cluster.synchronizers[0].tick(&mut sync_context, &mut cluster.stores[0], &cluster.nodes)?;
+        cluster.pending_stores_synchronizer[0].tick(&mut sync_context, & cluster.pending_stores[0], &cluster.nodes)?;
         assert_eq!(sync_context.messages.len(), 1);
 
         Ok(())
@@ -732,7 +733,7 @@ mod tests {
         cluster.generate_node_ops(0, 100);
 
         let mut sync_context = SyncContext::new();
-        cluster.synchronizers[0].tick(&mut sync_context, &mut cluster.stores[0], &cluster.nodes)?;
+        cluster.pending_stores_synchronizer[0].tick(&mut sync_context, & cluster.pending_stores[0], &cluster.nodes)?;
         let sync_request_frame = extract_request_from_result(&sync_context);
         let sync_request_reader = sync_request_frame.get_typed_reader()?;
 
@@ -760,10 +761,10 @@ mod tests {
         // create operation after last operation id
         let new_operation = create_new_entry_op(52, 52);
         let mut sync_context = SyncContext::new();
-        cluster.synchronizers[0].handle_new_operation(
+        cluster.pending_stores_synchronizer[0].handle_new_operation(
             &mut sync_context,
             &cluster.nodes,
-            &mut cluster.stores[0],
+            &mut cluster.pending_stores[0],
             new_operation,
         )?;
         let request = extract_request_from_result(&sync_context);
@@ -774,9 +775,9 @@ mod tests {
         assert_eq!(count_b_to_a, 0);
 
         // op should now be in each store
-        let ops = cluster.stores[0].get_group_operations(52)?.unwrap();
+        let ops = cluster.pending_stores[0].get_group_operations(52)?.unwrap();
         assert_eq!(ops.operations.len(), 1);
-        let ops = cluster.stores[1].get_group_operations(52)?.unwrap();
+        let ops = cluster.pending_stores[1].get_group_operations(52)?.unwrap();
         assert_eq!(ops.operations.len(), 1);
 
         Ok(())
@@ -793,17 +794,17 @@ mod tests {
         });
 
         for operation in ops_generator {
-            cluster.stores[0].put_operation(operation.clone())?;
-            cluster.stores[1].put_operation(operation)?;
+            cluster.pending_stores[0].put_operation(operation.clone())?;
+            cluster.pending_stores[1].put_operation(operation)?;
         }
 
         // create operation in middle of current ranges, with odd operation id
         let mut sync_context = SyncContext::new();
         let new_operation = create_new_entry_op(51, 51);
-        cluster.synchronizers[0].handle_new_operation(
+        cluster.pending_stores_synchronizer[0].handle_new_operation(
             &mut sync_context,
-            &mut cluster.nodes,
-            &mut cluster.stores[0],
+            & cluster.nodes,
+            &mut cluster.pending_stores[0],
             new_operation,
         )?;
         let request = extract_request_from_result(&sync_context);
@@ -814,9 +815,9 @@ mod tests {
         assert_eq!(count_b_to_a, 0);
 
         // op should now be in each store
-        let ops = cluster.stores[0].get_group_operations(51)?.unwrap();
+        let ops = cluster.pending_stores[0].get_group_operations(51)?.unwrap();
         assert_eq!(ops.operations.len(), 1);
-        let ops = cluster.stores[1].get_group_operations(51)?.unwrap();
+        let ops = cluster.pending_stores[1].get_group_operations(51)?.unwrap();
         assert_eq!(ops.operations.len(), 1);
 
         Ok(())
@@ -868,7 +869,7 @@ mod tests {
         for operation in pending_ops_generator(100) {
             let reader = operation.get_typed_reader()?;
             if reader.get_operation_id() % 2 == 0 {
-                cluster.stores[1].put_operation(operation)?;
+                cluster.pending_stores[1].put_operation(operation)?;
             }
         }
 
@@ -888,7 +889,7 @@ mod tests {
         for operation in pending_ops_generator(100) {
             let reader = operation.get_typed_reader()?;
             if reader.get_operation_id() % 2 == 0 {
-                cluster.stores[0].put_operation(operation)?;
+                cluster.pending_stores[0].put_operation(operation)?;
             }
         }
 
@@ -987,43 +988,6 @@ mod tests {
         Ok(())
     }
 
-    struct TestCluster {
-        nodes: Nodes,
-        stores: Vec<MemoryStore>,
-        synchronizers: Vec<Synchronizer<MemoryStore>>,
-    }
-
-    impl TestCluster {
-        fn new(count: usize) -> TestCluster {
-            let mut test_nodes = TestCluster {
-                nodes: Nodes::new(),
-                stores: Vec::new(),
-                synchronizers: Vec::new(),
-            };
-
-            for i in 0..count {
-                let node_id = format!("node{}", i);
-                test_nodes.nodes.add(Node::new(node_id.clone()));
-                test_nodes.stores.push(MemoryStore::new());
-                test_nodes
-                    .synchronizers
-                    .push(Synchronizer::new(node_id, Config::default()));
-            }
-
-            test_nodes
-        }
-
-        fn generate_node_ops(&mut self, id: usize, count: usize) {
-            for operation in pending_ops_generator(count) {
-                self.stores[id].put_operation(operation).unwrap();
-            }
-        }
-
-        fn get_node(&self, id: usize) -> Node {
-            self.nodes.get(&format!("node{}", id)).unwrap().clone()
-        }
-    }
-
     fn sync_nodes(
         cluster: &mut TestCluster,
         node_id_a: usize,
@@ -1032,9 +996,9 @@ mod tests {
         let mut sync_context = SyncContext::new();
 
         // tick the first node, which will generate a sync request
-        cluster.synchronizers[node_id_a].tick(
+        cluster.pending_stores_synchronizer[node_id_a].tick(
             &mut sync_context,
-            &mut cluster.stores[node_id_a],
+            & cluster.pending_stores[node_id_a],
             &cluster.nodes,
         )?;
         let initial_request = extract_request_from_result(&sync_context);
@@ -1061,10 +1025,10 @@ mod tests {
         loop {
             count_a_to_b += 1;
             let mut sync_context = SyncContext::new();
-            cluster.synchronizers[node_id_b].handle_incoming_sync_request(
+            cluster.pending_stores_synchronizer[node_id_b].handle_incoming_sync_request(
                 &node_a,
                 &mut sync_context,
-                &mut cluster.stores[node_id_b],
+                &mut cluster.pending_stores[node_id_b],
                 next_request,
             )?;
             if sync_context.messages.is_empty() {
@@ -1078,10 +1042,10 @@ mod tests {
             print_sync_request(&request);
 
             let mut sync_context = SyncContext::new();
-            cluster.synchronizers[node_id_a].handle_incoming_sync_request(
+            cluster.pending_stores_synchronizer[node_id_a].handle_incoming_sync_request(
                 &node_b,
                 &mut sync_context,
-                &mut cluster.stores[node_id_a],
+                &mut cluster.pending_stores[node_id_a],
                 request,
             )?;
             if sync_context.messages.is_empty() {

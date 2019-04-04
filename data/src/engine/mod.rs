@@ -36,6 +36,9 @@ mod commit_manager;
 mod pending_sync;
 mod request_tracker;
 
+#[cfg(any(test, feature = "tests_utils"))]
+mod testing;
+
 ///
 /// Data engine's configuration
 ///

@@ -69,6 +69,10 @@ impl Nodes {
     pub fn get(&self, node_id: &str) -> Option<&Node> {
         self.nodes.get(node_id)
     }
+
+    pub fn is_quorum(&self, count: usize) -> bool {
+        count >= (self.len() / 2).max(1)
+    }
 }
 
 impl Default for Nodes {
