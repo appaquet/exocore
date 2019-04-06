@@ -20,7 +20,7 @@ extern crate tokio_io;
 ///
 pub use crate::chain::directory::{DirectoryChainStore, DirectoryChainStoreConfig};
 pub use crate::engine::{Config as EngineConfig, Engine, EntryStatus};
-pub use crate::pending::memory::MemoryPendingStore as MemoryPendingStore;
+pub use crate::pending::memory::MemoryPendingStore;
 pub use crate::transport::mock::{MockTransport, MockTransportHub};
 
 ///

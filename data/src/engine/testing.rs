@@ -9,13 +9,13 @@ use exocore_common::serialization::protos::data_chain_capnp::{
 };
 
 use crate::chain;
-use crate::chain::directory::{DirectoryChainStoreConfig as DirectoryConfig, DirectoryChainStore};
-use crate::chain::{BlockOwned, ChainStore as ChainStore};
+use crate::chain::directory::{DirectoryChainStore, DirectoryChainStoreConfig as DirectoryConfig};
+use crate::chain::{BlockOwned, ChainStore};
 use crate::engine::commit_manager::CommitManager;
 use crate::engine::pending_sync;
 use crate::engine::{chain_sync, SyncContext};
 use crate::pending::memory::MemoryPendingStore;
-use crate::pending::PendingStore as PendingStore;
+use crate::pending::PendingStore;
 use exocore_common::serialization::protos::{GroupID, OperationID};
 use exocore_common::time::Clock;
 

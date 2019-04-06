@@ -15,7 +15,6 @@ use exocore_data::{
 };
 use std::time::Duration;
 
-
 // TODO: To be completed in https://github.com/appaquet/exocore/issues/42
 
 #[test]

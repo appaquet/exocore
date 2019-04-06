@@ -831,10 +831,10 @@ pub enum CommitManagerError {
 
 #[cfg(test)]
 mod tests {
-    use crate::chain::ChainStore as ChainStore;
+    use crate::chain::ChainStore;
     use crate::engine::testing::*;
     use crate::pending::PendingOperation;
-    use crate::pending::PendingStore as PendingStore;
+    use crate::pending::PendingStore;
 
     use super::*;
 
