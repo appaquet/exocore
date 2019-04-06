@@ -17,9 +17,7 @@ use exocore_common::serialization::capnp;
 use exocore_common::serialization::framed::{
     FrameBuilder, MessageType, OwnedTypedFrame, TypedSliceFrame,
 };
-use exocore_common::serialization::protos::data_chain_capnp::{
-    pending_operation,
-};
+use exocore_common::serialization::protos::data_chain_capnp::pending_operation;
 use exocore_common::serialization::protos::data_transport_capnp::{
     chain_sync_request, chain_sync_response, envelope, pending_sync_request,
 };
@@ -29,10 +27,11 @@ use exocore_common::serialization::{framed, framed::TypedFrame};
 use crate::chain;
 use crate::chain::{Block, BlockOffset};
 use crate::pending;
+use crate::pending::PendingOperation;
 use crate::transport;
 use crate::transport::OutMessage;
 use exocore_common::time::Clock;
-use crate::pending::PendingOperation;
+use itertools::Itertools;
 
 mod chain_sync;
 mod commit_manager;
@@ -84,6 +83,7 @@ where
     clock: Clock,
     transport: Option<T>,
     inner: Arc<RwLock<Inner<CS, PS>>>,
+    handles_count: usize,
     completion_receiver: oneshot::Receiver<Result<(), Error>>,
 }
 
@@ -104,8 +104,10 @@ where
     ) -> Engine<T, CS, PS> {
         let (completion_sender, completion_receiver) = oneshot::channel();
 
-        let pending_synchronizer =
-            pending_sync::PendingSynchronizer::new(node_id.clone(), config.pending_synchronizer_config);
+        let pending_synchronizer = pending_sync::PendingSynchronizer::new(
+            node_id.clone(),
+            config.pending_synchronizer_config,
+        );
         let chain_synchronizer =
             chain_sync::ChainSynchronizer::new(node_id.clone(), config.chain_synchronizer_config);
         let commit_manager = commit_manager::CommitManager::new(
@@ -134,6 +136,7 @@ where
             started: false,
             clock,
             inner,
+            handles_count: 0,
             transport: Some(transport),
             completion_receiver,
         }
@@ -145,11 +148,15 @@ where
             .write()
             .expect("Inner couldn't get locked, but engine isn't even started yet.");
 
+        let id = self.handles_count;
+        self.handles_count += 1;
+
         let channel_size = self.config.handles_events_stream_size;
         let (events_sender, events_receiver) = mpsc::channel(channel_size);
-        unlocked_inner.handles_sender.push(events_sender);
+        unlocked_inner.handles_sender.push((id, events_sender));
 
         Handle {
+            id,
             inner: Arc::downgrade(&self.inner),
             events_receiver: Some(events_receiver),
         }
@@ -347,6 +354,8 @@ where
 }
 
 ///
+/// Inner instance of the engine, since the engine is owned by the executor. The executor owns a strong
+/// reference to this Inner, while handles own weak references.
 ///
 ///
 struct Inner<CS, PS>
@@ -363,7 +372,7 @@ where
     chain_store: CS,
     chain_synchronizer: chain_sync::ChainSynchronizer<CS>,
     commit_manager: commit_manager::CommitManager<PS, CS>,
-    handles_sender: Vec<mpsc::Sender<Event>>,
+    handles_sender: Vec<(usize, mpsc::Sender<Event>)>,
     transport_sender: Option<mpsc::UnboundedSender<transport::OutMessage>>,
     completion_sender: Option<oneshot::Sender<Result<(), Error>>>,
 }
@@ -373,7 +382,10 @@ where
     CS: chain::Store,
     PS: pending::Store,
 {
-    fn handle_add_pending_operation(&mut self, operation_frame: OwnedTypedFrame<pending_operation::Owned>) -> Result<(), Error> {
+    fn handle_add_pending_operation(
+        &mut self,
+        operation_frame: OwnedTypedFrame<pending_operation::Owned>,
+    ) -> Result<(), Error> {
         let my_node = self.nodes.get(&self.node_id).ok_or(Error::MyNodeNotFound)?;
 
         let mut sync_context = SyncContext::new();
@@ -411,9 +423,7 @@ where
             request,
         )?;
         self.send_messages_from_sync_context(&mut sync_context)?;
-        self.notify_handlers_from_sync_context(&sync_context);
-
-        // TODO: Check events to check if there are any new proposal / signatures that would lead to chain storage
+        self.notify_handles_from_sync_context(&sync_context);
 
         Ok(())
     }
@@ -434,7 +444,7 @@ where
             request,
         )?;
         self.send_messages_from_sync_context(&mut sync_context)?;
-        self.notify_handlers_from_sync_context(&sync_context);
+        self.notify_handles_from_sync_context(&sync_context);
 
         Ok(())
     }
@@ -455,7 +465,7 @@ where
             response,
         )?;
         self.send_messages_from_sync_context(&mut sync_context)?;
-        self.notify_handlers_from_sync_context(&sync_context);
+        self.notify_handles_from_sync_context(&sync_context);
 
         Ok(())
     }
@@ -477,7 +487,7 @@ where
         )?;
 
         self.send_messages_from_sync_context(&mut sync_context)?;
-        self.notify_handlers_from_sync_context(&sync_context);
+        self.notify_handles_from_sync_context(&sync_context);
 
         Ok(())
     }
@@ -510,21 +520,31 @@ where
         Ok(())
     }
 
-    fn notify_handlers_from_sync_context(&mut self, sync_context: &SyncContext) {
+    fn notify_handles_from_sync_context(&mut self, sync_context: &SyncContext) {
         for event in sync_context.events.iter() {
-            self.notify_handlers(&event)
+            self.notify_handles(&event)
         }
     }
 
-    fn notify_handlers(&mut self, event: &Event) {
-        for handle_sender in self.handles_sender.iter_mut() {
+    fn notify_handles(&mut self, event: &Event) {
+        for (_id, handle_sender) in self.handles_sender.iter_mut() {
             if let Err(err) = handle_sender.try_send(event.clone()) {
-                // TODO: Put some kind of status on handler so that it knows it lost messages?
                 error!(
                     "Couldn't send event to handler. Probably because its queue is full: {:}",
                     err
                 );
             }
+        }
+    }
+
+    fn unregister_handle(&mut self, id: usize) {
+        let found_index = self
+            .handles_sender
+            .iter()
+            .find_position(|(some_id, _sender)| *some_id == id);
+
+        if let Some((index, _item)) = found_index {
+            self.handles_sender.remove(index);
         }
     }
 
@@ -538,11 +558,13 @@ where
 ///
 /// Handle ot the Engine, allowing communication with the engine.
 /// The engine itself is owned by a future executor.
+///
 pub struct Handle<CS, PS>
 where
     CS: chain::Store,
     PS: pending::Store,
 {
+    id: usize,
     inner: Weak<RwLock<Inner<CS, PS>>>,
     events_receiver: Option<mpsc::Receiver<Event>>,
 }
@@ -553,8 +575,6 @@ where
     PS: pending::Store,
 {
     pub fn get_chain_segments(&self) -> Result<Vec<chain::Segment>, Error> {
-        // TODO: This should return hashes of last block of each segment
-
         let inner = self.inner.upgrade().ok_or(Error::InnerUpgrade)?;
         let unlocked_inner = inner.read()?;
         Ok(unlocked_inner.chain_store.segments())
@@ -587,9 +607,13 @@ where
         let inner = self.inner.upgrade().ok_or(Error::InnerUpgrade)?;
         let mut unlocked_inner = inner.write()?;
 
-        let my_node = unlocked_inner.nodes.get(&unlocked_inner.node_id).ok_or(Error::MyNodeNotFound)?;
+        let my_node = unlocked_inner
+            .nodes
+            .get(&unlocked_inner.node_id)
+            .ok_or(Error::MyNodeNotFound)?;
         let operation_id = unlocked_inner.clock.consistent_time(my_node);
-        let entry_operation = PendingOperation::new_entry(operation_id, &unlocked_inner.node_id, data);
+        let entry_operation =
+            PendingOperation::new_entry(operation_id, &unlocked_inner.node_id, data);
         let entry_frame = entry_operation.as_owned_framed(my_node.frame_signer())?;
 
         unlocked_inner.handle_add_pending_operation(entry_frame)?;
@@ -639,7 +663,11 @@ where
     PS: pending::Store,
 {
     fn drop(&mut self) {
-        // TODO: Remove our sender from list handlers
+        if let Some(inner) = self.inner.upgrade() {
+            if let Ok(mut unlocked_inner) = inner.write() {
+                unlocked_inner.unregister_handle(self.id);
+            }
+        }
     }
 }
 
@@ -689,9 +717,11 @@ impl Error {
         match self {
             Error::PendingStore(inner) => inner.is_fatal(),
             Error::ChainStore(inner) => inner.is_fatal(),
-            Error::MyNodeNotFound | Error::MpscSendDropped | Error::InnerUpgrade | Error::Poisoned | Error::Fatal(_) => {
-                true
-            }
+            Error::MyNodeNotFound
+            | Error::MpscSendDropped
+            | Error::InnerUpgrade
+            | Error::Poisoned
+            | Error::Fatal(_) => true,
             _ => false,
         }
     }
@@ -772,7 +802,8 @@ impl From<capnp::NotInSchema> for Error {
 }
 
 ///
-///
+/// Synchronization context used by `chain_sync`, `pending_sync` and `commit_manager` to dispatch
+/// messages to other nodes, and dispatch events to be sent to engine handles.
 ///
 struct SyncContext {
     events: Vec<Event>,
@@ -837,17 +868,29 @@ impl SyncContextMessage {
 
         let message = match self {
             SyncContextMessage::PendingSyncRequest(to_node, request_builder) => {
-                let to_nodes = nodes.nodes().filter(|n| n.id() == &to_node).cloned().collect();
+                let to_nodes = nodes
+                    .nodes()
+                    .filter(|n| n.id() == &to_node)
+                    .cloned()
+                    .collect();
                 let frame = request_builder.as_owned_framed(signer)?;
                 OutMessage::from_framed_message(local_node, to_nodes, frame)?
             }
             SyncContextMessage::ChainSyncRequest(to_node, request_builder) => {
-                let to_nodes = nodes.nodes().filter(|n| n.id() == &to_node).cloned().collect();
+                let to_nodes = nodes
+                    .nodes()
+                    .filter(|n| n.id() == &to_node)
+                    .cloned()
+                    .collect();
                 let frame = request_builder.as_owned_framed(signer)?;
                 OutMessage::from_framed_message(local_node, to_nodes, frame)?
             }
             SyncContextMessage::ChainSyncResponse(to_node, response_builder) => {
-                let to_nodes = nodes.nodes().filter(|n| n.id() == &to_node).cloned().collect();
+                let to_nodes = nodes
+                    .nodes()
+                    .filter(|n| n.id() == &to_node)
+                    .cloned()
+                    .collect();
                 let frame = response_builder.as_owned_framed(signer)?;
                 OutMessage::from_framed_message(local_node, to_nodes, frame)?
             }
@@ -858,7 +901,7 @@ impl SyncContextMessage {
 }
 
 ///
-///
+/// Events dispatched to handles to notify changes in the different stores.
 ///
 #[derive(Clone)]
 pub enum Event {
