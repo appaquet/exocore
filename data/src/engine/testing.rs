@@ -115,17 +115,17 @@ impl TestCluster {
             };
 
             let prev_block_msg = previous_block.map(|b| b.block);
-            let entries_data = vec![0u8; 123];
-            let signatures = create_dummy_block_sigs(entries_data.len() as u32);
+            let operations_data = vec![0u8; 123];
+            let signatures = create_dummy_block_sigs(operations_data.len() as u32);
             let block_frame = create_dummy_block(
                 next_offset,
                 i as u64,
-                entries_data.len() as u32,
+                operations_data.len() as u32,
                 signatures.frame_size() as u16,
                 prev_block_msg,
                 seed,
             );
-            let block = BlockOwned::new(next_offset, block_frame, entries_data, signatures);
+            let block = BlockOwned::new(next_offset, block_frame, operations_data, signatures);
             next_offset = self.chains[node_idx].write_block(&block).unwrap();
         }
     }
@@ -184,7 +184,7 @@ impl TestCluster {
 pub fn create_dummy_block<B: TypedFrame<block::Owned>>(
     offset: u64,
     depth: u64,
-    entries_size: u32,
+    operations_size: u32,
     signatures_size: u16,
     previous_block: Option<B>,
     seed: u64,
@@ -195,7 +195,7 @@ pub fn create_dummy_block<B: TypedFrame<block::Owned>>(
         let mut block_builder: block::Builder = msg_builder.get_builder_typed();
         block_builder.set_offset(offset);
         block_builder.set_depth(depth);
-        block_builder.set_entries_size(entries_size);
+        block_builder.set_operations_size(operations_size);
         block_builder.set_signatures_size(signatures_size);
         block_builder.set_proposed_node_id(&format!("seed={}", seed));
 
@@ -210,10 +210,10 @@ pub fn create_dummy_block<B: TypedFrame<block::Owned>>(
     msg_builder.as_owned_framed(signer).unwrap()
 }
 
-pub fn create_dummy_block_sigs(entries_size: u32) -> OwnedTypedFrame<block_signatures::Owned> {
+pub fn create_dummy_block_sigs(operations_size: u32) -> OwnedTypedFrame<block_signatures::Owned> {
     let mut msg_builder = FrameBuilder::<block_signatures::Owned>::new();
     let mut block_builder = msg_builder.get_builder_typed();
-    block_builder.set_entries_size(entries_size);
+    block_builder.set_operations_size(operations_size);
 
     let signer = MultihashFrameSigner::new_sha3256();
     msg_builder.as_owned_framed(signer).unwrap()
@@ -241,7 +241,7 @@ pub fn create_dummy_new_entry_op(
         op_builder.set_node_id("node_id");
 
         let inner_op_builder = op_builder.init_operation();
-        let mut new_entry_builder = inner_op_builder.init_entry_new();
+        let mut new_entry_builder = inner_op_builder.init_entry();
 
         new_entry_builder.set_data(b"bob");
     }

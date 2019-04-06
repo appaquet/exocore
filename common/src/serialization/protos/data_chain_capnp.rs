@@ -241,7 +241,7 @@ pub mod pending_operation {
     }
 
     pub mod operation {
-        pub use self::Which::{BlockPropose, BlockRefuse, BlockSign, EntryNew, PendingIgnore};
+        pub use self::Which::{BlockPropose, BlockRefuse, BlockSign, Entry, PendingIgnore};
 
         #[derive(Copy, Clone)]
         pub struct Owned;
@@ -305,7 +305,7 @@ pub mod pending_operation {
             pub fn total_size(&self) -> ::capnp::Result<::capnp::MessageSize> {
                 self.reader.total_size()
             }
-            pub fn has_entry_new(&self) -> bool {
+            pub fn has_entry(&self) -> bool {
                 if self.reader.get_data_field::<u16>(8) != 0 {
                     return false;
                 }
@@ -338,7 +338,7 @@ pub mod pending_operation {
             #[inline]
             pub fn which(self) -> ::std::result::Result<WhichReader<'a>, ::capnp::NotInSchema> {
                 match self.reader.get_data_field::<u16>(8) {
-                    0 => ::std::result::Result::Ok(EntryNew(
+                    0 => ::std::result::Result::Ok(Entry(
                         ::capnp::traits::FromPointerReader::get_from_pointer(
                             &self.reader.get_pointer_field(1),
                         ),
@@ -441,9 +441,9 @@ pub mod pending_operation {
                 self.builder.into_reader().total_size()
             }
             #[inline]
-            pub fn set_entry_new<'b>(
+            pub fn set_entry<'b>(
                 &mut self,
-                value: crate::data_chain_capnp::operation_entry_new::Reader<'b>,
+                value: crate::data_chain_capnp::operation_entry::Reader<'b>,
             ) -> ::capnp::Result<()> {
                 self.builder.set_data_field::<u16>(8, 0);
                 ::capnp::traits::SetPointerBuilder::set_pointer_builder(
@@ -453,16 +453,14 @@ pub mod pending_operation {
                 )
             }
             #[inline]
-            pub fn init_entry_new(
-                self,
-            ) -> crate::data_chain_capnp::operation_entry_new::Builder<'a> {
+            pub fn init_entry(self) -> crate::data_chain_capnp::operation_entry::Builder<'a> {
                 self.builder.set_data_field::<u16>(8, 0);
                 ::capnp::traits::FromPointerBuilder::init_pointer(
                     self.builder.get_pointer_field(1),
                     0,
                 )
             }
-            pub fn has_entry_new(&self) -> bool {
+            pub fn has_entry(&self) -> bool {
                 if self.builder.get_data_field::<u16>(8) != 0 {
                     return false;
                 }
@@ -583,7 +581,7 @@ pub mod pending_operation {
             #[inline]
             pub fn which(self) -> ::std::result::Result<WhichBuilder<'a>, ::capnp::NotInSchema> {
                 match self.builder.get_data_field::<u16>(8) {
-                    0 => ::std::result::Result::Ok(EntryNew(
+                    0 => ::std::result::Result::Ok(Entry(
                         ::capnp::traits::FromPointerBuilder::get_from_pointer(
                             self.builder.get_pointer_field(1),
                         ),
@@ -633,21 +631,21 @@ pub mod pending_operation {
             pub const TYPE_ID: u64 = 0xe264_647c_2218_d586;
         }
         pub enum Which<A0, A1, A2, A3, A4> {
-            EntryNew(A0),
+            Entry(A0),
             BlockPropose(A1),
             BlockSign(A2),
             BlockRefuse(A3),
             PendingIgnore(A4),
         }
         pub type WhichReader<'a> = Which<
-            ::capnp::Result<crate::data_chain_capnp::operation_entry_new::Reader<'a>>,
+            ::capnp::Result<crate::data_chain_capnp::operation_entry::Reader<'a>>,
             ::capnp::Result<crate::data_chain_capnp::operation_block_propose::Reader<'a>>,
             ::capnp::Result<crate::data_chain_capnp::operation_block_sign::Reader<'a>>,
             ::capnp::Result<crate::data_chain_capnp::operation_block_refuse::Reader<'a>>,
             ::capnp::Result<crate::data_chain_capnp::operation_pending_ignore::Reader<'a>>,
         >;
         pub type WhichBuilder<'a> = Which<
-            ::capnp::Result<crate::data_chain_capnp::operation_entry_new::Builder<'a>>,
+            ::capnp::Result<crate::data_chain_capnp::operation_entry::Builder<'a>>,
             ::capnp::Result<crate::data_chain_capnp::operation_block_propose::Builder<'a>>,
             ::capnp::Result<crate::data_chain_capnp::operation_block_sign::Builder<'a>>,
             ::capnp::Result<crate::data_chain_capnp::operation_block_refuse::Builder<'a>>,
@@ -866,7 +864,7 @@ pub mod pending_operation_header {
     }
 }
 
-pub mod operation_entry_new {
+pub mod operation_entry {
     #[derive(Copy, Clone)]
     pub struct Owned;
     impl<'a> ::capnp::traits::Owned<'a> for Owned {
@@ -1048,7 +1046,7 @@ pub mod operation_entry_new {
             data: 0,
             pointers: 1,
         };
-        pub const TYPE_ID: u64 = 0xf66a_ec49_a8fc_2f21;
+        pub const TYPE_ID: u64 = 0xcb83_72a9_b21e_27a4;
     }
 }
 
@@ -1865,27 +1863,30 @@ pub mod block {
             !self.reader.get_pointer_field(1).is_null()
         }
         #[inline]
-        pub fn get_entries_size(self) -> u32 {
+        pub fn get_operations_size(self) -> u32 {
             self.reader.get_data_field::<u32>(8)
         }
         #[inline]
-        pub fn get_entries_header(
+        pub fn get_operations_header(
             self,
         ) -> ::capnp::Result<
-            ::capnp::struct_list::Reader<'a, crate::data_chain_capnp::block_entry_header::Owned>,
+            ::capnp::struct_list::Reader<
+                'a,
+                crate::data_chain_capnp::block_operation_header::Owned,
+            >,
         > {
             ::capnp::traits::FromPointerReader::get_from_pointer(&self.reader.get_pointer_field(2))
         }
-        pub fn has_entries_header(&self) -> bool {
+        pub fn has_operations_header(&self) -> bool {
             !self.reader.get_pointer_field(2).is_null()
         }
         #[inline]
-        pub fn get_entries_hash(self) -> ::capnp::Result<::capnp::data::Reader<'a>> {
+        pub fn get_operations_hash(self) -> ::capnp::Result<::capnp::data::Reader<'a>> {
             self.reader
                 .get_pointer_field(3)
                 .get_data(::std::ptr::null(), 0)
         }
-        pub fn has_entries_hash(&self) -> bool {
+        pub fn has_operations_hash(&self) -> bool {
             !self.reader.get_pointer_field(3).is_null()
         }
         #[inline]
@@ -2033,27 +2034,30 @@ pub mod block {
             !self.builder.get_pointer_field(1).is_null()
         }
         #[inline]
-        pub fn get_entries_size(self) -> u32 {
+        pub fn get_operations_size(self) -> u32 {
             self.builder.get_data_field::<u32>(8)
         }
         #[inline]
-        pub fn set_entries_size(&mut self, value: u32) {
+        pub fn set_operations_size(&mut self, value: u32) {
             self.builder.set_data_field::<u32>(8, value);
         }
         #[inline]
-        pub fn get_entries_header(
+        pub fn get_operations_header(
             self,
         ) -> ::capnp::Result<
-            ::capnp::struct_list::Builder<'a, crate::data_chain_capnp::block_entry_header::Owned>,
+            ::capnp::struct_list::Builder<
+                'a,
+                crate::data_chain_capnp::block_operation_header::Owned,
+            >,
         > {
             ::capnp::traits::FromPointerBuilder::get_from_pointer(self.builder.get_pointer_field(2))
         }
         #[inline]
-        pub fn set_entries_header(
+        pub fn set_operations_header(
             &mut self,
             value: ::capnp::struct_list::Reader<
                 'a,
-                crate::data_chain_capnp::block_entry_header::Owned,
+                crate::data_chain_capnp::block_operation_header::Owned,
             >,
         ) -> ::capnp::Result<()> {
             ::capnp::traits::SetPointerBuilder::set_pointer_builder(
@@ -2063,34 +2067,34 @@ pub mod block {
             )
         }
         #[inline]
-        pub fn init_entries_header(
+        pub fn init_operations_header(
             self,
             size: u32,
-        ) -> ::capnp::struct_list::Builder<'a, crate::data_chain_capnp::block_entry_header::Owned>
+        ) -> ::capnp::struct_list::Builder<'a, crate::data_chain_capnp::block_operation_header::Owned>
         {
             ::capnp::traits::FromPointerBuilder::init_pointer(
                 self.builder.get_pointer_field(2),
                 size,
             )
         }
-        pub fn has_entries_header(&self) -> bool {
+        pub fn has_operations_header(&self) -> bool {
             !self.builder.get_pointer_field(2).is_null()
         }
         #[inline]
-        pub fn get_entries_hash(self) -> ::capnp::Result<::capnp::data::Builder<'a>> {
+        pub fn get_operations_hash(self) -> ::capnp::Result<::capnp::data::Builder<'a>> {
             self.builder
                 .get_pointer_field(3)
                 .get_data(::std::ptr::null(), 0)
         }
         #[inline]
-        pub fn set_entries_hash(&mut self, value: ::capnp::data::Reader) {
+        pub fn set_operations_hash(&mut self, value: ::capnp::data::Reader) {
             self.builder.get_pointer_field(3).set_data(value);
         }
         #[inline]
-        pub fn init_entries_hash(self, size: u32) -> ::capnp::data::Builder<'a> {
+        pub fn init_operations_hash(self, size: u32) -> ::capnp::data::Builder<'a> {
             self.builder.get_pointer_field(3).init_data(size)
         }
-        pub fn has_entries_hash(&self) -> bool {
+        pub fn has_operations_hash(&self) -> bool {
             !self.builder.get_pointer_field(3).is_null()
         }
         #[inline]
@@ -2235,7 +2239,7 @@ pub mod block_header {
             !self.reader.get_pointer_field(2).is_null()
         }
         #[inline]
-        pub fn get_entries_size(self) -> u32 {
+        pub fn get_operations_size(self) -> u32 {
             self.reader.get_data_field::<u32>(9)
         }
         #[inline]
@@ -2408,11 +2412,11 @@ pub mod block_header {
             !self.builder.get_pointer_field(2).is_null()
         }
         #[inline]
-        pub fn get_entries_size(self) -> u32 {
+        pub fn get_operations_size(self) -> u32 {
             self.builder.get_data_field::<u32>(9)
         }
         #[inline]
-        pub fn set_entries_size(&mut self, value: u32) {
+        pub fn set_operations_size(&mut self, value: u32) {
             self.builder.set_data_field::<u32>(9, value);
         }
         #[inline]
@@ -2446,7 +2450,7 @@ pub mod block_header {
     }
 }
 
-pub mod block_entry_header {
+pub mod block_operation_header {
     #[derive(Copy, Clone)]
     pub struct Owned;
     impl<'a> ::capnp::traits::Owned<'a> for Owned {
@@ -2638,7 +2642,7 @@ pub mod block_entry_header {
             data: 2,
             pointers: 0,
         };
-        pub const TYPE_ID: u64 = 0xbbe6_f8e8_741c_0c9b;
+        pub const TYPE_ID: u64 = 0xde80_ef8a_55f0_5b39;
     }
 }
 
@@ -2706,7 +2710,7 @@ pub mod block_signatures {
             self.reader.total_size()
         }
         #[inline]
-        pub fn get_entries_size(self) -> u32 {
+        pub fn get_operations_size(self) -> u32 {
             self.reader.get_data_field::<u32>(0)
         }
         #[inline]
@@ -2795,11 +2799,11 @@ pub mod block_signatures {
             self.builder.into_reader().total_size()
         }
         #[inline]
-        pub fn get_entries_size(self) -> u32 {
+        pub fn get_operations_size(self) -> u32 {
             self.builder.get_data_field::<u32>(0)
         }
         #[inline]
-        pub fn set_entries_size(&mut self, value: u32) {
+        pub fn set_operations_size(&mut self, value: u32) {
             self.builder.set_data_field::<u32>(0, value);
         }
         #[inline]

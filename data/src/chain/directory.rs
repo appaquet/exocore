@@ -137,6 +137,13 @@ impl DirectoryStore {
 }
 
 impl Store for DirectoryStore {
+    fn segments(&self) -> Vec<Range<BlockOffset>> {
+        self.segments
+            .iter()
+            .map(|segment| segment.offset_range())
+            .collect()
+    }
+
     fn write_block<B: Block>(&mut self, block: &B) -> Result<BlockOffset, Error> {
         let (block_segment, written_in_segment) = {
             let need_new_segment = {
@@ -162,14 +169,7 @@ impl Store for DirectoryStore {
         Ok(block_segment.next_block_offset)
     }
 
-    fn available_segments(&self) -> Vec<Range<BlockOffset>> {
-        self.segments
-            .iter()
-            .map(|segment| segment.offset_range())
-            .collect()
-    }
-
-    fn block_iter(&self, from_offset: BlockOffset) -> Result<StoredBlockIterator, Error> {
+    fn blocks_iter(&self, from_offset: BlockOffset) -> Result<StoredBlockIterator, Error> {
         Ok(Box::new(DirectoryBlockIterator {
             directory: self,
             current_offset: from_offset,
@@ -180,7 +180,7 @@ impl Store for DirectoryStore {
         }))
     }
 
-    fn block_iter_reverse(
+    fn blocks_iter_reverse(
         &self,
         from_next_offset: BlockOffset,
     ) -> Result<StoredBlockIterator, Error> {
@@ -534,28 +534,29 @@ impl DirectorySegment {
         let signatures_reader: block_signatures::Reader = signatures.get_typed_reader()?;
         let signatures_offset = next_file_offset - signatures.frame_size();
 
-        let entries_size = signatures_reader.get_entries_size() as usize;
-        if entries_size > signatures_offset {
+        let operations_size = signatures_reader.get_operations_size() as usize;
+        if operations_size > signatures_offset {
             return Err(Error::OutOfBound(format!(
-                "Tried to read block from next offset {}, but its entries size would exceed beginning of file (entries_size={} signatures_offset={})",
-                next_offset, entries_size, signatures_offset,
+                "Tried to read block from next offset {}, but its entries size would exceed beginning of file (operations_size={} signatures_offset={})",
+                next_offset, operations_size, signatures_offset,
             )));
         }
 
-        let entries_offset = signatures_offset - entries_size;
-        let entries_data = &self.segment_file.mmap[entries_offset..entries_offset + entries_size];
+        let operations_offset = signatures_offset - operations_size;
+        let operations_data =
+            &self.segment_file.mmap[operations_offset..operations_offset + operations_size];
 
         let block = framed::TypedSliceFrame::new_from_next_offset(
             &self.segment_file.mmap[..],
-            entries_offset,
+            operations_offset,
         )?;
 
         let offset = first_block_offset + (signatures_offset as BlockOffset)
             - (block.frame_size() as BlockOffset)
-            - (entries_size as BlockOffset);
+            - (operations_size as BlockOffset);
         Ok(BlockRef {
             offset,
-            entries_data,
+            operations_data,
             block,
             signatures,
         })
@@ -746,7 +747,7 @@ mod tests {
             let block = directory_chain.get_block_from_next_offset(third_offset)?;
             assert_eq!(block.offset, second_offset);
 
-            let segments = directory_chain.available_segments();
+            let segments = directory_chain.segments();
             let data_size = (block.total_size() * 2) as BlockOffset;
             assert_eq!(segments, vec![0..data_size]);
             segments
@@ -759,7 +760,7 @@ mod tests {
 
         {
             let directory_chain = DirectoryStore::open(config, dir.path())?;
-            assert_eq!(directory_chain.available_segments(), init_segments);
+            assert_eq!(directory_chain.segments(), init_segments);
         }
 
         Ok(())
@@ -772,7 +773,7 @@ mod tests {
         config.segment_max_size = 300_000;
 
         fn validate_directory(directory_chain: &DirectoryStore) -> Result<(), failure::Error> {
-            let segments = directory_chain.available_segments();
+            let segments = directory_chain.segments();
             assert!(range::are_continuous(segments.iter()));
             assert_eq!(segments.len(), 2);
 
@@ -795,11 +796,11 @@ mod tests {
             assert_eq!(next_block_offset, segments[1].end);
 
             // validate data using forward and reverse iterators
-            let iterator = directory_chain.block_iter(0)?;
+            let iterator = directory_chain.blocks_iter(0)?;
             validate_iterator(iterator, 1000, 0, last_block_offset, false);
 
             let next_block_offset = segments.last().unwrap().end;
-            let reverse_iterator = directory_chain.block_iter_reverse(next_block_offset)?;
+            let reverse_iterator = directory_chain.blocks_iter_reverse(next_block_offset)?;
             validate_iterator(reverse_iterator, 1000, last_block_offset, 0, true);
 
             Ok(())
@@ -811,12 +812,12 @@ mod tests {
             append_blocks_to_directory(&mut directory_chain, 1000, 0);
             validate_directory(&directory_chain)?;
 
-            directory_chain.available_segments()
+            directory_chain.segments()
         };
 
         {
             let directory_chain = DirectoryStore::open(config, dir.path())?;
-            assert_eq!(directory_chain.available_segments(), init_segments);
+            assert_eq!(directory_chain.segments(), init_segments);
 
             validate_directory(&directory_chain)?;
         }
@@ -836,15 +837,15 @@ mod tests {
             let (segments_before, block_n_offset, block_n_plus_offset) = {
                 let mut directory_chain = DirectoryStore::create(config, dir.path())?;
                 append_blocks_to_directory(&mut directory_chain, 50, 0);
-                let segments_before = directory_chain.available_segments();
+                let segments_before = directory_chain.segments();
 
-                let block_n = directory_chain.block_iter(0)?.nth(cutoff - 1).unwrap();
+                let block_n = directory_chain.blocks_iter(0)?.nth(cutoff - 1).unwrap();
                 let block_n_offset = block_n.offset;
                 let block_n_plus_offset = block_n.next_offset();
 
                 directory_chain.truncate_from_offset(block_n_plus_offset)?;
 
-                let segments_after = directory_chain.available_segments();
+                let segments_after = directory_chain.segments();
                 assert_ne!(segments_before, segments_after);
                 assert_eq!(segments_after.last().unwrap().end, block_n_plus_offset);
                 assert_eq!(
@@ -852,10 +853,10 @@ mod tests {
                     block_n_offset
                 );
 
-                let iter = directory_chain.block_iter(0)?;
+                let iter = directory_chain.blocks_iter(0)?;
                 validate_iterator(iter, cutoff, 0, block_n_offset, false);
 
-                let iter_reverse = directory_chain.block_iter_reverse(block_n_plus_offset)?;
+                let iter_reverse = directory_chain.blocks_iter_reverse(block_n_plus_offset)?;
                 validate_iterator(iter_reverse, cutoff, block_n_offset, 0, true);
 
                 (segments_before, block_n_offset, block_n_plus_offset)
@@ -864,14 +865,14 @@ mod tests {
             {
                 let directory_chain = DirectoryStore::open(config, dir.path())?;
 
-                let segments_after = directory_chain.available_segments();
+                let segments_after = directory_chain.segments();
                 assert_ne!(segments_before, segments_after);
                 assert_eq!(segments_after.last().unwrap().end, block_n_plus_offset);
 
-                let iter = directory_chain.block_iter(0)?;
+                let iter = directory_chain.blocks_iter(0)?;
                 validate_iterator(iter, cutoff, 0, block_n_offset, false);
 
-                let iter_reverse = directory_chain.block_iter_reverse(block_n_plus_offset)?;
+                let iter_reverse = directory_chain.blocks_iter_reverse(block_n_plus_offset)?;
                 validate_iterator(iter_reverse, cutoff, block_n_offset, 0, true);
 
                 assert_eq!(
@@ -896,14 +897,14 @@ mod tests {
 
             directory_chain.truncate_from_offset(0)?;
 
-            let segments_after = directory_chain.available_segments();
+            let segments_after = directory_chain.segments();
             assert!(segments_after.is_empty());
             assert!(directory_chain.get_last_block()?.is_none());
         }
 
         {
             let directory_chain = DirectoryStore::open(config, dir.path())?;
-            let segments = directory_chain.available_segments();
+            let segments = directory_chain.segments();
             assert!(segments.is_empty());
             assert!(directory_chain.get_last_block()?.is_none());
         }
@@ -1105,8 +1106,9 @@ mod tests {
                     .unwrap(),
             ];
 
-        let block_entries = BlockEntries::from_operations(operations.into_iter()).unwrap();
-        BlockOwned::new_with_prev_info(&nodes, &node1, offset, 0, 0, &[], 0, block_entries).unwrap()
+        let block_operations = BlockOperations::from_operations(operations.into_iter()).unwrap();
+        BlockOwned::new_with_prev_info(&nodes, &node1, offset, 0, 0, &[], 0, block_operations)
+            .unwrap()
     }
 
     fn append_blocks_to_directory(

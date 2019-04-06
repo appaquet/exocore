@@ -42,7 +42,7 @@ impl Store for MemoryStore {
             pending_operation::operation::Which::BlockPropose(_) => OperationType::BlockPropose,
             pending_operation::operation::Which::BlockRefuse(_) => OperationType::BlockRefuse,
             pending_operation::operation::Which::PendingIgnore(_) => OperationType::PendingIgnore,
-            pending_operation::operation::Which::EntryNew(_) => OperationType::EntryNew,
+            pending_operation::operation::Which::Entry(_) => OperationType::Entry,
         };
 
         let group_id = operation_reader.get_group_id();

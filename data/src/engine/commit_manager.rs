@@ -25,8 +25,8 @@ use super::Error;
 /// CommitManager's configuration
 ///
 #[derive(Copy, Clone, Debug)]
-pub(super) struct Config {
-    operations_cleanup_after_block_depth: BlockDepth,
+pub struct Config {
+    pub operations_cleanup_after_block_depth: BlockDepth,
 }
 
 impl Default for Config {
@@ -185,9 +185,9 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
 
         // validate hash of entries of block
         let block_operations = Self::get_block_operations(block, pending_store)?.map(|op| op.frame);
-        let entries_hash = chain::BlockEntries::hash_operations(block_operations)?;
+        let operations_hash = chain::BlockOperations::hash_operations(block_operations)?;
         let block_reader = block_frame.get_typed_reader()?;
-        if entries_hash.as_bytes() != block_reader.get_entries_hash()? {
+        if operations_hash.as_bytes() != block_reader.get_operations_hash()? {
             debug!(
                 "Block entries hash didn't match our local hash for block id={} offset={}",
                 block.group_id, block.proposal.offset
@@ -307,7 +307,7 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
             .filter(|operation| {
                 // only include new entries or pending ignore entries
                 match operation.operation_type {
-                    OperationType::EntryNew | OperationType::PendingIgnore => true,
+                    OperationType::Entry | OperationType::PendingIgnore => true,
                     _ => false,
                 }
             })
@@ -338,14 +338,14 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
             .sorted_by_key(|operation| operation.operation_id)
             .map(|operation| operation.frame);
 
-        let block_entries = chain::BlockEntries::from_operations(block_operations)?;
+        let block_operations = chain::BlockOperations::from_operations(block_operations)?;
         let block_operation_id = self.clock.consistent_time(&my_node);
         let block = chain::BlockOwned::new_with_prev_block(
             nodes,
             my_node,
             &previous_block,
             block_operation_id,
-            block_entries,
+            block_operations,
         )?;
         if block.operations_iter()?.next().is_none() {
             debug!("No operations need to be committed, so won't be proposing any block");
@@ -394,8 +394,8 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
             Self::get_block_operations(next_block, pending_store)?.map(|operation| operation.frame);
 
         // make sure that the hash of operations is same as defined by the block
-        let block_entries = chain::BlockEntries::from_operations(block_operations)?;
-        if block_entries.multihash_bytes() != block_reader.get_entries_hash()? {
+        let block_operations = chain::BlockOperations::from_operations(block_operations)?;
+        if block_operations.multihash_bytes() != block_reader.get_operations_hash()? {
             return Err(Error::Other(
                 "Block hash for local entries didn't match block hash".to_string(),
             ));
@@ -421,7 +421,7 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
         let block = chain::BlockOwned::new(
             next_block.proposal.offset,
             block_frame.to_owned(),
-            block_entries.data().to_vec(),
+            block_operations.data().to_vec(),
             signatures_frame,
         );
 
@@ -524,8 +524,8 @@ impl PendingBlocks {
                                 TypedSliceFrame::<block::Owned>::new(reader.get_block()?)?;
                             let block_reader: block::Reader = block_frame.get_typed_reader()?;
 
-                            for entry_header in block_reader.get_entries_header()? {
-                                operations.push(entry_header.get_operation_id());
+                            for operation_header in block_reader.get_operations_header()? {
+                                operations.push(operation_header.get_operation_id());
                             }
 
                             proposal = Some(PendingBlockProposal {
@@ -545,7 +545,7 @@ impl PendingBlocks {
                             )?);
                         }
                         pending_operation::operation::Which::PendingIgnore(_)
-                        | pending_operation::operation::Which::EntryNew(_) => {
+                        | pending_operation::operation::Which::Entry(_) => {
                             warn!("Found a non-block related operation in block group, which shouldn't be possible (group_id={})", group_id);
                         }
                     };
@@ -632,10 +632,10 @@ impl PendingBlocks {
         let mut operations_blocks: HashMap<OperationID, HashSet<OperationID>> = HashMap::new();
         for block in pending_blocks.values() {
             for operation_id in &block.operations {
-                let entry = operations_blocks
+                let operation = operations_blocks
                     .entry(*operation_id)
                     .or_insert_with(HashSet::new);
-                entry.insert(block.group_id);
+                operation.insert(block.group_id);
             }
         }
         operations_blocks
@@ -839,7 +839,7 @@ mod tests {
         let mut cluster = TestCluster::new(1);
         cluster.chain_add_genesis_block(0);
 
-        append_new_entry(&mut cluster, b"hello world")?;
+        append_new_operation(&mut cluster, b"hello world")?;
 
         // if chain was synchronized, this would have proposed a block
         cluster.tick_commit_manager(0)?;
@@ -868,13 +868,13 @@ mod tests {
         let operations = cluster.pending_stores[0].operations_iter(..)?;
         assert_eq!(operations.count(), 0);
 
-        // append new entry
-        append_new_entry(&mut cluster, b"hello world")?;
+        // append new operation
+        append_new_operation(&mut cluster, b"hello world")?;
 
         // this should create a block proposal (2nd op in pending store)
         cluster.tick_commit_manager(0)?;
         let operations = cluster.pending_stores[0].operations_iter(..)?;
-        assert_eq!(operations.count(), 2); // entry + block
+        assert_eq!(operations.count(), 2); // operation + block
 
         // shouldn't have signature yet
         let blocks = get_pending_blocks(&cluster)?;
@@ -883,7 +883,7 @@ mod tests {
         // this should sign + commit block to chain
         cluster.tick_commit_manager(0)?;
         let operations = cluster.pending_stores[0].operations_iter(..)?;
-        assert_eq!(operations.count(), 3); // entry + block + signature
+        assert_eq!(operations.count(), 3); // operation + block + signature
 
         let blocks = get_pending_blocks(&cluster)?;
         assert_eq!(
@@ -896,7 +896,7 @@ mod tests {
         // this should not do anything, since it's already committed
         cluster.tick_commit_manager(0)?;
         let operations = cluster.pending_stores[0].operations_iter(..)?;
-        assert_eq!(operations.count(), 3); // entry + block + signature
+        assert_eq!(operations.count(), 3); // operation + block + signature
 
         Ok(())
     }
@@ -907,11 +907,11 @@ mod tests {
         cluster.chain_add_genesis_block(0);
         cluster.tick_chain_synchronizer(0)?;
 
-        // append an entry
+        // append an operation
         let op_data = b"hello world";
-        let op_id = append_new_entry(&mut cluster, op_data)?;
+        let op_id = append_new_operation(&mut cluster, op_data)?;
 
-        // add a block proposal for this entry
+        // add a block proposal for this operation
         let block_id = append_block_proposal_from_operations(&mut cluster, vec![op_id])?;
 
         // ticking should sign the block
@@ -934,9 +934,9 @@ mod tests {
         cluster.chain_add_genesis_block(0);
         cluster.tick_chain_synchronizer(0)?;
 
-        // append an entry
+        // append an operation
         let op_data = b"hello world";
-        let op_id = append_new_entry(&mut cluster, op_data)?;
+        let op_id = append_new_operation(&mut cluster, op_data)?;
 
         // should sign this block
         let block_id_good = append_block_proposal_from_operations(&mut cluster, vec![op_id])?;
@@ -959,7 +959,7 @@ mod tests {
         Ok(())
     }
 
-    fn append_new_entry(cluster: &mut TestCluster, data: &[u8]) -> Result<OperationID, Error> {
+    fn append_new_operation(cluster: &mut TestCluster, data: &[u8]) -> Result<OperationID, Error> {
         let node = cluster.get_node(0);
 
         let op_id = cluster.consistent_clock(0) - 1;
@@ -984,14 +984,14 @@ mod tests {
                 .unwrap()
                 .frame
         });
-        let block_entries = chain::BlockEntries::from_operations(block_operations)?;
+        let block_operations = chain::BlockOperations::from_operations(block_operations)?;
         let block_operation_id = cluster.clocks[0].consistent_time(&node);
         let block = chain::BlockOwned::new_with_prev_block(
             &cluster.nodes,
             &node,
             &previous_block,
             block_operation_id,
-            block_entries,
+            block_operations,
         )?;
         let block_proposal_frame_builder =
             pending::PendingOperation::new_block_proposal(block_operation_id, node.id(), &block)?;

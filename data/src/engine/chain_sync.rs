@@ -20,11 +20,11 @@ use crate::engine::SyncContext;
 ///
 #[derive(Copy, Clone, Debug)]
 pub struct Config {
-    request_tracker: request_tracker::Config,
-    headers_sync_begin_count: chain::BlockOffset,
-    headers_sync_end_count: chain::BlockOffset,
-    headers_sync_sampled_count: chain::BlockOffset,
-    blocks_max_send_size: usize,
+    pub request_tracker: request_tracker::Config,
+    pub headers_sync_begin_count: chain::BlockOffset,
+    pub headers_sync_end_count: chain::BlockOffset,
+    pub headers_sync_sampled_count: chain::BlockOffset,
+    pub blocks_max_send_size: usize,
 }
 
 impl Default for Config {
@@ -227,7 +227,7 @@ impl<CS: Store> Synchronizer<CS> {
             sync_context.push_chain_sync_response(from_node.id().clone(), response);
         } else if requested_details == chain_sync_request::RequestedDetails::Blocks {
             let blocks_iter = store
-                .block_iter(from_offset)?
+                .blocks_iter(from_offset)?
                 .filter(|b| to_offset == 0 || b.offset <= to_offset);
             let response = Self::create_sync_response_for_blocks(
                 &self.config,
@@ -393,7 +393,7 @@ impl<CS: Store> Synchronizer<CS> {
             for i in 0..blocks_len {
                 let block_and_signatures = vec![
                     blocks[i as usize].block().frame_data(),
-                    blocks[i as usize].entries_data(),
+                    blocks[i as usize].operations_data(),
                     blocks[i as usize].signatures().frame_data(),
                 ]
                 .concat();
@@ -694,7 +694,7 @@ struct BlockHeader {
     previous_hash: Vec<u8>,
 
     block_size: u32,
-    entries_size: u32,
+    operations_size: u32,
     signatures_size: chain::BlockSignaturesSize,
 }
 
@@ -714,7 +714,7 @@ impl BlockHeader {
             previous_hash: block_reader.get_previous_hash()?.to_vec(),
 
             block_size: stored_block.block().frame_size() as u32,
-            entries_size: stored_block.entries_data().len() as u32,
+            operations_size: stored_block.operations_data().len() as u32,
             signatures_size: stored_block.signatures().frame_size() as chain::BlockSignaturesSize,
         })
     }
@@ -729,7 +729,7 @@ impl BlockHeader {
             previous_offset: block_header_reader.get_previous_offset(),
             previous_hash: block_header_reader.get_previous_hash()?.to_vec(),
             block_size: block_header_reader.get_block_size(),
-            entries_size: block_header_reader.get_entries_size(),
+            operations_size: block_header_reader.get_operations_size(),
             signatures_size: block_header_reader.get_signatures_size(),
         })
     }
@@ -738,7 +738,7 @@ impl BlockHeader {
     fn next_offset(&self) -> chain::BlockOffset {
         self.offset
             + chain::BlockOffset::from(self.block_size)
-            + chain::BlockOffset::from(self.entries_size)
+            + chain::BlockOffset::from(self.operations_size)
             + chain::BlockOffset::from(self.signatures_size)
     }
 
@@ -749,7 +749,7 @@ impl BlockHeader {
         builder.set_previous_offset(self.previous_offset);
         builder.set_previous_hash(&self.previous_hash);
         builder.set_block_size(self.block_size);
-        builder.set_entries_size(self.entries_size);
+        builder.set_operations_size(self.operations_size);
         builder.set_signatures_size(self.signatures_size);
     }
 }
@@ -827,7 +827,7 @@ fn chain_sample_block_headers<CS: chain::Store>(
 ) -> Result<Vec<BlockHeader>, Error> {
     let mut headers = Vec::new();
 
-    let segments_range = store.available_segments();
+    let segments_range = store.segments();
     if segments_range.is_empty() {
         return Ok(headers);
     }
@@ -848,8 +848,8 @@ fn chain_sample_block_headers<CS: chain::Store>(
     let last_block_depth = last_block_reader.get_depth();
 
     let mut blocks_iter = store
-        .block_iter(from_offset)
-        .or_else(|_| store.block_iter(0))?
+        .blocks_iter(from_offset)
+        .or_else(|_| store.blocks_iter(0))?
         .peekable();
 
     let first_block = blocks_iter.peek().ok_or_else(|| {
@@ -925,7 +925,7 @@ mod tests {
         assert!(sync_context.messages.is_empty());
 
         // response from leader with blocks that aren't next should fail
-        let blocks_iter = cluster.chains[1].block_iter(0)?;
+        let blocks_iter = cluster.chains[1].blocks_iter(0)?;
         let response = Synchronizer::<DirectoryStore>::create_sync_response_for_blocks(
             &cluster.chains_synchronizer[1].config,
             10,
@@ -943,7 +943,7 @@ mod tests {
         assert!(result.is_err());
 
         // response from leader with blocks at right position should suceed and append
-        let blocks_iter = cluster.chains[1].block_iter(0).unwrap().skip(10); // skip 10 will go to 10th block
+        let blocks_iter = cluster.chains[1].blocks_iter(0).unwrap().skip(10); // skip 10 will go to 10th block
         let response = Synchronizer::<DirectoryStore>::create_sync_response_for_blocks(
             &cluster.chains_synchronizer[0].config,
             10,
@@ -967,8 +967,10 @@ mod tests {
         let mut cluster = TestCluster::new(1);
         cluster.chain_generate_dummy(0, 100, 3424);
 
-        let offsets: Vec<chain::BlockOffset> =
-            cluster.chains[0].block_iter(0)?.map(|b| b.offset).collect();
+        let offsets: Vec<chain::BlockOffset> = cluster.chains[0]
+            .blocks_iter(0)?
+            .map(|b| b.offset)
+            .collect();
 
         let headers = chain_sample_block_headers(&cluster.chains[0], 0, None, 2, 2, 10)?;
         assert_eq!(

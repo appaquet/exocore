@@ -30,8 +30,8 @@ const MAX_OPERATIONS_PER_RANGE: u32 = 30;
 /// Synchronizer's configuration
 ///
 #[derive(Copy, Clone, Debug)]
-pub(super) struct Config {
-    request_tracker_config: request_tracker::Config,
+pub struct Config {
+    pub request_tracker_config: request_tracker::Config,
 }
 
 impl Default for Config {
@@ -994,7 +994,7 @@ mod tests {
 
         let operation0_reader: pending_operation::Reader = operation0_frame.get_typed_reader()?;
         let operation0_inner_reader = operation0_reader.get_operation();
-        assert!(operation0_inner_reader.has_entry_new());
+        assert!(operation0_inner_reader.has_entry());
 
         Ok(())
     }
@@ -1120,7 +1120,7 @@ mod tests {
 
             StoredOperation {
                 group_id,
-                operation_type: OperationType::EntryNew,
+                operation_type: OperationType::Entry,
                 operation_id,
                 frame: operation,
             }

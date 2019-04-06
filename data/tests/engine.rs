@@ -17,7 +17,7 @@ use std::time::Duration;
 
 #[test]
 fn test_engine_integration_single_node() -> Result<(), failure::Error> {
-    //exocore_common::utils::setup_logging();
+    exocore_common::utils::setup_logging();
 
     let data_dir = tempdir::TempDir::new("engine_tests")?;
     let mut rt = Runtime::new()?;
@@ -30,7 +30,10 @@ fn test_engine_integration_single_node() -> Result<(), failure::Error> {
 
     // TODO: Doesn't make sense to clone a Node
     let transport = transport_hub.get_transport(nodes.get("node1").unwrap().clone());
-    let engine_config = EngineConfig::default();
+    let engine_config = EngineConfig {
+        manager_timer_interval: Duration::from_millis(100),
+        ..EngineConfig::default()
+    };
     let mut chain =
         ChainDirectoryStore::create(ChainDirectoryConfig::default(), data_dir.as_ref())?;
 
@@ -63,7 +66,7 @@ fn test_engine_integration_single_node() -> Result<(), failure::Error> {
     engine_handle.write_entry(NewEntry::new_cell_data(3, b"i love jello".to_vec()))?;
     engine_handle.write_entry(NewEntry::new_cell_data(4, b"i love jello".to_vec()))?;
 
-    std::thread::sleep(Duration::from_millis(5000));
+    std::thread::sleep(Duration::from_millis(1000));
 
     let pending_operations = engine_handle.get_pending_operations(..)?;
     info!("Got {} pending op", pending_operations.len());

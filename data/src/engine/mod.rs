@@ -44,11 +44,11 @@ pub(crate) mod testing;
 ///
 #[derive(Copy, Clone, Debug)]
 pub struct Config {
-    chain_synchronizer_config: chain_sync::Config,
-    pending_synchronizer_config: pending_sync::Config,
-    commit_manager_config: commit_manager::Config,
-    manager_timer_interval: Duration,
-    handles_events_stream_size: usize,
+    pub chain_synchronizer_config: chain_sync::Config,
+    pub pending_synchronizer_config: pending_sync::Config,
+    pub commit_manager_config: commit_manager::Config,
+    pub manager_timer_interval: Duration,
+    pub handles_events_stream_size: usize,
 }
 
 impl Default for Config {
@@ -558,7 +558,7 @@ where
 
         let inner = self.inner.upgrade().ok_or(Error::InnerUpgrade)?;
         let unlocked_inner = inner.read()?;
-        Ok(unlocked_inner.chain_store.available_segments())
+        Ok(unlocked_inner.chain_store.segments())
     }
 
     pub fn get_chain_entry(
@@ -569,7 +569,6 @@ where
         let inner = self.inner.upgrade().ok_or(Error::InnerUpgrade)?;
         let unlocked_inner = inner.read()?;
 
-        // TODO: Do a binary lookup after we sorted it
         let block = unlocked_inner.chain_store.get_block(block_offset)?;
         let operation = block.get_operation(operation_id)?.ok_or_else(|| {
             Error::NotFound(format!(
@@ -885,7 +884,7 @@ impl NewEntry {
 
         let inner_op_builder = op_builder.init_operation();
 
-        let mut entry_op_builder = inner_op_builder.init_entry_new();
+        let mut entry_op_builder = inner_op_builder.init_entry();
         entry_op_builder.set_data(&self.data);
 
         let frame_signer = local_node.frame_signer();

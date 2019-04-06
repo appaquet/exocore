@@ -9,7 +9,7 @@ struct PendingOperation {
     nodeId                 @2: Text;
 
     operation :union {
-        entryNew           @3: OperationEntryNew;
+        entry              @3: OperationEntry;
         blockPropose       @4: OperationBlockPropose;
         blockSign          @5: OperationBlockSign;
         blockRefuse        @6: OperationBlockRefuse;
@@ -24,7 +24,7 @@ struct PendingOperationHeader {
     operationSignature     @2: Data;
 }
 
-struct OperationEntryNew {
+struct OperationEntry {
     data                   @0: Data;
 }
 
@@ -54,9 +54,9 @@ struct Block { # Rename... It's not a block anymore, but a block header
     proposedOperationId    @4: UInt64;
     proposedNodeId         @5: Text;
 
-    entriesSize            @6: UInt32;  # Data size
-    entriesHeader          @7: List(BlockEntryHeader);
-    entriesHash            @8: Data;
+    operationsSize         @6: UInt32;  # Data size
+    operationsHeader       @7: List(BlockOperationHeader);
+    operationsHash         @8: Data;
 
     signaturesSize         @9: UInt16;
 }
@@ -73,18 +73,18 @@ struct BlockHeader {
     blockSize              @6: UInt32;
     blockHash              @7: Data;
 
-    entriesSize            @8: UInt32;
+    operationsSize         @8: UInt32;
     signaturesSize         @9: UInt16;
 }
 
-struct BlockEntryHeader {
+struct BlockOperationHeader {
     operationId            @0: UInt64;
     dataOffset             @1: UInt32;
     dataSize               @2: UInt32;
 }
 
 struct BlockSignatures {
-    entriesSize            @0: UInt32;
+    operationsSize         @0: UInt32;
     signatures             @1: List(BlockSignature);
 }
 

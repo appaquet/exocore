@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use exocore_common::data_chain_capnp::{
-    block, block_entry_header, block_signature, block_signatures,
+    block, block_operation_header, block_signature, block_signatures,
 };
 use exocore_common::node::{Node, NodeID, Nodes};
 use exocore_common::security::hash::{Multihash, Sha3Hasher, StreamHasher};
@@ -19,14 +19,17 @@ pub type BlockSignaturesSize = u16;
 
 pub mod directory;
 
+///
+/// Persistence for the chain
+///
 pub trait Store: Send + Sync + 'static {
+    fn segments(&self) -> Vec<Range<BlockOffset>>;
+
     fn write_block<B: Block>(&mut self, block: &B) -> Result<BlockOffset, Error>;
 
-    fn available_segments(&self) -> Vec<Range<BlockOffset>>;
+    fn blocks_iter(&self, from_offset: BlockOffset) -> Result<StoredBlockIterator, Error>;
 
-    fn block_iter(&self, from_offset: BlockOffset) -> Result<StoredBlockIterator, Error>;
-
-    fn block_iter_reverse(
+    fn blocks_iter_reverse(
         &self,
         from_next_offset: BlockOffset,
     ) -> Result<StoredBlockIterator, Error>;
@@ -45,10 +48,24 @@ pub trait Store: Send + Sync + 'static {
     fn truncate_from_offset(&mut self, offset: BlockOffset) -> Result<(), Error>;
 }
 
+///
+/// Iterator over stored blocks.
+///
 type StoredBlockIterator<'pers> = Box<dyn Iterator<Item = BlockRef<'pers>> + 'pers>;
 
 ///
+/// A trait representing a block stored or to be stored in the chain.
+/// It can either be a referenced block (`BlockRef`) or a in-memory block (`BlockOwned`).
 ///
+/// A blocks consists of 3 parts:
+///  * Block header
+///  * Operations' data
+///  * Block signatures
+///
+/// The block header and operations' data are the same on all nodes. Since a node writes a block
+/// as soon as it has enough signatures, signatures can differ from one node to the other. Signatures
+/// frame is pre-allocated, which means that not all signatures may fit. But in theory, it should always
+/// contain enough space for all nodes to add their signature.
 ///
 pub trait Block {
     type BlockType: TypedFrame<block::Owned> + SignedFrame;
@@ -56,12 +73,12 @@ pub trait Block {
 
     fn offset(&self) -> BlockOffset;
     fn block(&self) -> &Self::BlockType;
-    fn entries_data(&self) -> &[u8];
+    fn operations_data(&self) -> &[u8];
     fn signatures(&self) -> &Self::SignaturesType;
 
     #[inline]
     fn total_size(&self) -> usize {
-        self.block().frame_size() + self.entries_data().len() + self.signatures().frame_size()
+        self.block().frame_size() + self.operations_data().len() + self.signatures().frame_size()
     }
 
     #[inline]
@@ -71,19 +88,19 @@ pub trait Block {
 
     #[inline]
     fn copy_data_into(&self, data: &mut [u8]) {
-        let entries_data = self.entries_data();
-        let entries_offset = self.block().frame_size();
-        let signatures_offset = entries_offset + entries_data.len();
+        let operations_data = self.operations_data();
+        let operations_offset = self.block().frame_size();
+        let signatures_offset = operations_offset + operations_data.len();
 
         self.block().copy_into(data);
-        (&mut data[entries_offset..signatures_offset]).copy_from_slice(entries_data);
+        (&mut data[operations_offset..signatures_offset]).copy_from_slice(operations_data);
         self.signatures().copy_into(&mut data[signatures_offset..]);
     }
 
     fn as_data_vec(&self) -> Vec<u8> {
         vec![
             self.block().frame_data(),
-            self.entries_data(),
+            self.operations_data(),
             self.signatures().frame_data(),
         ]
         .concat()
@@ -91,16 +108,16 @@ pub trait Block {
 
     fn operations_iter(&self) -> Result<BlockOperationsIterator, Error> {
         let block_reader: block::Reader = self.block().get_typed_reader()?;
-        let entries_header = block_reader
-            .get_entries_header()?
+        let operations_header = block_reader
+            .get_operations_header()?
             .iter()
-            .map(|reader| EntryHeader::from_reader(&reader))
+            .map(|reader| BlockOperationHeader::from_reader(&reader))
             .collect::<Vec<_>>();
 
         Ok(BlockOperationsIterator {
             index: 0,
-            entries_header,
-            entries_data: self.entries_data(),
+            operations_header,
+            operations_data: self.operations_data(),
             last_error: None,
         })
     }
@@ -123,12 +140,12 @@ pub trait Block {
 }
 
 ///
-///
+/// Iterator over operations stored in a block.
 ///
 pub struct BlockOperationsIterator<'a> {
     index: usize,
-    entries_header: Vec<EntryHeader>,
-    entries_data: &'a [u8],
+    operations_header: Vec<BlockOperationHeader>,
+    operations_data: &'a [u8],
     last_error: Option<Error>,
 }
 
@@ -136,17 +153,17 @@ impl<'a> Iterator for BlockOperationsIterator<'a> {
     type Item = TypedSliceFrame<'a, pending_operation::Owned>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index >= self.entries_header.len() {
+        if self.index >= self.operations_header.len() {
             return None;
         }
 
-        let header = &self.entries_header[self.index];
+        let header = &self.operations_header[self.index];
         self.index += 1;
 
         let offset_from = header.data_offset as usize;
         let offset_to = header.data_offset as usize + header.data_size as usize;
 
-        let frame_res = TypedSliceFrame::new(&self.entries_data[offset_from..offset_to]);
+        let frame_res = TypedSliceFrame::new(&self.operations_data[offset_from..offset_to]);
         match frame_res {
             Ok(frame) => Some(frame),
             Err(err) => {
@@ -157,17 +174,17 @@ impl<'a> Iterator for BlockOperationsIterator<'a> {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.index, Some(self.entries_data.len()))
+        (self.index, Some(self.operations_data.len()))
     }
 }
 
 ///
-///
+/// In-memory block.
 ///
 pub struct BlockOwned {
     pub offset: BlockOffset,
     pub block: OwnedTypedFrame<block::Owned>,
-    pub entries_data: Vec<u8>,
+    pub operations_data: Vec<u8>,
     pub signatures: OwnedTypedFrame<block_signatures::Owned>,
 }
 
@@ -175,20 +192,20 @@ impl BlockOwned {
     pub fn new(
         offset: BlockOffset,
         block: OwnedTypedFrame<block::Owned>,
-        entries_data: Vec<u8>,
+        operations_data: Vec<u8>,
         signatures: OwnedTypedFrame<block_signatures::Owned>,
     ) -> BlockOwned {
         BlockOwned {
             offset,
             block,
-            entries_data,
+            operations_data,
             signatures,
         }
     }
 
     pub fn new_genesis(nodes: &Nodes, node: &Node) -> Result<BlockOwned, Error> {
-        let entries = BlockEntries::empty();
-        let block = Self::new_with_prev_info(nodes, node, 0, 0, 0, &[], 0, entries)?;
+        let operations = BlockOperations::empty();
+        let block = Self::new_with_prev_info(nodes, node, 0, 0, 0, &[], 0, operations)?;
 
         // TODO: Add master signature
 
@@ -200,7 +217,7 @@ impl BlockOwned {
         node: &Node,
         previous_block: &B,
         proposed_operation_id: u64,
-        entries: BlockEntries,
+        operations: BlockOperations,
     ) -> Result<BlockOwned, Error>
     where
         B: Block,
@@ -224,7 +241,7 @@ impl BlockOwned {
             previous_offset,
             previous_hash,
             proposed_operation_id,
-            entries,
+            operations,
         )
     }
 
@@ -238,9 +255,9 @@ impl BlockOwned {
         previous_offset: BlockOffset,
         previous_hash: &[u8],
         proposed_operation_id: u64,
-        entries: BlockEntries,
+        operations: BlockOperations,
     ) -> Result<BlockOwned, Error> {
-        let entries_data_size = entries.data.len() as u32;
+        let operations_data_size = operations.data.len() as u32;
 
         // initialize block
         let mut block_frame_builder = FrameBuilder::<block::Owned>::new();
@@ -251,14 +268,14 @@ impl BlockOwned {
         block_builder.set_previous_hash(previous_hash);
         block_builder.set_proposed_operation_id(proposed_operation_id);
         block_builder.set_proposed_node_id(&node.id());
-        block_builder.set_entries_size(entries_data_size);
-        block_builder.set_entries_hash(&entries.multihash_bytes);
+        block_builder.set_operations_size(operations_data_size);
+        block_builder.set_operations_hash(&operations.multihash_bytes);
 
-        let mut entries_builder = block_builder
+        let mut operations_builder = block_builder
             .reborrow()
-            .init_entries_header(entries.headers.len() as u32);
-        for (i, header_builder) in entries.headers.iter().enumerate() {
-            let mut entry_builder = entries_builder.reborrow().get(i as u32);
+            .init_operations_header(operations.headers.len() as u32);
+        for (i, header_builder) in operations.headers.iter().enumerate() {
+            let mut entry_builder = operations_builder.reborrow().get(i as u32);
             header_builder.copy_into_builder(&mut entry_builder);
         }
 
@@ -266,7 +283,7 @@ impl BlockOwned {
         let mut signature_frame_builder =
             BlockSignatures::empty_signatures_for_nodes(nodes).to_frame_builder();
         let mut signature_builder = signature_frame_builder.get_builder_typed();
-        signature_builder.set_entries_size(entries_data_size);
+        signature_builder.set_operations_size(operations_data_size);
         let signature_frame = signature_frame_builder.as_owned_framed(node.frame_signer())?;
 
         // set signature size in block
@@ -276,7 +293,7 @@ impl BlockOwned {
         Ok(BlockOwned {
             offset,
             block: block_frame,
-            entries_data: entries.data,
+            operations_data: operations.data,
             signatures: signature_frame,
         })
     }
@@ -297,8 +314,8 @@ impl Block for BlockOwned {
     }
 
     #[inline]
-    fn entries_data(&self) -> &[u8] {
-        &self.entries_data
+    fn operations_data(&self) -> &[u8] {
+        &self.operations_data
     }
 
     #[inline]
@@ -308,12 +325,12 @@ impl Block for BlockOwned {
 }
 
 ///
-///
+/// Referenced block.
 ///
 pub struct BlockRef<'a> {
     pub offset: BlockOffset,
     pub block: framed::TypedSliceFrame<'a, block::Owned>,
-    pub entries_data: &'a [u8],
+    pub operations_data: &'a [u8],
     pub signatures: framed::TypedSliceFrame<'a, block_signatures::Owned>,
 }
 
@@ -322,9 +339,9 @@ impl<'a> BlockRef<'a> {
         let block = framed::TypedSliceFrame::new(data)?;
         let block_reader: block::Reader = block.get_typed_reader()?;
 
-        let entries_offset = block.frame_size();
-        let entries_size = block_reader.get_entries_size() as usize;
-        let signatures_offset = entries_offset + entries_size;
+        let operations_offset = block.frame_size();
+        let operations_size = block_reader.get_operations_size() as usize;
+        let signatures_offset = operations_offset + operations_size;
 
         if signatures_offset >= data.len() {
             return Err(Error::OutOfBound(format!(
@@ -334,13 +351,13 @@ impl<'a> BlockRef<'a> {
             )));
         }
 
-        let entries_data = &data[entries_offset..entries_offset + entries_size];
+        let operations_data = &data[operations_offset..operations_offset + operations_size];
         let signatures = framed::TypedSliceFrame::new(&data[signatures_offset..])?;
 
         Ok(BlockRef {
             offset: block_reader.get_offset(),
             block,
-            entries_data,
+            operations_data,
             signatures,
         })
     }
@@ -361,8 +378,8 @@ impl<'a> Block for BlockRef<'a> {
     }
 
     #[inline]
-    fn entries_data(&self) -> &[u8] {
-        &self.entries_data
+    fn operations_data(&self) -> &[u8] {
+        &self.operations_data
     }
 
     #[inline]
@@ -372,24 +389,25 @@ impl<'a> Block for BlockRef<'a> {
 }
 
 ///
+/// Header of an operation store within a block. It represents the position
+/// in the bytes of the block.
 ///
-///
-struct EntryHeader {
+struct BlockOperationHeader {
     operation_id: u64,
     data_offset: u32,
     data_size: u32,
 }
 
-impl EntryHeader {
-    fn from_reader(reader: &block_entry_header::Reader) -> EntryHeader {
-        EntryHeader {
+impl BlockOperationHeader {
+    fn from_reader(reader: &block_operation_header::Reader) -> BlockOperationHeader {
+        BlockOperationHeader {
             operation_id: reader.get_operation_id(),
             data_offset: reader.get_data_offset(),
             data_size: reader.get_data_size(),
         }
     }
 
-    fn copy_into_builder(&self, builder: &mut block_entry_header::Builder) {
+    fn copy_into_builder(&self, builder: &mut block_operation_header::Builder) {
         builder.set_operation_id(self.operation_id);
         builder.set_data_size(self.data_size);
         builder.set_data_offset(self.data_offset);
@@ -397,24 +415,24 @@ impl EntryHeader {
 }
 
 ///
+/// Represents operations stored in a block.
 ///
-///
-pub struct BlockEntries {
+pub struct BlockOperations {
     multihash_bytes: Vec<u8>,
-    headers: Vec<EntryHeader>,
+    headers: Vec<BlockOperationHeader>,
     data: Vec<u8>,
 }
 
-impl BlockEntries {
-    fn empty() -> BlockEntries {
-        BlockEntries {
+impl BlockOperations {
+    fn empty() -> BlockOperations {
+        BlockOperations {
             multihash_bytes: Vec::new(),
             headers: Vec::new(),
             data: Vec::new(),
         }
     }
 
-    pub fn from_operations<I, F>(sorted_operations: I) -> Result<BlockEntries, Error>
+    pub fn from_operations<I, F>(sorted_operations: I) -> Result<BlockOperations, Error>
     where
         I: Iterator<Item = F>,
         F: TypedFrame<pending_operation::Owned>,
@@ -430,14 +448,14 @@ impl BlockEntries {
             hasher.consume_signed_frame(&operation);
             data.extend_from_slice(entry_data);
 
-            headers.push(EntryHeader {
+            headers.push(BlockOperationHeader {
                 operation_id: operation_reader.get_operation_id(),
                 data_offset: offset as u32,
                 data_size: (data.len() - offset) as u32,
             });
         }
 
-        Ok(BlockEntries {
+        Ok(BlockOperations {
             multihash_bytes: hasher.into_multihash_bytes(),
             headers,
             data,
@@ -466,7 +484,10 @@ impl BlockEntries {
 }
 
 ///
-///
+/// Represents signatures stored in a block. Since a node writes a block as soon as it has enough
+/// signatures, signatures can differ from one node to the other. Signatures frame is pre-allocated,
+/// which means that not all signatures may fit. But in theory, it should always contain enough
+/// space for all nodes to add their signature.
 ///
 pub struct BlockSignatures {
     signatures: Vec<BlockSignature>,
@@ -512,7 +533,7 @@ impl BlockSignatures {
         let mut signatures_frame_builder = self.to_frame_builder();
         let mut signatures_builder: block_signatures::Builder =
             signatures_frame_builder.get_builder_typed();
-        signatures_builder.set_entries_size(block_reader.get_entries_size());
+        signatures_builder.set_operations_size(block_reader.get_operations_size());
         let signatures_frame = signatures_frame_builder.as_owned_framed(node.frame_signer())?;
 
         // make sure that the signatures frame size is not higher than pre-allocated space in block
@@ -535,6 +556,9 @@ impl BlockSignatures {
     }
 }
 
+///
+/// Represents a signature of the block by one node, using its own key to sign the block's hash.
+///
 pub struct BlockSignature {
     pub node_id: NodeID,
     pub signature: Signature,
@@ -552,7 +576,7 @@ impl BlockSignature {
 }
 
 ///
-///
+/// Chain related errors
 ///
 #[derive(Debug, Clone, PartialEq, Fail)]
 pub enum Error {
@@ -618,10 +642,10 @@ mod tests {
 
         let operations = vec![PendingOperation::new_entry(123, "node1", b"some_data")
             .as_owned_framed(node1.frame_signer())?];
-        let entries = BlockEntries::from_operations(operations.into_iter())?;
+        let operations = BlockOperations::from_operations(operations.into_iter())?;
 
         let second_block =
-            BlockOwned::new_with_prev_block(&nodes, &node1, &first_block, 0, entries)?;
+            BlockOwned::new_with_prev_block(&nodes, &node1, &first_block, 0, operations)?;
 
         let mut data = [0u8; 5000];
         second_block.copy_data_into(&mut data);
@@ -631,7 +655,10 @@ mod tests {
             second_block.block.frame_data(),
             read_second_block.block.frame_data()
         );
-        assert_eq!(second_block.entries_data, read_second_block.entries_data);
+        assert_eq!(
+            second_block.operations_data,
+            read_second_block.operations_data
+        );
         assert_eq!(
             second_block.signatures.frame_data(),
             read_second_block.signatures.frame_data()
@@ -644,15 +671,15 @@ mod tests {
             second_block.signatures.frame_size() as u16
         );
         assert_eq!(
-            block_reader.get_entries_size(),
-            second_block.entries_data.len() as u32
+            block_reader.get_operations_size(),
+            second_block.operations_data.len() as u32
         );
 
         let signatures_reader: block_signatures::Reader =
             second_block.signatures.get_typed_reader()?;
         assert_eq!(
-            signatures_reader.get_entries_size(),
-            second_block.entries_data.len() as u32
+            signatures_reader.get_operations_size(),
+            second_block.operations_data.len() as u32
         );
 
         let signatures = signatures_reader.get_signatures()?;
@@ -670,7 +697,7 @@ mod tests {
 
         // 0 operations
         let block =
-            BlockOwned::new_with_prev_block(&nodes, &node1, &genesis, 0, BlockEntries::empty())?;
+            BlockOwned::new_with_prev_block(&nodes, &node1, &genesis, 0, BlockOperations::empty())?;
         assert_eq!(block.operations_iter()?.count(), 0);
 
         // 5 operations
@@ -682,8 +709,8 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        let block_entries = BlockEntries::from_operations(operations.into_iter())?;
-        let block = BlockOwned::new_with_prev_block(&nodes, &node1, &genesis, 0, block_entries)?;
+        let block_operations = BlockOperations::from_operations(operations.into_iter())?;
+        let block = BlockOwned::new_with_prev_block(&nodes, &node1, &genesis, 0, block_operations)?;
         assert_eq!(block.operations_iter()?.count(), 5);
 
         Ok(())

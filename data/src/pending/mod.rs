@@ -55,7 +55,7 @@ pub struct StoredOperationsGroup {
 ///
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum OperationType {
-    EntryNew,
+    Entry,
     BlockPropose,
     BlockSign,
     BlockRefuse,
@@ -82,7 +82,7 @@ impl PendingOperation {
 
         let inner_operation_builder = operation_builder.init_operation();
 
-        let mut new_entry_builder = inner_operation_builder.init_entry_new();
+        let mut new_entry_builder = inner_operation_builder.init_entry();
         new_entry_builder.set_data(data);
 
         frame_builder

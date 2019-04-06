@@ -31,7 +31,7 @@ impl<'a> MessageType<'a> for self::data_chain_capnp::pending_operation_header::O
     const MESSAGE_TYPE: u16 = 101;
 }
 
-impl<'a> MessageType<'a> for self::data_chain_capnp::operation_entry_new::Owned {
+impl<'a> MessageType<'a> for self::data_chain_capnp::operation_entry::Owned {
     const MESSAGE_TYPE: u16 = 110;
 }
 
@@ -63,7 +63,7 @@ impl<'a> MessageType<'a> for self::data_chain_capnp::block_signature::Owned {
     const MESSAGE_TYPE: u16 = 132;
 }
 
-impl<'a> MessageType<'a> for self::data_chain_capnp::block_entry_header::Owned {
+impl<'a> MessageType<'a> for self::data_chain_capnp::block_operation_header::Owned {
     const MESSAGE_TYPE: u16 = 133;
 }
 
