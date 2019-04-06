@@ -162,7 +162,7 @@ impl<CS: Store> Synchronizer<CS> {
         }
 
         // synchronize chain state with nodes
-        for node in nodes.nodes().filter(|n| n.id != node_id) {
+        for node in nodes.nodes().filter(|n| n.id() != &node_id) {
             let node_info = self.get_or_create_node_info_mut(node.id());
 
             if node_info.request_tracker.can_send_request() {
@@ -198,7 +198,7 @@ impl<CS: Store> Synchronizer<CS> {
         let requested_details = request_reader.get_requested_details()?;
         debug!(
             "Got request from node {} for offset from {} to offset {} requested_details={}",
-            from_node.id,
+            from_node.id(),
             from_offset,
             to_offset,
             requested_details.to_u16()
@@ -264,10 +264,10 @@ impl<CS: Store> Synchronizer<CS> {
     {
         let response_reader: chain_sync_response::Reader = response.get_typed_reader()?;
         if response_reader.has_blocks() {
-            debug!("Got blocks response from node {}", from_node.id);
+            debug!("Got blocks response from node {}", from_node.id());
             self.handle_sync_response_blocks(sync_context, from_node, store, response_reader)?;
         } else if response_reader.has_headers() {
-            debug!("Got headers response from node {}", from_node.id);
+            debug!("Got headers response from node {}", from_node.id());
             self.handle_sync_response_headers(sync_context, from_node, store, response_reader)?;
         } else {
             warn!("Got a response without headers and blocks");
@@ -584,11 +584,11 @@ impl<CS: Store> Synchronizer<CS> {
         for node in nodes.nodes() {
             nodes_total += 1;
 
-            if node.id == self.node_id {
+            if node.id() == &self.node_id {
                 continue;
             }
 
-            if let Some(node_info) = self.nodes_info.get(&node.id) {
+            if let Some(node_info) = self.nodes_info.get(node.id()) {
                 if node_info.chain_metadata_status() == NodeMetadataStatus::Synchronized {
                     nodes_metadata_sync += 1;
                 }

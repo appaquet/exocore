@@ -822,17 +822,17 @@ impl SyncContextMessage {
 
         let message = match self {
             SyncContextMessage::PendingSyncRequest(to_node, request_builder) => {
-                let to_nodes = nodes.nodes().filter(|n| n.id == to_node).cloned().collect();
+                let to_nodes = nodes.nodes().filter(|n| n.id() == &to_node).cloned().collect();
                 let frame = request_builder.as_owned_framed(signer)?;
                 OutMessage::from_framed_message(local_node, to_nodes, frame)?
             }
             SyncContextMessage::ChainSyncRequest(to_node, request_builder) => {
-                let to_nodes = nodes.nodes().filter(|n| n.id == to_node).cloned().collect();
+                let to_nodes = nodes.nodes().filter(|n| n.id() == &to_node).cloned().collect();
                 let frame = request_builder.as_owned_framed(signer)?;
                 OutMessage::from_framed_message(local_node, to_nodes, frame)?
             }
             SyncContextMessage::ChainSyncResponse(to_node, response_builder) => {
-                let to_nodes = nodes.nodes().filter(|n| n.id == to_node).cloned().collect();
+                let to_nodes = nodes.nodes().filter(|n| n.id() == &to_node).cloned().collect();
                 let frame = response_builder.as_owned_framed(signer)?;
                 OutMessage::from_framed_message(local_node, to_nodes, frame)?
             }

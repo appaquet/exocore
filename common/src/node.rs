@@ -9,7 +9,7 @@ pub struct Node {
     // TODO: PublicKey
     // TODO: NodeID = hash(publickey)
     // TODO: ACLs
-    pub id: NodeID,
+    id: NodeID,
     //    address: String,
     //    is_me: bool,
 }
@@ -48,7 +48,7 @@ impl Nodes {
     }
 
     pub fn add(&mut self, node: Node) {
-        self.nodes.insert(node.id.clone(), node);
+        self.nodes.insert(node.id().clone(), node);
     }
 
     #[inline]
