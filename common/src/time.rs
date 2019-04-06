@@ -1,18 +1,25 @@
+use crate::node::Node;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 #[cfg(any(test, feature = "tests_utils"))]
 use std::time::Duration;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use crate::node::Node;
+// TODO: This means we can't generate more than 100 consistent time per ms for now
+// TODO: But this will be rewritten with https://github.com/appaquet/exocore/issues/37
+const CONSISTENT_COUNTER_MAX: usize = 99;
 
 #[derive(Clone)]
 pub struct Clock {
     source: Source,
+    consistent_counter: Arc<AtomicUsize>,
 }
 
 impl Clock {
     pub fn new() -> Clock {
         Clock {
             source: Source::System,
+            consistent_counter: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -20,6 +27,7 @@ impl Clock {
     pub fn new_mocked() -> Clock {
         Clock {
             source: Source::Mocked(std::sync::Arc::new(std::sync::RwLock::new(None))),
+            consistent_counter: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -27,6 +35,7 @@ impl Clock {
     pub fn new_fixed_mocked(instant: Instant) -> Clock {
         Clock {
             source: Source::Mocked(std::sync::Arc::new(std::sync::RwLock::new(Some(instant)))),
+            consistent_counter: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -47,10 +56,16 @@ impl Clock {
     }
 
     pub fn consistent_time(&self, _node: &Node) -> u64 {
-        // TODO: This is foobar
-        // TODO: This should be in Cell ?
+        // TODO: To be rewritten with https://github.com/appaquet/exocore/issues/37
+
+        let counter = self.consistent_counter.fetch_add(1, Ordering::SeqCst);
+        if counter >= CONSISTENT_COUNTER_MAX {
+            self.consistent_counter
+                .compare_and_swap(counter, 0, Ordering::Relaxed);
+        }
+
         let elaps = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-        elaps.as_secs() * 1000 + u64::from(elaps.subsec_millis())
+        elaps.as_secs() * 100_000 + u64::from(elaps.subsec_millis()) * 100 + counter as u64
     }
 
     #[cfg(any(test, feature = "tests_utils"))]
