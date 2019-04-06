@@ -137,7 +137,7 @@ pub trait Block {
         &self,
         operation_id: OperationID,
     ) -> Result<Option<TypedSliceFrame<pending_operation::Owned>>, Error> {
-        // TODO: Implement binary search in operations, since they are sorted.
+        // TODO: Implement binary search in operations, since they are sorted: https://github.com/appaquet/exocore/issues/43
         let operation = self.operations_iter()?.find(|operation| {
             if let Ok(operation_reader) = operation.get_typed_reader() {
                 operation_reader.get_operation_id() == operation_id
@@ -218,7 +218,7 @@ impl BlockOwned {
         let operations = BlockOperations::empty();
         let block = Self::new_with_prev_info(nodes, node, 0, 0, 0, &[], 0, operations)?;
 
-        // TODO: Add master signature
+        // TODO: Add master signature after doing https://github.com/appaquet/exocore/issues/46
 
         Ok(block)
     }

@@ -246,7 +246,7 @@ impl ChainStore for DirectoryChainStore {
         &self,
         _operation_id: OperationID,
     ) -> Result<Option<BlockRef>, Error> {
-        // TODO: Implement index by operation id: https://github.com/appaquet/exocore/issues/33
+        // TODO: Implement index by operation id: https://github.com/appaquet/exocore/issues/43
         Ok(None)
     }
 
@@ -850,6 +850,7 @@ mod tests {
     fn directory_chain_truncate() -> Result<(), failure::Error> {
         let mut config: DirectoryChainStoreConfig = Default::default();
         config.segment_max_size = 1000;
+        config.segment_over_allocate_size = 1500;
 
         // we cutoff the directory at different position to make sure of its integrity
         for cutoff in 1..50 {
@@ -922,6 +923,7 @@ mod tests {
     fn directory_chain_truncate_all() -> Result<(), failure::Error> {
         let mut config: DirectoryChainStoreConfig = Default::default();
         config.segment_max_size = 3000;
+        config.segment_over_allocate_size = 3500;
         let dir = tempdir::TempDir::new("test")?;
 
         {

@@ -15,6 +15,9 @@ use exocore_data::{
 };
 use std::time::Duration;
 
+
+// TODO: To be completed in https://github.com/appaquet/exocore/issues/42
+
 #[test]
 fn test_engine_integration_single_node() -> Result<(), failure::Error> {
     //exocore_common::utils::setup_logging();

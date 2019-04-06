@@ -4,11 +4,12 @@ use std::collections::HashMap;
 
 pub type NodeID = String;
 
+// TODO: To be put back in cell when we'll implement it here: https://github.com/appaquet/exocore/issues/37
+// TODO: NodeID = hash(publickey)
+// TODO: ACLs
+
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Node {
-    // TODO: PublicKey
-    // TODO: NodeID = hash(publickey)
-    // TODO: ACLs
     id: NodeID,
     //    address: String,
     //    is_me: bool,
@@ -25,13 +26,14 @@ impl Node {
     }
 
     pub fn frame_signer(&self) -> impl FrameSigner {
-        // TODO: Include signature, not just hash
+        // TODO: Signature ticket: https://github.com/appaquet/exocore/issues/46
+        //       Include signature, not just hash.
         MultihashFrameSigner::new_sha3256()
     }
 
     pub fn sign_message(&self, _message: &[u8]) -> Signature {
-        // TODO: make sure we're local and we have access to private key
-        // TODO: do it for real
+        // TODO: Signature ticket: https://github.com/appaquet/exocore/issues/46
+        //       Make sure we're local and we have access to private key
         Signature::empty()
     }
 }

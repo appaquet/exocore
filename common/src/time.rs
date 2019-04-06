@@ -6,7 +6,7 @@ use std::time::Duration;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 // TODO: This means we can't generate more than 100 consistent time per ms for now
-// TODO: But this will be rewritten with https://github.com/appaquet/exocore/issues/37
+// TODO: But will be written in consistent clock logic in ticket https://github.com/appaquet/exocore/issues/6
 const CONSISTENT_COUNTER_MAX: usize = 99;
 
 #[derive(Clone)]
@@ -56,7 +56,7 @@ impl Clock {
     }
 
     pub fn consistent_time(&self, _node: &Node) -> u64 {
-        // TODO: To be rewritten with https://github.com/appaquet/exocore/issues/37
+        // TODO: To be rewritten with https://github.com/appaquet/exocore/issues/6
 
         let counter = self.consistent_counter.fetch_add(1, Ordering::SeqCst);
         if counter >= CONSISTENT_COUNTER_MAX {

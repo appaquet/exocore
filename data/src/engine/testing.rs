@@ -54,7 +54,8 @@ impl TestCluster {
             clocks.push(clock.clone());
 
             let chain_config = DirectoryConfig {
-                segment_max_size: 3000,
+                segment_max_size: 100_000,
+                segment_over_allocate_size: 101_000,
                 ..DirectoryConfig::default()
             };
             chains.push(DirectoryChainStore::create(chain_config, tempdir.as_ref()).unwrap());

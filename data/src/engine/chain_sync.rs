@@ -99,6 +99,8 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
     ) -> Result<(), Error> {
         let node_id = self.node_id.clone();
 
+        // TODO: Should check if sync status changed. Ticket: https://github.com/appaquet/exocore/issues/44
+
         let (nb_nodes_metadata_sync, nb_nodes) = self.count_nodes_status(nodes);
         let majority_nodes_metadata_sync = nb_nodes_metadata_sync >= nb_nodes / 2;
         debug!(

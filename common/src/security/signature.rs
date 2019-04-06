@@ -1,5 +1,7 @@
 use crate::node::Node;
 
+// TODO: Most of the signature logic to be implemented in ticket: https://github.com/appaquet/exocore/issues/46
+
 #[derive(Clone)]
 pub struct Signature {
     bytes: Vec<u8>,
@@ -28,7 +30,6 @@ impl Signature {
 
     pub fn validate(&self, _node: &Node, _message: &[u8]) -> bool {
         // TODO: Validate for real against node's public signature
-
         true
     }
 }

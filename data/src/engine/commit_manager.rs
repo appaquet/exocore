@@ -150,6 +150,7 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
     fn select_potential_next_block(blocks: &[&PendingBlock]) -> Option<OperationID> {
         // TODO: Better selection than this... If we have more than 1 potential block, we should vote for the one who had more chance
         //       Otherwise, we may not be able to advance consensus if each node vote for a different proposal
+        //       Ticket: https://github.com/appaquet/exocore/issues/47
         blocks.first().map(|b| b.group_id)
     }
 
@@ -275,9 +276,10 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
         _chain_store: &CS,
         _pending_blocks: &PendingBlocks,
     ) -> Result<bool, Error> {
-        // TODO: I'm synchronized
-        // TODO: I have full access
-        // TODO: Last block time + duration + hash(nodeid) % 5 secs
+        // TODO: Selection logic ticket: https://github.com/appaquet/exocore/issues/47
+        //       I'm synchronized
+        //       I have full access
+        //       Last block time + duration + hash(nodeid) % 5 secs
         //       - Perhaps we should take current time into consideration so that we don't have 2 nodes proposing at the timeout
 
         Ok(true)
@@ -452,13 +454,12 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
         _pending_blocks: &PendingBlocks,
         _pending_store: &PS,
     ) -> Result<(), Error> {
-        // TODO: Implement cleanup: https://github.com/appaquet/exocore/issues/22
-
-        // TODO: Check if we can advance the last block mark in pending store
-        // TODO: Emit "PendingIgnore" for
+        // TODO: Implement cleanup: https://github.com/appaquet/exocore/issues/41
+        //       Check if we can advance the last block mark in pending store
+        //       Emit "PendingIgnore" for
         //        - Operations that are now in the chain
         //        - Blocks that got refused after more than X
-        // TODO: Cleanup committed stuff OR ignored stuff
+        //       Cleanup committed stuff OR ignored stuff
 
         Ok(())
     }

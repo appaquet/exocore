@@ -1,3 +1,6 @@
+// TODO: Main ticket for completion of cell: https://github.com/appaquet/exocore/issues/37
+// TODO: Encryption/signature ticket: https://github.com/appaquet/exocore/issues/46
+
 // TODO: PublicKey (RSA + secp256k1)
 // TODO: NodeID = hash(publickey)
 // TODO: Nodes, with their capability

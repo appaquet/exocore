@@ -650,6 +650,7 @@ where
     /// This stream is bounded and consumptions should be non-blocking to prevent losing events.
     /// Calling the engine on every call should be throttled in the case of a big read amplification.
     pub fn take_events_stream(&mut self) -> impl futures::Stream<Item = Event, Error = Error> {
+        // TODO: To be completed in https://github.com/appaquet/exocore/issues/45
         self.events_receiver
             .take()
             .expect("Get events stream was already called.")
@@ -805,6 +806,7 @@ impl From<capnp::NotInSchema> for Error {
 /// Synchronization context used by `chain_sync`, `pending_sync` and `commit_manager` to dispatch
 /// messages to other nodes, and dispatch events to be sent to engine handles.
 ///
+/// TODO: Events completion in https://github.com/appaquet/exocore/issues/45
 struct SyncContext {
     events: Vec<Event>,
     messages: Vec<SyncContextMessage>,
@@ -909,7 +911,7 @@ pub enum Event {
     PendingRemove(OperationID),
     PendingGroupRemove(GroupID),
     ChainNewBlock(BlockOffset),
-    ChainFrozenBlock(BlockOffset), // TODO: x depth
+    ChainFrozenBlock(BlockOffset),
 }
 
 pub struct ChainOperation {
