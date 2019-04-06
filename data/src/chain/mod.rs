@@ -23,7 +23,7 @@ pub mod directory;
 /// Persistence for the chain
 ///
 pub trait Store: Send + Sync + 'static {
-    fn segments(&self) -> Vec<Range<BlockOffset>>;
+    fn segments(&self) -> Vec<Segment>;
 
     fn write_block<B: Block>(&mut self, block: &B) -> Result<BlockOffset, Error>;
 
@@ -46,6 +46,17 @@ pub trait Store: Send + Sync + 'static {
     ) -> Result<Option<BlockRef>, Error>;
 
     fn truncate_from_offset(&mut self, offset: BlockOffset) -> Result<(), Error>;
+}
+
+///
+/// Segment of the chain with a specified offsets range, in bytes.
+///
+/// The upper range is exclusive. You can use `get_block_from_next_offset` to get the last block
+/// of the segment.
+///
+#[derive(Clone, Debug, PartialEq)]
+pub struct Segment {
+    pub range: Range<BlockOffset>,
 }
 
 ///

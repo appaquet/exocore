@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use std;
-use std::ops::{Range, RangeBounds};
+use std::ops::RangeBounds;
 use std::sync::{Arc, RwLock, Weak};
 use std::time::Duration;
 
@@ -553,7 +553,7 @@ where
     CS: chain::Store,
     PS: pending::Store,
 {
-    pub fn get_chain_available_segments(&self) -> Result<Vec<Range<chain::BlockOffset>>, Error> {
+    pub fn get_chain_segments(&self) -> Result<Vec<chain::Segment>, Error> {
         // TODO: This should return hashes of last block of each segment
 
         let inner = self.inner.upgrade().ok_or(Error::InnerUpgrade)?;
@@ -597,12 +597,18 @@ where
         let inner = self.inner.upgrade().ok_or(Error::InnerUpgrade)?;
         let unlocked_inner = inner.write()?;
 
-        // TODO: how do we eliminate operations that have been committed ?
-        //          - add a note in pending store to those that are committed ?
-
         let operations = unlocked_inner
             .pending_store
             .operations_iter(operations_range)?
+            .filter(|pending_operation| {
+                // exclude operations that are in the chain
+                unlocked_inner
+                    .chain_store
+                    .get_block_by_operation_id(pending_operation.operation_id)
+                    .ok()
+                    .and_then(|block| block)
+                    .is_none()
+            })
             .collect::<Vec<_>>();
 
         Ok(operations)

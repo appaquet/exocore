@@ -71,7 +71,7 @@ fn test_engine_integration_single_node() -> Result<(), failure::Error> {
     let pending_operations = engine_handle.get_pending_operations(..)?;
     info!("Got {} pending op", pending_operations.len());
 
-    let segments = engine_handle.get_chain_available_segments()?;
+    let segments = engine_handle.get_chain_segments()?;
     info!("Available segments: {:?}", segments);
 
     let entry = engine_handle.get_chain_entry(332, 2).unwrap();

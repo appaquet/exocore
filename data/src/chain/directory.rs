@@ -137,10 +137,12 @@ impl DirectoryStore {
 }
 
 impl Store for DirectoryStore {
-    fn segments(&self) -> Vec<Range<BlockOffset>> {
+    fn segments(&self) -> Vec<Segment> {
         self.segments
             .iter()
-            .map(|segment| segment.offset_range())
+            .map(|segment| Segment {
+                range: segment.offset_range(),
+            })
             .collect()
     }
 
@@ -723,6 +725,7 @@ mod tests {
     use super::*;
     use exocore_common::range;
     use exocore_common::serialization::framed::TypedFrame;
+    use itertools::Itertools;
 
     #[test]
     fn directory_chain_create_and_open() -> Result<(), failure::Error> {
@@ -749,7 +752,12 @@ mod tests {
 
             let segments = directory_chain.segments();
             let data_size = (block.total_size() * 2) as BlockOffset;
-            assert_eq!(segments, vec![0..data_size]);
+            assert_eq!(
+                segments,
+                vec![Segment {
+                    range: 0..data_size
+                }]
+            );
             segments
         };
 
@@ -773,7 +781,11 @@ mod tests {
         config.segment_max_size = 300_000;
 
         fn validate_directory(directory_chain: &DirectoryStore) -> Result<(), failure::Error> {
-            let segments = directory_chain.segments();
+            let segments = directory_chain
+                .segments()
+                .iter()
+                .map(|seg| seg.range.clone())
+                .collect_vec();
             assert!(range::are_continuous(segments.iter()));
             assert_eq!(segments.len(), 2);
 
@@ -837,7 +849,11 @@ mod tests {
             let (segments_before, block_n_offset, block_n_plus_offset) = {
                 let mut directory_chain = DirectoryStore::create(config, dir.path())?;
                 append_blocks_to_directory(&mut directory_chain, 50, 0);
-                let segments_before = directory_chain.segments();
+                let segments_before = directory_chain
+                    .segments()
+                    .iter()
+                    .map(|seg| seg.range.clone())
+                    .collect_vec();
 
                 let block_n = directory_chain.blocks_iter(0)?.nth(cutoff - 1).unwrap();
                 let block_n_offset = block_n.offset;
@@ -845,7 +861,11 @@ mod tests {
 
                 directory_chain.truncate_from_offset(block_n_plus_offset)?;
 
-                let segments_after = directory_chain.segments();
+                let segments_after = directory_chain
+                    .segments()
+                    .iter()
+                    .map(|seg| seg.range.clone())
+                    .collect_vec();
                 assert_ne!(segments_before, segments_after);
                 assert_eq!(segments_after.last().unwrap().end, block_n_plus_offset);
                 assert_eq!(
@@ -864,8 +884,12 @@ mod tests {
 
             {
                 let directory_chain = DirectoryStore::open(config, dir.path())?;
+                let segments_after = directory_chain
+                    .segments()
+                    .iter()
+                    .map(|seg| seg.range.clone())
+                    .collect_vec();
 
-                let segments_after = directory_chain.segments();
                 assert_ne!(segments_before, segments_after);
                 assert_eq!(segments_after.last().unwrap().end, block_n_plus_offset);
 
