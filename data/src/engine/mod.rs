@@ -17,7 +17,9 @@ use exocore_common::serialization::capnp;
 use exocore_common::serialization::framed::{
     FrameBuilder, MessageType, OwnedTypedFrame, TypedSliceFrame,
 };
-use exocore_common::serialization::protos::data_chain_capnp::pending_operation;
+use exocore_common::serialization::protos::data_chain_capnp::{
+    pending_operation,
+};
 use exocore_common::serialization::protos::data_transport_capnp::{
     chain_sync_request, chain_sync_response, envelope, pending_sync_request,
 };
@@ -30,6 +32,7 @@ use crate::pending;
 use crate::transport;
 use crate::transport::OutMessage;
 use exocore_common::time::Clock;
+use crate::pending::PendingOperation;
 
 mod chain_sync;
 mod commit_manager;
@@ -44,9 +47,9 @@ pub(crate) mod testing;
 ///
 #[derive(Copy, Clone, Debug)]
 pub struct Config {
-    pub chain_synchronizer_config: chain_sync::Config,
-    pub pending_synchronizer_config: pending_sync::Config,
-    pub commit_manager_config: commit_manager::Config,
+    pub chain_synchronizer_config: chain_sync::ChainSyncConfig,
+    pub pending_synchronizer_config: pending_sync::PendingSyncConfig,
+    pub commit_manager_config: commit_manager::CommitManagerConfig,
     pub manager_timer_interval: Duration,
     pub handles_events_stream_size: usize,
 }
@@ -54,9 +57,9 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            chain_synchronizer_config: chain_sync::Config::default(),
-            pending_synchronizer_config: pending_sync::Config::default(),
-            commit_manager_config: commit_manager::Config::default(),
+            chain_synchronizer_config: chain_sync::ChainSyncConfig::default(),
+            pending_synchronizer_config: pending_sync::PendingSyncConfig::default(),
+            commit_manager_config: commit_manager::CommitManagerConfig::default(),
             manager_timer_interval: Duration::from_secs(1),
             handles_events_stream_size: 1000,
         }
@@ -102,9 +105,9 @@ where
         let (completion_sender, completion_receiver) = oneshot::channel();
 
         let pending_synchronizer =
-            pending_sync::Synchronizer::new(node_id.clone(), config.pending_synchronizer_config);
+            pending_sync::PendingSynchronizer::new(node_id.clone(), config.pending_synchronizer_config);
         let chain_synchronizer =
-            chain_sync::Synchronizer::new(node_id.clone(), config.chain_synchronizer_config);
+            chain_sync::ChainSynchronizer::new(node_id.clone(), config.chain_synchronizer_config);
         let commit_manager = commit_manager::CommitManager::new(
             node_id.clone(),
             config.commit_manager_config,
@@ -115,6 +118,7 @@ where
             config,
             node_id,
             nodes,
+            clock: clock.clone(),
             pending_store,
             pending_synchronizer,
             chain_store,
@@ -353,10 +357,11 @@ where
     config: Config,
     node_id: NodeID,
     nodes: Nodes,
+    clock: Clock,
     pending_store: PS,
-    pending_synchronizer: pending_sync::Synchronizer<PS>,
+    pending_synchronizer: pending_sync::PendingSynchronizer<PS>,
     chain_store: CS,
-    chain_synchronizer: chain_sync::Synchronizer<CS>,
+    chain_synchronizer: chain_sync::ChainSynchronizer<CS>,
     commit_manager: commit_manager::CommitManager<PS, CS>,
     handles_sender: Vec<mpsc::Sender<Event>>,
     transport_sender: Option<mpsc::UnboundedSender<transport::OutMessage>>,
@@ -368,25 +373,19 @@ where
     CS: chain::Store,
     PS: pending::Store,
 {
-    fn handle_new_entry(&mut self, new_entry: NewEntry) -> Result<(), Error> {
-        let local_node = self.nodes.get(&self.node_id).ok_or_else(|| {
-            Error::Other(format!(
-                "Couldn't find local node {} in nodes list",
-                self.node_id
-            ))
-        })?;
-        let new_entry_frame = new_entry.into_pending_operation(local_node)?;
+    fn handle_add_pending_operation(&mut self, operation_frame: OwnedTypedFrame<pending_operation::Owned>) -> Result<(), Error> {
+        let my_node = self.nodes.get(&self.node_id).ok_or(Error::MyNodeNotFound)?;
 
         let mut sync_context = SyncContext::new();
         self.pending_synchronizer.handle_new_operation(
             &mut sync_context,
             &self.nodes,
             &mut self.pending_store,
-            new_entry_frame,
+            operation_frame,
         )?;
 
         for message in sync_context.messages {
-            let out_message = message.into_out_message(local_node, &self.nodes)?;
+            let out_message = message.into_out_message(my_node, &self.nodes)?;
             let transport_sender = self.transport_sender.as_ref().expect(
                 "Transport sender was none, which mean that the transport was never started",
             );
@@ -584,10 +583,18 @@ where
         })
     }
 
-    pub fn write_entry(&self, entry: NewEntry) -> Result<(), Error> {
+    pub fn write_entry(&self, data: &[u8]) -> Result<OperationID, Error> {
         let inner = self.inner.upgrade().ok_or(Error::InnerUpgrade)?;
         let mut unlocked_inner = inner.write()?;
-        unlocked_inner.handle_new_entry(entry)
+
+        let my_node = unlocked_inner.nodes.get(&unlocked_inner.node_id).ok_or(Error::MyNodeNotFound)?;
+        let operation_id = unlocked_inner.clock.consistent_time(my_node);
+        let entry_operation = PendingOperation::new_entry(operation_id, &unlocked_inner.node_id, data);
+        let entry_frame = entry_operation.as_owned_framed(my_node.frame_signer())?;
+
+        unlocked_inner.handle_add_pending_operation(entry_frame)?;
+
+        Ok(operation_id)
     }
 
     pub fn get_pending_operations<R: RangeBounds<OperationID>>(
@@ -648,19 +655,23 @@ pub enum Error {
     #[fail(display = "Error in chain store: {:?}", _0)]
     ChainStore(#[fail(cause)] chain::Error),
     #[fail(display = "Error in pending synchronizer: {:?}", _0)]
-    PendingSynchronizer(#[fail(cause)] pending_sync::Error),
+    PendingSync(#[fail(cause)] pending_sync::PendingSyncError),
     #[fail(display = "Error in chain synchronizer: {:?}", _0)]
-    ChainSynchronizer(#[fail(cause)] chain_sync::Error),
+    ChainSync(#[fail(cause)] chain_sync::ChainSyncError),
     #[fail(display = "Error in commit manager: {:?}", _0)]
-    CommitManager(String),
+    CommitManager(commit_manager::CommitManagerError),
     #[fail(display = "Error in framing serialization: {:?}", _0)]
     Framing(#[fail(cause)] framed::Error),
+    #[fail(display = "Chain is not initialized")]
+    UninitializedChain,
     #[fail(display = "Error in capnp serialization: kind={:?} msg={}", _0, _1)]
     Serialization(capnp::ErrorKind, String),
     #[fail(display = "Field is not in capnp schema: code={}", _0)]
     SerializationNotInSchema(u16),
     #[fail(display = "Item not found: {}", _0)]
     NotFound(String),
+    #[fail(display = "Local node not found in nodes list")]
+    MyNodeNotFound,
     #[fail(display = "Couldn't send message to a mpsc channel because its receiver was dropped")]
     MpscSendDropped,
     #[fail(display = "Inner was dropped or couldn't get locked")]
@@ -677,10 +688,8 @@ impl Error {
     pub fn is_fatal(&self) -> bool {
         match self {
             Error::PendingStore(inner) => inner.is_fatal(),
-            Error::PendingSynchronizer(inner) => inner.is_fatal(),
             Error::ChainStore(inner) => inner.is_fatal(),
-            Error::ChainSynchronizer(inner) => inner.is_fatal(),
-            Error::MpscSendDropped | Error::InnerUpgrade | Error::Poisoned | Error::Fatal(_) => {
+            Error::MyNodeNotFound | Error::MpscSendDropped | Error::InnerUpgrade | Error::Poisoned | Error::Fatal(_) => {
                 true
             }
             _ => false,
@@ -714,15 +723,21 @@ impl From<chain::Error> for Error {
     }
 }
 
-impl From<pending_sync::Error> for Error {
-    fn from(err: pending_sync::Error) -> Self {
-        Error::PendingSynchronizer(err)
+impl From<pending_sync::PendingSyncError> for Error {
+    fn from(err: pending_sync::PendingSyncError) -> Self {
+        Error::PendingSync(err)
     }
 }
 
-impl From<chain_sync::Error> for Error {
-    fn from(err: chain_sync::Error) -> Self {
-        Error::ChainSynchronizer(err)
+impl From<chain_sync::ChainSyncError> for Error {
+    fn from(err: chain_sync::ChainSyncError) -> Self {
+        Error::ChainSync(err)
+    }
+}
+
+impl From<commit_manager::CommitManagerError> for Error {
+    fn from(err: commit_manager::CommitManagerError) -> Self {
+        Error::CommitManager(err)
     }
 }
 
@@ -863,39 +878,6 @@ pub struct ChainOperation {
 pub enum EntryStatus {
     Committed,
     Pending,
-}
-
-pub struct NewEntry {
-    pub operation_id: OperationID,
-    pub data: Vec<u8>,
-}
-
-impl NewEntry {
-    pub fn new_cell_data(id: OperationID, data: Vec<u8>) -> NewEntry {
-        NewEntry {
-            operation_id: id,
-            data,
-        }
-    }
-
-    pub fn into_pending_operation(
-        self,
-        local_node: &Node,
-    ) -> Result<OwnedTypedFrame<pending_operation::Owned>, Error> {
-        let mut frame_builder = FrameBuilder::new();
-        let mut op_builder: pending_operation::Builder = frame_builder.get_builder_typed();
-
-        op_builder.set_operation_id(self.operation_id);
-        op_builder.set_group_id(self.operation_id);
-
-        let inner_op_builder = op_builder.init_operation();
-
-        let mut entry_op_builder = inner_op_builder.init_entry();
-        entry_op_builder.set_data(&self.data);
-
-        let frame_signer = local_node.frame_signer();
-        Ok(frame_builder.as_owned_framed(frame_signer)?)
-    }
 }
 
 #[cfg(test)]

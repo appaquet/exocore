@@ -10,8 +10,8 @@ use exocore_common::serialization::framed::TypedFrame;
 use exocore_common::time::Clock;
 use exocore_data::chain::Store;
 use exocore_data::{
-    ChainDirectoryConfig, ChainDirectoryStore, Engine, EngineConfig, MemoryPendingStore,
-    MockTransportHub, NewEntry,
+    ChainDirectoryStore, ChainDirectoryStoreConfig, Engine, EngineConfig, MemoryPendingStore,
+    MockTransportHub,
 };
 use std::time::Duration;
 
@@ -35,7 +35,7 @@ fn test_engine_integration_single_node() -> Result<(), failure::Error> {
         ..EngineConfig::default()
     };
     let mut chain =
-        ChainDirectoryStore::create(ChainDirectoryConfig::default(), data_dir.as_ref())?;
+        ChainDirectoryStore::create(ChainDirectoryStoreConfig::default(), data_dir.as_ref())?;
 
     let genesis_block = exocore_data::chain::BlockOwned::new_genesis(&nodes, &node1)?;
     chain.write_block(&genesis_block)?;
@@ -61,10 +61,10 @@ fn test_engine_integration_single_node() -> Result<(), failure::Error> {
 
     std::thread::sleep(Duration::from_millis(300));
 
-    engine_handle.write_entry(NewEntry::new_cell_data(1, b"i love jello".to_vec()))?;
-    engine_handle.write_entry(NewEntry::new_cell_data(2, b"i love jello".to_vec()))?;
-    engine_handle.write_entry(NewEntry::new_cell_data(3, b"i love jello".to_vec()))?;
-    engine_handle.write_entry(NewEntry::new_cell_data(4, b"i love jello".to_vec()))?;
+    let _op1 = engine_handle.write_entry(b"i love jello")?;
+    let op2 = engine_handle.write_entry(b"i love jello")?;
+    let _op3 = engine_handle.write_entry( b"i love jello")?;
+    let _op4 = engine_handle.write_entry( b"i love jello")?;
 
     std::thread::sleep(Duration::from_millis(1000));
 
@@ -74,7 +74,7 @@ fn test_engine_integration_single_node() -> Result<(), failure::Error> {
     let segments = engine_handle.get_chain_segments()?;
     info!("Available segments: {:?}", segments);
 
-    let entry = engine_handle.get_chain_entry(332, 2).unwrap();
+    let entry = engine_handle.get_chain_entry(332, op2).unwrap();
     info!(
         "Chain op: {:?}",
         String::from_utf8_lossy(entry.operation_frame.frame_data())

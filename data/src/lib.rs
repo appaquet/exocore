@@ -19,9 +19,9 @@ extern crate tokio_io;
 /// Re-exports
 ///
 pub use crate::chain::directory::{
-    Config as ChainDirectoryConfig, DirectoryStore as ChainDirectoryStore,
+    Config as ChainDirectoryStoreConfig, DirectoryStore as ChainDirectoryStore,
 };
-pub use crate::engine::{Config as EngineConfig, Engine, EntryStatus, NewEntry};
+pub use crate::engine::{Config as EngineConfig, Engine, EntryStatus};
 pub use crate::pending::memory::MemoryStore as MemoryPendingStore;
 pub use crate::transport::mock::{MockTransport, MockTransportHub};
 

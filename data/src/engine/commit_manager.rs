@@ -25,13 +25,13 @@ use super::Error;
 /// CommitManager's configuration
 ///
 #[derive(Copy, Clone, Debug)]
-pub struct Config {
+pub struct CommitManagerConfig {
     pub operations_cleanup_after_block_depth: BlockDepth,
 }
 
-impl Default for Config {
+impl Default for CommitManagerConfig {
     fn default() -> Self {
-        Config {
+        CommitManagerConfig {
             operations_cleanup_after_block_depth: 3,
         }
     }
@@ -46,13 +46,17 @@ impl Default for Config {
 ///
 pub(super) struct CommitManager<PS: pending::Store, CS: chain::Store> {
     node_id: NodeID,
-    config: Config,
+    config: CommitManagerConfig,
     clock: Clock,
     phantom: std::marker::PhantomData<(PS, CS)>,
 }
 
 impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
-    pub fn new(node_id: NodeID, config: Config, clock: Clock) -> CommitManager<PS, CS> {
+    pub fn new(
+        node_id: NodeID,
+        config: CommitManagerConfig,
+        clock: Clock,
+    ) -> CommitManager<PS, CS> {
         CommitManager {
             node_id,
             config,
@@ -64,9 +68,9 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
     pub fn tick(
         &mut self,
         sync_context: &mut SyncContext,
-        pending_synchronizer: &mut pending_sync::Synchronizer<PS>,
+        pending_synchronizer: &mut pending_sync::PendingSynchronizer<PS>,
         pending_store: &mut PS,
-        chain_synchronizer: &mut chain_sync::Synchronizer<CS>,
+        chain_synchronizer: &mut chain_sync::ChainSynchronizer<CS>,
         chain_store: &mut CS,
         nodes: &Nodes,
     ) -> Result<(), Error> {
@@ -201,14 +205,12 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
     fn sign_block(
         &self,
         sync_context: &mut SyncContext,
-        pending_synchronizer: &mut pending_sync::Synchronizer<PS>,
+        pending_synchronizer: &mut pending_sync::PendingSynchronizer<PS>,
         pending_store: &mut PS,
         nodes: &Nodes,
         next_block: &mut PendingBlock,
     ) -> Result<(), Error> {
-        let my_node = nodes
-            .get(&self.node_id)
-            .ok_or_else(|| Error::Fatal("Couldn't find my node in nodes list".to_string()))?;
+        let my_node = nodes.get(&self.node_id).ok_or(Error::MyNodeNotFound)?;
 
         let operation_id = self.clock.consistent_time(&my_node);
         let signature_frame_builder = pending::PendingOperation::new_signature_for_block(
@@ -238,14 +240,12 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
     fn refuse_block(
         &self,
         sync_context: &mut SyncContext,
-        pending_synchronizer: &mut pending_sync::Synchronizer<PS>,
+        pending_synchronizer: &mut pending_sync::PendingSynchronizer<PS>,
         pending_store: &mut PS,
         nodes: &Nodes,
         next_block: &mut PendingBlock,
     ) -> Result<(), Error> {
-        let my_node = nodes
-            .get(&self.node_id)
-            .ok_or_else(|| Error::Fatal("Couldn't find my node in nodes list".to_string()))?;
+        let my_node = nodes.get(&self.node_id).ok_or(Error::MyNodeNotFound)?;
 
         let operation_id = self.clock.consistent_time(&my_node);
         let refusal_frame_builder = pending::PendingOperation::new_refusal(
@@ -287,20 +287,15 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
         &self,
         sync_context: &mut SyncContext,
         pending_blocks: &PendingBlocks,
-        pending_synchronizer: &mut pending_sync::Synchronizer<PS>,
+        pending_synchronizer: &mut pending_sync::PendingSynchronizer<PS>,
         pending_store: &mut PS,
         chain_store: &mut CS,
         nodes: &Nodes,
     ) -> Result<(), Error> {
-        let my_node = nodes
-            .get(&self.node_id)
-            .ok_or_else(|| Error::Fatal("Couldn't find my node in nodes list".to_string()))?;
-
-        let previous_block = chain_store.get_last_block()?.ok_or_else(|| {
-            Error::Other(
-                "Tried to create a new block, but couldn't find any block in chain".to_string(),
-            )
-        })?;
+        let my_node = nodes.get(&self.node_id).ok_or(Error::MyNodeNotFound)?;
+        let previous_block = chain_store
+            .get_last_block()?
+            .ok_or(Error::UninitializedChain)?;
 
         let block_operations = pending_store
             .operations_iter(..)?
@@ -382,9 +377,7 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
         chain_store: &mut CS,
         nodes: &Nodes,
     ) -> Result<(), Error> {
-        let my_node = nodes
-            .get(&self.node_id)
-            .ok_or_else(|| Error::Fatal("Couldn't find my node in nodes list".to_string()))?;
+        let my_node = nodes.get(&self.node_id).ok_or(Error::MyNodeNotFound)?;
 
         let block_frame = next_block.proposal.get_block()?;
         let block_reader: block::Reader = block_frame.get_typed_reader()?;
@@ -396,8 +389,9 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
         // make sure that the hash of operations is same as defined by the block
         let block_operations = chain::BlockOperations::from_operations(block_operations)?;
         if block_operations.multihash_bytes() != block_reader.get_operations_hash()? {
-            return Err(Error::Other(
-                "Block hash for local entries didn't match block hash".to_string(),
+            return Err(Error::Fatal(
+                "Block hash for local entries didn't match block hash, but was previously signed"
+                    .to_string(),
             ));
         }
 
@@ -443,9 +437,7 @@ impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
                     .get_operation(*operation)
                     .map_err(|err| err.into())
                     .and_then(|op| {
-                        op.ok_or_else(|| Error::Other(
-                            "An operation in block to commit is missing from local pending store".to_string()
-                        ))
+                        op.ok_or_else(|| CommitManagerError::MissingOperation(*operation).into())
                     })
             })
             .collect::<Result<Vec<_>, Error>>()? // collect automatically flatten result into Result<Vec<_>>
@@ -488,9 +480,9 @@ impl PendingBlocks {
         chain_store: &CS,
         nodes: &Nodes,
     ) -> Result<PendingBlocks, Error> {
-        let last_stored_block = chain_store.get_last_block()?.ok_or_else(|| {
-            Error::Other("Chain doesn't contain any block. Cannot progress on commits.".to_string())
-        })?;
+        let last_stored_block = chain_store
+            .get_last_block()?
+            .ok_or(Error::UninitializedChain)?;
 
         // first pass to fetch all groups proposal
         let mut groups_id = Vec::new();
@@ -823,6 +815,17 @@ impl PendingBlockSignature {
             )),
         }
     }
+}
+
+///
+/// Error
+///
+#[derive(Debug, Fail)]
+pub enum CommitManagerError {
+    #[fail(display = "Invalid signature in commit manager: {}", _0)]
+    InvalidSignature(String),
+    #[fail(display = "A referenced operation is missing from local store: {}", _0)]
+    MissingOperation(OperationID),
 }
 
 #[cfg(test)]

@@ -3,23 +3,23 @@ use std::time::Instant;
 
 use capnp::traits::ToU16;
 use exocore_common::node::{Node, NodeID, Nodes};
+use exocore_common::serialization::capnp;
 use exocore_common::serialization::framed::{FrameBuilder, SignedFrame, TypedFrame};
 use exocore_common::serialization::protos::data_chain_capnp::{block, block_header};
 use exocore_common::serialization::protos::data_transport_capnp::{
     chain_sync_request, chain_sync_request::RequestedDetails, chain_sync_response,
 };
-use exocore_common::serialization::{capnp, framed};
 
 use crate::chain;
 use crate::chain::{Block, BlockOffset, BlockRef, Store};
 use crate::engine::request_tracker;
-use crate::engine::SyncContext;
+use crate::engine::{Error, SyncContext};
 
 ///
-/// Synchronizer's configuration
+/// Chain synchronizer's configuration
 ///
 #[derive(Copy, Clone, Debug)]
-pub struct Config {
+pub struct ChainSyncConfig {
     pub request_tracker: request_tracker::Config,
     pub headers_sync_begin_count: chain::BlockOffset,
     pub headers_sync_end_count: chain::BlockOffset,
@@ -27,9 +27,9 @@ pub struct Config {
     pub blocks_max_send_size: usize,
 }
 
-impl Default for Config {
+impl Default for ChainSyncConfig {
     fn default() -> Self {
-        Config {
+        ChainSyncConfig {
             request_tracker: request_tracker::Config::default(),
             headers_sync_begin_count: 5,
             headers_sync_end_count: 5,
@@ -58,9 +58,9 @@ impl Default for Config {
 /// 4) Once fully downloaded, we keep asking for other nodes' metadata to make sure we progress and
 ///    leadership hasn't changed.
 ///
-pub(super) struct Synchronizer<CS: Store> {
+pub(super) struct ChainSynchronizer<CS: Store> {
     node_id: NodeID,
-    config: Config,
+    config: ChainSyncConfig,
     nodes_info: HashMap<NodeID, NodeSyncInfo>,
     status: Status,
     current_leader: Option<NodeID>,
@@ -74,9 +74,9 @@ pub enum Status {
     Synchronized,
 }
 
-impl<CS: Store> Synchronizer<CS> {
-    pub fn new(node_id: NodeID, config: Config) -> Synchronizer<CS> {
-        Synchronizer {
+impl<CS: Store> ChainSynchronizer<CS> {
+    pub fn new(node_id: NodeID, config: ChainSyncConfig) -> ChainSynchronizer<CS> {
+        ChainSynchronizer {
             node_id,
             config,
             status: Status::Unknown,
@@ -131,13 +131,13 @@ impl<CS: Store> Synchronizer<CS> {
                     if leader_node_info.last_common_block.is_none() {
                         if let Some(last_block) = store.get_last_block()? {
                             error!("Leader node has no common block with us. Our last block is at offset {}", last_block.offset);
-                            return Err(Error::Diverged(leader));
+                            return Err(ChainSyncError::Diverged(leader).into());
                         }
                     }
 
                     if leader_node_info.request_tracker.can_send_request() {
                         let leader_node = nodes.get(&node_id).ok_or_else(|| {
-                            Error::Other(format!(
+                            ChainSyncError::Other(format!(
                                 "Couldn't find leader node {} in nodes list",
                                 node_id
                             ))
@@ -237,10 +237,11 @@ impl<CS: Store> Synchronizer<CS> {
             )?;
             sync_context.push_chain_sync_response(from_node.id().clone(), response);
         } else {
-            return Err(Error::InvalidSyncRequest(format!(
+            return Err(ChainSyncError::InvalidSyncRequest(format!(
                 "Unsupported requested details: {:?}",
                 requested_details.to_u16()
-            )));
+            ))
+            .into());
         }
 
         Ok(())
@@ -368,7 +369,7 @@ impl<CS: Store> Synchronizer<CS> {
     /// If we're asked for data, this means we're the lead.
     ///
     fn create_sync_response_for_blocks<'s, I: Iterator<Item = BlockRef<'s>>>(
-        config: &Config,
+        config: &ChainSyncConfig,
         from_offset: chain::BlockOffset,
         to_offset: chain::BlockOffset,
         blocks_iter: I,
@@ -540,12 +541,13 @@ impl<CS: Store> Synchronizer<CS> {
                     let new_block_header = BlockHeader::from_stored_block(block)?;
                     last_local_block = Some(new_block_header);
                 } else {
-                    return Err(Error::InvalidSyncResponse(format!(
+                    return Err(ChainSyncError::InvalidSyncResponse(format!(
                         "Got a block with data at an invalid offset. \
                          expected_offset={} block_offset={}",
                         next_local_offset,
                         block.offset()
-                    )));
+                    ))
+                    .into());
                 }
             }
             from_node_info.last_common_block = last_local_block;
@@ -649,7 +651,7 @@ struct NodeSyncInfo {
 }
 
 impl NodeSyncInfo {
-    fn new(node_id: NodeID, config: &Config) -> NodeSyncInfo {
+    fn new(node_id: NodeID, config: &ChainSyncConfig) -> NodeSyncInfo {
         NodeSyncInfo {
             node_id,
 
@@ -755,18 +757,10 @@ impl BlockHeader {
 }
 
 ///
-/// Synchronizer's error
+/// Chain synchronizer specific error
 ///
 #[derive(Debug, Fail)]
-pub enum Error {
-    #[fail(display = "Error in chain store: {:?}", _0)]
-    Store(#[fail(cause)] chain::Error),
-    #[fail(display = "Error in framing serialization: {:?}", _0)]
-    Framing(#[fail(cause)] framed::Error),
-    #[fail(display = "Error in capnp serialization: kind={:?} msg={}", _0, _1)]
-    Serialization(capnp::ErrorKind, String),
-    #[fail(display = "Field is not in capnp schema: code={}", _0)]
-    SerializationNotInSchema(u16),
+pub enum ChainSyncError {
     #[fail(display = "Got an invalid sync request: {}", _0)]
     InvalidSyncRequest(String),
     #[fail(display = "Got an invalid sync response: {}", _0)]
@@ -775,39 +769,6 @@ pub enum Error {
     Diverged(String),
     #[fail(display = "Got an error: {}", _0)]
     Other(String),
-}
-
-impl Error {
-    pub fn is_fatal(&self) -> bool {
-        match self {
-            Error::Store(inner) => inner.is_fatal(),
-            _ => false,
-        }
-    }
-}
-
-impl From<capnp::Error> for Error {
-    fn from(err: capnp::Error) -> Self {
-        Error::Serialization(err.kind, err.description)
-    }
-}
-
-impl From<framed::Error> for Error {
-    fn from(err: framed::Error) -> Self {
-        Error::Framing(err)
-    }
-}
-
-impl From<chain::Error> for Error {
-    fn from(err: chain::Error) -> Self {
-        Error::Store(err)
-    }
-}
-
-impl From<capnp::NotInSchema> for Error {
-    fn from(err: capnp::NotInSchema) -> Self {
-        Error::SerializationNotInSchema(err.0)
-    }
 }
 
 ///
@@ -842,7 +803,9 @@ fn chain_sample_block_headers<CS: chain::Store>(
         }),
         None => store.get_last_block(),
     }?
-    .ok_or_else(|| Error::Other("Expected a last block since ranges were not empty".to_string()))?;
+    .ok_or_else(|| {
+        ChainSyncError::Other("Expected a last block since ranges were not empty".to_string())
+    })?;
 
     let last_block_reader: block::Reader = last_block.block.get_typed_reader()?;
     let last_block_depth = last_block_reader.get_depth();
@@ -853,7 +816,7 @@ fn chain_sample_block_headers<CS: chain::Store>(
         .peekable();
 
     let first_block = blocks_iter.peek().ok_or_else(|| {
-        Error::Other("Expected a first block since ranges were not empty".to_string())
+        ChainSyncError::Other("Expected a first block since ranges were not empty".to_string())
     })?;
     let first_block_reader: block::Reader = first_block.block.get_typed_reader()?;
     let first_block_depth = first_block_reader.get_depth();
@@ -926,7 +889,7 @@ mod tests {
 
         // response from leader with blocks that aren't next should fail
         let blocks_iter = cluster.chains[1].blocks_iter(0)?;
-        let response = Synchronizer::<DirectoryStore>::create_sync_response_for_blocks(
+        let response = ChainSynchronizer::<DirectoryStore>::create_sync_response_for_blocks(
             &cluster.chains_synchronizer[1].config,
             10,
             0,
@@ -944,7 +907,7 @@ mod tests {
 
         // response from leader with blocks at right position should suceed and append
         let blocks_iter = cluster.chains[1].blocks_iter(0).unwrap().skip(10); // skip 10 will go to 10th block
-        let response = Synchronizer::<DirectoryStore>::create_sync_response_for_blocks(
+        let response = ChainSynchronizer::<DirectoryStore>::create_sync_response_for_blocks(
             &cluster.chains_synchronizer[0].config,
             10,
             0,
@@ -1171,7 +1134,7 @@ mod tests {
         }
 
         match test_nodes_run_sync_new(&mut cluster, 0, 1).err() {
-            Some(Error::Diverged(_)) => {}
+            Some(Error::ChainSync(ChainSyncError::Diverged(_))) => {}
             other => panic!("Expected a diverged error, got {:?}", other),
         }
 

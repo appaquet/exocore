@@ -8,7 +8,6 @@ use itertools::{EitherOrBoth, Itertools};
 
 use exocore_common::node::{Node, NodeID, Nodes};
 use exocore_common::security::hash::{Sha3Hasher, StreamHasher};
-use exocore_common::serialization::capnp;
 use exocore_common::serialization::framed;
 use exocore_common::serialization::framed::*;
 use exocore_common::serialization::protos::data_chain_capnp::{
@@ -20,8 +19,7 @@ use exocore_common::serialization::protos::data_transport_capnp::{
 use exocore_common::serialization::protos::OperationID;
 
 use crate::engine::request_tracker;
-use crate::engine::SyncContext;
-use crate::pending;
+use crate::engine::{Error, SyncContext};
 use crate::pending::{Store, StoredOperation};
 
 const MAX_OPERATIONS_PER_RANGE: u32 = 30;
@@ -30,13 +28,13 @@ const MAX_OPERATIONS_PER_RANGE: u32 = 30;
 /// Synchronizer's configuration
 ///
 #[derive(Copy, Clone, Debug)]
-pub struct Config {
+pub struct PendingSyncConfig {
     pub request_tracker_config: request_tracker::Config,
 }
 
-impl Default for Config {
+impl Default for PendingSyncConfig {
     fn default() -> Self {
-        Config {
+        PendingSyncConfig {
             request_tracker_config: request_tracker::Config::default(),
         }
     }
@@ -56,16 +54,16 @@ impl Default for Config {
 /// tries to limit the number of operations by range. If a single range is not equal, only this range will be compared via
 /// headers exchange and full operations exchange.
 ///
-pub(super) struct Synchronizer<PS: Store> {
+pub(super) struct PendingSynchronizer<PS: Store> {
     node_id: NodeID,
-    config: Config,
+    config: PendingSyncConfig,
     nodes_info: HashMap<NodeID, NodeSyncInfo>,
     phantom: std::marker::PhantomData<PS>,
 }
 
-impl<PS: Store> Synchronizer<PS> {
-    pub fn new(node_id: NodeID, config: Config) -> Synchronizer<PS> {
-        Synchronizer {
+impl<PS: Store> PendingSynchronizer<PS> {
+    pub fn new(node_id: NodeID, config: PendingSyncConfig) -> PendingSynchronizer<PS> {
+        PendingSynchronizer {
             node_id,
             config,
             nodes_info: HashMap::new(),
@@ -186,10 +184,11 @@ impl<PS: Store> Synchronizer<PS> {
             let ((bounds_from, bounds_to), from_numeric, to_numeric) =
                 extract_sync_bounds(&sync_range_reader)?;
             if to_numeric != 0 && to_numeric < from_numeric {
-                return Err(Error::InvalidSyncRequest(format!(
+                return Err(PendingSyncError::InvalidSyncRequest(format!(
                     "Request from={} > to={}",
                     from_numeric, to_numeric
-                )));
+                ))
+                .into());
             }
 
             // first, apply all operations
@@ -359,7 +358,7 @@ impl<PS: Store> Synchronizer<PS> {
             }
         }
         if !diff_has_difference {
-            return Err(Error::InvalidSyncState("Got into diff branch, but didn't result in any changes, which shouldn't have happened".to_string()));
+            return Err(PendingSyncError::InvalidSyncState("Got into diff branch, but didn't result in any changes, which shouldn't have happened".to_string()).into());
         }
 
         Ok(())
@@ -387,7 +386,7 @@ struct NodeSyncInfo {
 }
 
 impl NodeSyncInfo {
-    fn new(node_id: NodeID, config: &Config) -> NodeSyncInfo {
+    fn new(node_id: NodeID, config: &PendingSyncConfig) -> NodeSyncInfo {
         NodeSyncInfo {
             node_id,
             request_tracker: request_tracker::RequestTracker::new(config.request_tracker_config),
@@ -646,52 +645,11 @@ impl SyncRangeBuilder {
 /// Pending Synchronization Error
 ///
 #[derive(Debug, Fail)]
-pub enum Error {
-    #[fail(display = "Error in pending store: {:?}", _0)]
-    Store(#[fail(cause)] pending::Error),
-    #[fail(display = "Error in framing serialization: {:?}", _0)]
-    Framing(#[fail(cause)] framed::Error),
-    #[fail(display = "Error in capnp serialization: kind={:?} msg={}", _0, _1)]
-    Serialization(capnp::ErrorKind, String),
-    #[fail(display = "Field is not in capnp schema: code={}", _0)]
-    SerializationNotInSchema(u16),
+pub enum PendingSyncError {
     #[fail(display = "Got into an invalid synchronization state: {}", _0)]
     InvalidSyncState(String),
     #[fail(display = "Got an invalid sync request: {}", _0)]
     InvalidSyncRequest(String),
-}
-
-impl Error {
-    pub fn is_fatal(&self) -> bool {
-        match self {
-            Error::Store(inner) => inner.is_fatal(),
-            _ => false,
-        }
-    }
-}
-
-impl From<pending::Error> for Error {
-    fn from(err: pending::Error) -> Self {
-        Error::Store(err)
-    }
-}
-
-impl From<framed::Error> for Error {
-    fn from(err: framed::Error) -> Self {
-        Error::Framing(err)
-    }
-}
-
-impl From<capnp::Error> for Error {
-    fn from(err: capnp::Error) -> Self {
-        Error::Serialization(err.kind, err.description)
-    }
-}
-
-impl From<capnp::NotInSchema> for Error {
-    fn from(err: capnp::NotInSchema) -> Self {
-        Error::SerializationNotInSchema(err.0)
-    }
 }
 
 #[cfg(test)]

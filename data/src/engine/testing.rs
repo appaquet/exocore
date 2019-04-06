@@ -25,10 +25,10 @@ pub(super) struct TestCluster {
 
     pub clocks: Vec<Clock>,
     pub chains: Vec<DirectoryStore>,
-    pub chains_synchronizer: Vec<chain_sync::Synchronizer<DirectoryStore>>,
+    pub chains_synchronizer: Vec<chain_sync::ChainSynchronizer<DirectoryStore>>,
 
     pub pending_stores: Vec<MemoryStore>,
-    pub pending_stores_synchronizer: Vec<pending_sync::Synchronizer<MemoryStore>>,
+    pub pending_stores_synchronizer: Vec<pending_sync::PendingSynchronizer<MemoryStore>>,
 
     pub commit_managers: Vec<CommitManager<MemoryStore, DirectoryStore>>,
 }
@@ -58,20 +58,20 @@ impl TestCluster {
                 ..DirectoryConfig::default()
             };
             chains.push(DirectoryStore::create(chain_config, tempdir.as_ref()).unwrap());
-            chains_synchronizer.push(chain_sync::Synchronizer::new(
+            chains_synchronizer.push(chain_sync::ChainSynchronizer::new(
                 node_id.clone(),
-                chain_sync::Config::default(),
+                chain_sync::ChainSyncConfig::default(),
             ));
 
             pending_stores.push(MemoryStore::new());
-            pending_stores_synchronizer.push(pending_sync::Synchronizer::new(
+            pending_stores_synchronizer.push(pending_sync::PendingSynchronizer::new(
                 node_id.clone(),
-                pending_sync::Config::default(),
+                pending_sync::PendingSyncConfig::default(),
             ));
 
             commit_managers.push(CommitManager::new(
                 node_id.clone(),
-                crate::engine::commit_manager::Config::default(),
+                crate::engine::commit_manager::CommitManagerConfig::default(),
                 clock.clone(),
             ));
 
@@ -147,7 +147,7 @@ impl TestCluster {
     pub fn tick_chain_synchronizer(
         &mut self,
         node_idx: usize,
-    ) -> Result<SyncContext, chain_sync::Error> {
+    ) -> Result<SyncContext, crate::engine::Error> {
         let mut sync_context = SyncContext::new();
 
         self.chains_synchronizer[node_idx].tick(
