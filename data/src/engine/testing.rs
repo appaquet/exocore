@@ -9,13 +9,13 @@ use exocore_common::serialization::protos::data_chain_capnp::{
 };
 
 use crate::chain;
-use crate::chain::directory::{Config as DirectoryConfig, DirectoryStore};
-use crate::chain::{BlockOwned, Store as ChainStore};
+use crate::chain::directory::{DirectoryChainStoreConfig as DirectoryConfig, DirectoryChainStore};
+use crate::chain::{BlockOwned, ChainStore as ChainStore};
 use crate::engine::commit_manager::CommitManager;
 use crate::engine::pending_sync;
 use crate::engine::{chain_sync, SyncContext};
-use crate::pending::memory::MemoryStore;
-use crate::pending::Store as PendingStore;
+use crate::pending::memory::MemoryPendingStore;
+use crate::pending::PendingStore as PendingStore;
 use exocore_common::serialization::protos::{GroupID, OperationID};
 use exocore_common::time::Clock;
 
@@ -24,13 +24,13 @@ pub(super) struct TestCluster {
     pub temp_dirs: Vec<TempDir>,
 
     pub clocks: Vec<Clock>,
-    pub chains: Vec<DirectoryStore>,
-    pub chains_synchronizer: Vec<chain_sync::ChainSynchronizer<DirectoryStore>>,
+    pub chains: Vec<DirectoryChainStore>,
+    pub chains_synchronizer: Vec<chain_sync::ChainSynchronizer<DirectoryChainStore>>,
 
-    pub pending_stores: Vec<MemoryStore>,
-    pub pending_stores_synchronizer: Vec<pending_sync::PendingSynchronizer<MemoryStore>>,
+    pub pending_stores: Vec<MemoryPendingStore>,
+    pub pending_stores_synchronizer: Vec<pending_sync::PendingSynchronizer<MemoryPendingStore>>,
 
-    pub commit_managers: Vec<CommitManager<MemoryStore, DirectoryStore>>,
+    pub commit_managers: Vec<CommitManager<MemoryPendingStore, DirectoryChainStore>>,
 }
 
 impl TestCluster {
@@ -57,13 +57,13 @@ impl TestCluster {
                 segment_max_size: 3000,
                 ..DirectoryConfig::default()
             };
-            chains.push(DirectoryStore::create(chain_config, tempdir.as_ref()).unwrap());
+            chains.push(DirectoryChainStore::create(chain_config, tempdir.as_ref()).unwrap());
             chains_synchronizer.push(chain_sync::ChainSynchronizer::new(
                 node_id.clone(),
                 chain_sync::ChainSyncConfig::default(),
             ));
 
-            pending_stores.push(MemoryStore::new());
+            pending_stores.push(MemoryPendingStore::new());
             pending_stores_synchronizer.push(pending_sync::PendingSynchronizer::new(
                 node_id.clone(),
                 pending_sync::PendingSyncConfig::default(),

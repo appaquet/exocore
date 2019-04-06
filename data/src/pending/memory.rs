@@ -11,27 +11,27 @@ use super::*;
 ///
 /// In memory pending store
 ///
-pub struct MemoryStore {
+pub struct MemoryPendingStore {
     operations_timeline: BTreeMap<OperationID, GroupID>,
     groups_operations: HashMap<GroupID, GroupOperations>,
 }
 
-impl MemoryStore {
-    pub fn new() -> MemoryStore {
-        MemoryStore {
+impl MemoryPendingStore {
+    pub fn new() -> MemoryPendingStore {
+        MemoryPendingStore {
             operations_timeline: BTreeMap::new(),
             groups_operations: HashMap::new(),
         }
     }
 }
 
-impl Default for MemoryStore {
+impl Default for MemoryPendingStore {
     fn default() -> Self {
-        MemoryStore::new()
+        MemoryPendingStore::new()
     }
 }
 
-impl Store for MemoryStore {
+impl PendingStore for MemoryPendingStore {
     fn put_operation(
         &mut self,
         operation: framed::OwnedTypedFrame<pending_operation::Owned>,
@@ -131,7 +131,7 @@ impl Store for MemoryStore {
     }
 }
 
-impl MemoryStore {
+impl MemoryPendingStore {
     fn get_group_operation(
         &self,
         group_id: GroupID,
@@ -168,7 +168,7 @@ struct GroupOperation {
 ///
 ///
 struct OperationsIterator<'store> {
-    store: &'store MemoryStore,
+    store: &'store MemoryPendingStore,
     ids_iterator: Box<dyn Iterator<Item = (OperationID, GroupID)> + 'store>,
 }
 
@@ -196,7 +196,7 @@ mod test {
 
     #[test]
     fn put_and_retrieve_operation() {
-        let mut store = MemoryStore::new();
+        let mut store = MemoryPendingStore::new();
 
         store
             .put_operation(create_dummy_new_entry_op(105, 200))
@@ -234,7 +234,7 @@ mod test {
 
     #[test]
     fn operations_iteration() {
-        let mut store = MemoryStore::new();
+        let mut store = MemoryPendingStore::new();
 
         store
             .put_operation(create_dummy_new_entry_op(105, 200))

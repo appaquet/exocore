@@ -44,14 +44,14 @@ impl Default for CommitManagerConfig {
 /// It also manages cleanup of the pending store, by deleting old operations that were committed to the chain and that are
 /// in block with sufficient depth.
 ///
-pub(super) struct CommitManager<PS: pending::Store, CS: chain::Store> {
+pub(super) struct CommitManager<PS: pending::PendingStore, CS: chain::ChainStore> {
     node_id: NodeID,
     config: CommitManagerConfig,
     clock: Clock,
     phantom: std::marker::PhantomData<(PS, CS)>,
 }
 
-impl<PS: pending::Store, CS: chain::Store> CommitManager<PS, CS> {
+impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
     pub fn new(
         node_id: NodeID,
         config: CommitManagerConfig,
@@ -474,7 +474,7 @@ struct PendingBlocks {
 }
 
 impl PendingBlocks {
-    fn new<PS: pending::Store, CS: chain::Store>(
+    fn new<PS: pending::PendingStore, CS: chain::ChainStore>(
         commit_manager: &CommitManager<PS, CS>,
         pending_store: &PS,
         chain_store: &CS,
@@ -830,10 +830,10 @@ pub enum CommitManagerError {
 
 #[cfg(test)]
 mod tests {
-    use crate::chain::Store as ChainStore;
+    use crate::chain::ChainStore as ChainStore;
     use crate::engine::testing::*;
     use crate::pending::PendingOperation;
-    use crate::pending::Store as PendingStore;
+    use crate::pending::PendingStore as PendingStore;
 
     use super::*;
 

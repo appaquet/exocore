@@ -46,7 +46,7 @@ struct OperationPendingIgnore {
 #
 # Chain
 #
-struct Block { # Rename... It's not a block anymore, but a block header
+struct Block {
     offset                 @0: UInt64;
     depth                  @1: UInt64;
     previousOffset         @2: UInt64;
@@ -54,7 +54,7 @@ struct Block { # Rename... It's not a block anymore, but a block header
     proposedOperationId    @4: UInt64;
     proposedNodeId         @5: Text;
 
-    operationsSize         @6: UInt32;  # Data size
+    operationsSize         @6: UInt32;    # Data size of the operations
     operationsHeader       @7: List(BlockOperationHeader);
     operationsHash         @8: Data;
 

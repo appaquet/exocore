@@ -75,8 +75,8 @@ impl Default for Config {
 pub struct Engine<T, CS, PS>
 where
     T: transport::Transport,
-    CS: chain::Store,
-    PS: pending::Store,
+    CS: chain::ChainStore,
+    PS: pending::PendingStore,
 {
     config: Config,
     started: bool,
@@ -90,8 +90,8 @@ where
 impl<T, CS, PS> Engine<T, CS, PS>
 where
     T: transport::Transport,
-    CS: chain::Store,
-    PS: pending::Store,
+    CS: chain::ChainStore,
+    PS: pending::PendingStore,
 {
     pub fn new(
         config: Config,
@@ -332,8 +332,8 @@ where
 impl<T, CS, PS> Future for Engine<T, CS, PS>
 where
     T: transport::Transport,
-    CS: chain::Store,
-    PS: pending::Store,
+    CS: chain::ChainStore,
+    PS: pending::PendingStore,
 {
     type Item = ();
     type Error = Error;
@@ -360,8 +360,8 @@ where
 ///
 struct Inner<CS, PS>
 where
-    CS: chain::Store,
-    PS: pending::Store,
+    CS: chain::ChainStore,
+    PS: pending::PendingStore,
 {
     config: Config,
     node_id: NodeID,
@@ -379,8 +379,8 @@ where
 
 impl<CS, PS> Inner<CS, PS>
 where
-    CS: chain::Store,
-    PS: pending::Store,
+    CS: chain::ChainStore,
+    PS: pending::PendingStore,
 {
     fn handle_add_pending_operation(
         &mut self,
@@ -561,8 +561,8 @@ where
 ///
 pub struct Handle<CS, PS>
 where
-    CS: chain::Store,
-    PS: pending::Store,
+    CS: chain::ChainStore,
+    PS: pending::PendingStore,
 {
     id: usize,
     inner: Weak<RwLock<Inner<CS, PS>>>,
@@ -571,8 +571,8 @@ where
 
 impl<CS, PS> Handle<CS, PS>
 where
-    CS: chain::Store,
-    PS: pending::Store,
+    CS: chain::ChainStore,
+    PS: pending::PendingStore,
 {
     pub fn get_chain_segments(&self) -> Result<Vec<chain::Segment>, Error> {
         let inner = self.inner.upgrade().ok_or(Error::InnerUpgrade)?;
@@ -659,8 +659,8 @@ where
 
 impl<CS, PS> Drop for Handle<CS, PS>
 where
-    CS: chain::Store,
-    PS: pending::Store,
+    CS: chain::ChainStore,
+    PS: pending::PendingStore,
 {
     fn drop(&mut self) {
         if let Some(inner) = self.inner.upgrade() {

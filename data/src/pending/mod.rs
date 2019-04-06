@@ -12,9 +12,10 @@ use exocore_common::serialization::{capnp, framed};
 pub mod memory;
 
 ///
+/// Pending operations store. This store contains operations that have just been created and that
+/// aren't committed to the chain yet.
 ///
-///
-pub trait Store: Send + Sync + 'static {
+pub trait PendingStore: Send + Sync + 'static {
     fn put_operation(
         &mut self,
         operation: framed::OwnedTypedFrame<pending_operation::Owned>,
@@ -35,7 +36,7 @@ pub trait Store: Send + Sync + 'static {
 pub type TimelineIterator<'store> = Box<dyn Iterator<Item = StoredOperation> + 'store>;
 
 ///
-///
+/// An operation stored in the pending store.
 ///
 #[derive(Clone)]
 pub struct StoredOperation {
@@ -50,9 +51,6 @@ pub struct StoredOperationsGroup {
     pub operations: Vec<StoredOperation>,
 }
 
-///
-///
-///
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum OperationType {
     Entry,
@@ -63,9 +61,9 @@ pub enum OperationType {
 }
 
 ///
+/// Pending operation helper
 ///
-///
-pub struct PendingOperation {}
+pub struct PendingOperation;
 
 impl PendingOperation {
     pub fn new_entry(
@@ -159,7 +157,7 @@ impl PendingOperation {
 }
 
 ///
-///
+/// Error related to the pending store
 ///
 #[derive(Debug, Fail)]
 pub enum Error {

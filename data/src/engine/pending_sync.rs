@@ -20,7 +20,7 @@ use exocore_common::serialization::protos::OperationID;
 
 use crate::engine::request_tracker;
 use crate::engine::{Error, SyncContext};
-use crate::pending::{Store, StoredOperation};
+use crate::pending::{PendingStore, StoredOperation};
 
 const MAX_OPERATIONS_PER_RANGE: u32 = 30;
 
@@ -54,14 +54,14 @@ impl Default for PendingSyncConfig {
 /// tries to limit the number of operations by range. If a single range is not equal, only this range will be compared via
 /// headers exchange and full operations exchange.
 ///
-pub(super) struct PendingSynchronizer<PS: Store> {
+pub(super) struct PendingSynchronizer<PS: PendingStore> {
     node_id: NodeID,
     config: PendingSyncConfig,
     nodes_info: HashMap<NodeID, NodeSyncInfo>,
     phantom: std::marker::PhantomData<PS>,
 }
 
-impl<PS: Store> PendingSynchronizer<PS> {
+impl<PS: PendingStore> PendingSynchronizer<PS> {
     pub fn new(node_id: NodeID, config: PendingSyncConfig) -> PendingSynchronizer<PS> {
         PendingSynchronizer {
             node_id,

@@ -86,7 +86,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_nodes() {
+    fn nodes_add_get() {
         let mut nodes = Nodes::new();
         assert!(nodes.is_empty());
 

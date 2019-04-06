@@ -22,7 +22,7 @@ pub mod directory;
 ///
 /// Persistence for the chain
 ///
-pub trait Store: Send + Sync + 'static {
+pub trait ChainStore: Send + Sync + 'static {
     fn segments(&self) -> Vec<Segment>;
 
     fn write_block<B: Block>(&mut self, block: &B) -> Result<BlockOffset, Error>;

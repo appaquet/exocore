@@ -11,7 +11,7 @@ use exocore_common::serialization::protos::data_transport_capnp::{
 };
 
 use crate::chain;
-use crate::chain::{Block, BlockOffset, BlockRef, Store};
+use crate::chain::{Block, BlockOffset, BlockRef, ChainStore};
 use crate::engine::request_tracker;
 use crate::engine::{Error, SyncContext};
 
@@ -58,7 +58,7 @@ impl Default for ChainSyncConfig {
 /// 4) Once fully downloaded, we keep asking for other nodes' metadata to make sure we progress and
 ///    leadership hasn't changed.
 ///
-pub(super) struct ChainSynchronizer<CS: Store> {
+pub(super) struct ChainSynchronizer<CS: ChainStore> {
     node_id: NodeID,
     config: ChainSyncConfig,
     nodes_info: HashMap<NodeID, NodeSyncInfo>,
@@ -74,7 +74,7 @@ pub enum Status {
     Synchronized,
 }
 
-impl<CS: Store> ChainSynchronizer<CS> {
+impl<CS: ChainStore> ChainSynchronizer<CS> {
     pub fn new(node_id: NodeID, config: ChainSyncConfig) -> ChainSynchronizer<CS> {
         ChainSynchronizer {
             node_id,
@@ -778,7 +778,7 @@ pub enum ChainSyncError {
 /// `begin_count` and `end_count` are number of headers to include without sampling from beginning and end of range.
 /// `sampled_count` is the approximate number of headers to return, excluding the `begin_count` and `end_count`
 ///
-fn chain_sample_block_headers<CS: chain::Store>(
+fn chain_sample_block_headers<CS: chain::ChainStore>(
     store: &CS,
     from_offset: chain::BlockOffset,
     to_offset: Option<chain::BlockOffset>,
@@ -852,12 +852,11 @@ fn chain_sample_block_headers<CS: chain::Store>(
 mod tests {
     use super::*;
 
-    use chain::directory::DirectoryStore;
+    use chain::directory::DirectoryChainStore;
     use exocore_common::serialization::framed::OwnedTypedFrame;
 
     use crate::engine::testing::*;
     use crate::engine::SyncContextMessage;
-    use crate::ChainDirectoryStore;
 
     #[test]
     fn test_handle_sync_response_blocks() -> Result<(), failure::Error> {
@@ -889,7 +888,7 @@ mod tests {
 
         // response from leader with blocks that aren't next should fail
         let blocks_iter = cluster.chains[1].blocks_iter(0)?;
-        let response = ChainSynchronizer::<DirectoryStore>::create_sync_response_for_blocks(
+        let response = ChainSynchronizer::<DirectoryChainStore>::create_sync_response_for_blocks(
             &cluster.chains_synchronizer[1].config,
             10,
             0,
@@ -907,7 +906,7 @@ mod tests {
 
         // response from leader with blocks at right position should suceed and append
         let blocks_iter = cluster.chains[1].blocks_iter(0).unwrap().skip(10); // skip 10 will go to 10th block
-        let response = ChainSynchronizer::<DirectoryStore>::create_sync_response_for_blocks(
+        let response = ChainSynchronizer::<DirectoryChainStore>::create_sync_response_for_blocks(
             &cluster.chains_synchronizer[0].config,
             10,
             0,
@@ -1217,8 +1216,8 @@ mod tests {
     }
 
     fn test_nodes_expect_chain_equals_new(
-        chain1: &ChainDirectoryStore,
-        chain2: &ChainDirectoryStore,
+        chain1: &chain::directory::DirectoryChainStore,
+        chain2: &chain::directory::DirectoryChainStore,
     ) {
         let node1_last_block = chain1
             .get_last_block()

@@ -11,18 +11,18 @@ use exocore_common::serialization::framed::TypedFrame;
 use super::*;
 
 ///
-/// Directory store's configuration
+/// Configuration for directory based chain persistence.
 ///
 #[derive(Copy, Clone, Debug)]
-pub struct Config {
+pub struct DirectoryChainStoreConfig {
     pub segment_over_allocate_size: u64,
     pub segment_min_free_size: u64,
     pub segment_max_size: u64,
 }
 
-impl Default for Config {
+impl Default for DirectoryChainStoreConfig {
     fn default() -> Self {
-        Config {
+        DirectoryChainStoreConfig {
             segment_over_allocate_size: 300 * 1024 * 1024, // 300mb
             segment_min_free_size: 10 * 1024 * 1024,       // 10mb
             segment_max_size: 4 * 1024 * 1024 * 1024,      // 4gb
@@ -34,14 +34,17 @@ impl Default for Config {
 /// Directory based chain persistence. Chain is split in segments with maximum size, as defined by config.
 /// This maximum size allows using mmap on 32bit systems by preventing segments from growing over 4gb.
 ///
-pub struct DirectoryStore {
-    config: Config,
+pub struct DirectoryChainStore {
+    config: DirectoryChainStoreConfig,
     directory: PathBuf,
     segments: Vec<DirectorySegment>,
 }
 
-impl DirectoryStore {
-    pub fn create(config: Config, directory_path: &Path) -> Result<DirectoryStore, Error> {
+impl DirectoryChainStore {
+    pub fn create(
+        config: DirectoryChainStoreConfig,
+        directory_path: &Path,
+    ) -> Result<DirectoryChainStore, Error> {
         if !directory_path.exists() {
             return Err(Error::UnexpectedState(format!(
                 "Tried to create directory at {:?}, but it didn't exist",
@@ -63,14 +66,17 @@ impl DirectoryStore {
             )));
         }
 
-        Ok(DirectoryStore {
+        Ok(DirectoryChainStore {
             config,
             directory: directory_path.to_path_buf(),
             segments: Vec::new(),
         })
     }
 
-    pub fn open(config: Config, directory_path: &Path) -> Result<DirectoryStore, Error> {
+    pub fn open(
+        config: DirectoryChainStoreConfig,
+        directory_path: &Path,
+    ) -> Result<DirectoryChainStore, Error> {
         if !directory_path.exists() {
             return Err(Error::UnexpectedState(format!(
                 "Tried to open directory at {:?}, but it didn't exist",
@@ -98,7 +104,7 @@ impl DirectoryStore {
         }
         segments.sort_by(|a, b| a.first_block_offset.cmp(&b.first_block_offset));
 
-        Ok(DirectoryStore {
+        Ok(DirectoryChainStore {
             config,
             directory: directory_path.to_path_buf(),
             segments,
@@ -136,7 +142,7 @@ impl DirectoryStore {
     }
 }
 
-impl Store for DirectoryStore {
+impl ChainStore for DirectoryChainStore {
     fn segments(&self) -> Vec<Segment> {
         self.segments
             .iter()
@@ -274,7 +280,7 @@ impl Store for DirectoryStore {
 /// Iterator over blocks stored in this directory based chain persistence.
 ///
 struct DirectoryBlockIterator<'pers> {
-    directory: &'pers DirectoryStore,
+    directory: &'pers DirectoryChainStore,
     current_offset: BlockOffset,
     current_segment: Option<&'pers DirectorySegment>,
     last_error: Option<Error>,
@@ -350,7 +356,7 @@ impl<'pers> Iterator for DirectoryBlockIterator<'pers> {
 /// When a block would exceed this pre-allocated space, we re-size and re-open the file.
 ///
 struct DirectorySegment {
-    config: Config,
+    config: DirectoryChainStoreConfig,
     first_block_offset: BlockOffset,
     segment_path: PathBuf,
     segment_file: SegmentFile,
@@ -360,7 +366,7 @@ struct DirectorySegment {
 
 impl DirectorySegment {
     fn create<B: Block>(
-        config: Config,
+        config: DirectoryChainStoreConfig,
         directory: &Path,
         block: &B,
     ) -> Result<DirectorySegment, Error> {
@@ -395,7 +401,7 @@ impl DirectorySegment {
 
     #[cfg(test)]
     fn open_with_first_offset(
-        config: Config,
+        config: DirectoryChainStoreConfig,
         directory: &Path,
         first_offset: BlockOffset,
     ) -> Result<DirectorySegment, Error> {
@@ -412,7 +418,10 @@ impl DirectorySegment {
         Ok(segment)
     }
 
-    fn open(config: Config, segment_path: &Path) -> Result<DirectorySegment, Error> {
+    fn open(
+        config: DirectoryChainStoreConfig,
+        segment_path: &Path,
+    ) -> Result<DirectorySegment, Error> {
         info!("Opening segment at {:?}", segment_path);
 
         let segment_file = SegmentFile::open(&segment_path, 0)?;
@@ -730,10 +739,10 @@ mod tests {
     #[test]
     fn directory_chain_create_and_open() -> Result<(), failure::Error> {
         let dir = tempdir::TempDir::new("test")?;
-        let config: Config = Default::default();
+        let config: DirectoryChainStoreConfig = Default::default();
 
         let init_segments = {
-            let mut directory_chain = DirectoryStore::create(config, dir.path())?;
+            let mut directory_chain = DirectoryChainStore::create(config, dir.path())?;
 
             let block = create_block(0);
             let second_offset = directory_chain.write_block(&block)?;
@@ -763,11 +772,11 @@ mod tests {
 
         {
             // already exists
-            assert!(DirectoryStore::create(config, dir.path()).is_err());
+            assert!(DirectoryChainStore::create(config, dir.path()).is_err());
         }
 
         {
-            let directory_chain = DirectoryStore::open(config, dir.path())?;
+            let directory_chain = DirectoryChainStore::open(config, dir.path())?;
             assert_eq!(directory_chain.segments(), init_segments);
         }
 
@@ -777,10 +786,10 @@ mod tests {
     #[test]
     fn directory_chain_write_until_second_segment() -> Result<(), failure::Error> {
         let dir = tempdir::TempDir::new("test")?;
-        let mut config: Config = Default::default();
+        let mut config: DirectoryChainStoreConfig = Default::default();
         config.segment_max_size = 300_000;
 
-        fn validate_directory(directory_chain: &DirectoryStore) -> Result<(), failure::Error> {
+        fn validate_directory(directory_chain: &DirectoryChainStore) -> Result<(), failure::Error> {
             let segments = directory_chain
                 .segments()
                 .iter()
@@ -819,7 +828,7 @@ mod tests {
         }
 
         let init_segments = {
-            let mut directory_chain = DirectoryStore::create(config, dir.path())?;
+            let mut directory_chain = DirectoryChainStore::create(config, dir.path())?;
 
             append_blocks_to_directory(&mut directory_chain, 1000, 0);
             validate_directory(&directory_chain)?;
@@ -828,7 +837,7 @@ mod tests {
         };
 
         {
-            let directory_chain = DirectoryStore::open(config, dir.path())?;
+            let directory_chain = DirectoryChainStore::open(config, dir.path())?;
             assert_eq!(directory_chain.segments(), init_segments);
 
             validate_directory(&directory_chain)?;
@@ -839,7 +848,7 @@ mod tests {
 
     #[test]
     fn directory_chain_truncate() -> Result<(), failure::Error> {
-        let mut config: Config = Default::default();
+        let mut config: DirectoryChainStoreConfig = Default::default();
         config.segment_max_size = 1000;
 
         // we cutoff the directory at different position to make sure of its integrity
@@ -847,7 +856,7 @@ mod tests {
             let dir = tempdir::TempDir::new("test")?;
 
             let (segments_before, block_n_offset, block_n_plus_offset) = {
-                let mut directory_chain = DirectoryStore::create(config, dir.path())?;
+                let mut directory_chain = DirectoryChainStore::create(config, dir.path())?;
                 append_blocks_to_directory(&mut directory_chain, 50, 0);
                 let segments_before = directory_chain
                     .segments()
@@ -883,7 +892,7 @@ mod tests {
             };
 
             {
-                let directory_chain = DirectoryStore::open(config, dir.path())?;
+                let directory_chain = DirectoryChainStore::open(config, dir.path())?;
                 let segments_after = directory_chain
                     .segments()
                     .iter()
@@ -911,12 +920,12 @@ mod tests {
 
     #[test]
     fn directory_chain_truncate_all() -> Result<(), failure::Error> {
-        let mut config: Config = Default::default();
+        let mut config: DirectoryChainStoreConfig = Default::default();
         config.segment_max_size = 3000;
         let dir = tempdir::TempDir::new("test")?;
 
         {
-            let mut directory_chain = DirectoryStore::create(config, dir.path())?;
+            let mut directory_chain = DirectoryChainStore::create(config, dir.path())?;
             append_blocks_to_directory(&mut directory_chain, 100, 0);
 
             directory_chain.truncate_from_offset(0)?;
@@ -927,7 +936,7 @@ mod tests {
         }
 
         {
-            let directory_chain = DirectoryStore::open(config, dir.path())?;
+            let directory_chain = DirectoryChainStore::open(config, dir.path())?;
             let segments = directory_chain.segments();
             assert!(segments.is_empty());
             assert!(directory_chain.get_last_block()?.is_none());
@@ -1067,7 +1076,7 @@ mod tests {
 
     #[test]
     fn directory_segment_grow_and_truncate() -> Result<(), failure::Error> {
-        let mut config: Config = Default::default();
+        let mut config: DirectoryChainStoreConfig = Default::default();
         config.segment_over_allocate_size = 100_000;
 
         let dir = tempdir::TempDir::new("test")?;
@@ -1136,7 +1145,7 @@ mod tests {
     }
 
     fn append_blocks_to_directory(
-        directory_chain: &mut DirectoryStore,
+        directory_chain: &mut DirectoryChainStore,
         nb_blocks: usize,
         from_offset: BlockOffset,
     ) {

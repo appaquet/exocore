@@ -21,7 +21,7 @@ pub type GroupID = u64;
 pub type OperationID = u64;
 
 ///
-///
+/// Messages related to the chain / operations storage
 ///
 impl<'a> MessageType<'a> for self::data_chain_capnp::pending_operation::Owned {
     const MESSAGE_TYPE: u16 = 100;
@@ -68,6 +68,7 @@ impl<'a> MessageType<'a> for self::data_chain_capnp::block_operation_header::Own
 }
 
 ///
+/// Messages related to transport / messaging between nodes
 ///
 impl<'a> MessageType<'a> for self::data_transport_capnp::envelope::Owned {
     const MESSAGE_TYPE: u16 = 200;

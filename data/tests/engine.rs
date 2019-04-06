@@ -8,16 +8,16 @@ use tokio::runtime::Runtime;
 use exocore_common::node::{Node, Nodes};
 use exocore_common::serialization::framed::TypedFrame;
 use exocore_common::time::Clock;
-use exocore_data::chain::Store;
+use exocore_data::chain::ChainStore;
 use exocore_data::{
-    ChainDirectoryStore, ChainDirectoryStoreConfig, Engine, EngineConfig, MemoryPendingStore,
+    DirectoryChainStore, DirectoryChainStoreConfig, Engine, EngineConfig, MemoryPendingStore,
     MockTransportHub,
 };
 use std::time::Duration;
 
 #[test]
 fn test_engine_integration_single_node() -> Result<(), failure::Error> {
-    exocore_common::utils::setup_logging();
+    //exocore_common::utils::setup_logging();
 
     let data_dir = tempdir::TempDir::new("engine_tests")?;
     let mut rt = Runtime::new()?;
@@ -27,26 +27,24 @@ fn test_engine_integration_single_node() -> Result<(), failure::Error> {
     nodes.add(node1.clone());
 
     let transport_hub = MockTransportHub::default();
-
-    // TODO: Doesn't make sense to clone a Node
     let transport = transport_hub.get_transport(nodes.get("node1").unwrap().clone());
+
+    let chain_config = DirectoryChainStoreConfig::default();
+    let mut chain = DirectoryChainStore::create(chain_config, data_dir.as_ref())?;
+    chain.write_block(&exocore_data::chain::BlockOwned::new_genesis(
+        &nodes, &node1,
+    )?)?;
+
+    let pending = MemoryPendingStore::new();
+    let clock = Clock::new();
+
     let engine_config = EngineConfig {
         manager_timer_interval: Duration::from_millis(100),
         ..EngineConfig::default()
     };
-    let mut chain =
-        ChainDirectoryStore::create(ChainDirectoryStoreConfig::default(), data_dir.as_ref())?;
-
-    let genesis_block = exocore_data::chain::BlockOwned::new_genesis(&nodes, &node1)?;
-    chain.write_block(&genesis_block)?;
-
-    let pending = MemoryPendingStore::new();
-
-    let clock = Clock::new();
-
     let mut engine = Engine::new(
         engine_config,
-        "node1".to_string(),
+        node1.id().to_string(),
         clock,
         transport,
         chain,
@@ -57,15 +55,16 @@ fn test_engine_integration_single_node() -> Result<(), failure::Error> {
     let engine_handle = engine.get_handle();
 
     rt.spawn(engine.map_err(|err| error!("Got an error in engine: {:?}", err)));
-    // TODO: Find another way... engine may not have been started yet.
 
+    // TODO: Find another way... engine may not have been started yet.
     std::thread::sleep(Duration::from_millis(300));
 
     let _op1 = engine_handle.write_entry(b"i love jello")?;
     let op2 = engine_handle.write_entry(b"i love jello")?;
-    let _op3 = engine_handle.write_entry( b"i love jello")?;
-    let _op4 = engine_handle.write_entry( b"i love jello")?;
+    let _op3 = engine_handle.write_entry(b"i love jello")?;
+    let _op4 = engine_handle.write_entry(b"i love jello")?;
 
+    // TODO: Should wait for events
     std::thread::sleep(Duration::from_millis(1000));
 
     let pending_operations = engine_handle.get_pending_operations(..)?;
