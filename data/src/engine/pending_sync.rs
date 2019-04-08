@@ -25,22 +25,6 @@ use crate::pending::{PendingStore, StoredOperation};
 const MAX_OPERATIONS_PER_RANGE: u32 = 30;
 
 ///
-/// Synchronizer's configuration
-///
-#[derive(Copy, Clone, Debug)]
-pub struct PendingSyncConfig {
-    pub request_tracker_config: request_tracker::Config,
-}
-
-impl Default for PendingSyncConfig {
-    fn default() -> Self {
-        PendingSyncConfig {
-            request_tracker_config: request_tracker::Config::default(),
-        }
-    }
-}
-
-///
 /// Synchronizes local pending store against remote nodes' pending stores. It does that by exchanging
 /// PendingSyncRequest messages.
 ///
@@ -374,6 +358,22 @@ impl<PS: PendingStore> PendingSynchronizer<PS> {
         self.nodes_info
             .entry(node_id.clone())
             .or_insert_with(move || NodeSyncInfo::new(node_id.clone(), &config))
+    }
+}
+
+///
+/// Synchronizer's configuration
+///
+#[derive(Copy, Clone, Debug)]
+pub struct PendingSyncConfig {
+    pub request_tracker_config: request_tracker::RequestTrackerConfig,
+}
+
+impl Default for PendingSyncConfig {
+    fn default() -> Self {
+        PendingSyncConfig {
+            request_tracker_config: request_tracker::RequestTrackerConfig::default(),
+        }
     }
 }
 

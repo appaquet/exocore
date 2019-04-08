@@ -68,15 +68,15 @@ type StoredBlockIterator<'pers> = Box<dyn Iterator<Item = BlockRef<'pers>> + 'pe
 /// A trait representing a block stored or to be stored in the chain.
 /// It can either be a referenced block (`BlockRef`) or a in-memory block (`BlockOwned`).
 ///
-/// A blocks consists of 3 parts:
+/// A block consists of 3 parts:
 ///  * Block header
-///  * Operations' data
+///  * Operations' bytes (capnp serialized `pending_operation` frames)
 ///  * Block signatures
 ///
 /// The block header and operations' data are the same on all nodes. Since a node writes a block
 /// as soon as it has enough signatures, signatures can differ from one node to the other. Signatures
 /// frame is pre-allocated, which means that not all signatures may fit. But in theory, it should always
-/// contain enough space for all nodes to add their signature.
+/// contain enough space for all nodes to add their own signature.
 ///
 pub trait Block {
     type BlockType: TypedFrame<block::Owned> + SignedFrame;
@@ -290,14 +290,14 @@ impl BlockOwned {
             header_builder.copy_into_builder(&mut entry_builder);
         }
 
-        // create empty signature with all nodes placeholders
+        // create an empty signature for each node as a placeholder to find the size required for signatures
         let mut signature_frame_builder =
             BlockSignatures::empty_signatures_for_nodes(nodes).to_frame_builder();
         let mut signature_builder = signature_frame_builder.get_builder_typed();
         signature_builder.set_operations_size(operations_data_size);
         let signature_frame = signature_frame_builder.as_owned_framed(node.frame_signer())?;
 
-        // set signature size in block
+        // set required signatures size in block
         block_builder.set_signatures_size(signature_frame.frame_size() as u16);
         let block_frame = block_frame_builder.as_owned_framed(node.frame_signer())?;
 
@@ -336,7 +336,7 @@ impl Block for BlockOwned {
 }
 
 ///
-/// Referenced block.
+/// A referenced block
 ///
 pub struct BlockRef<'a> {
     pub offset: BlockOffset,
@@ -400,33 +400,7 @@ impl<'a> Block for BlockRef<'a> {
 }
 
 ///
-/// Header of an operation store within a block. It represents the position
-/// in the bytes of the block.
-///
-struct BlockOperationHeader {
-    operation_id: u64,
-    data_offset: u32,
-    data_size: u32,
-}
-
-impl BlockOperationHeader {
-    fn from_reader(reader: &block_operation_header::Reader) -> BlockOperationHeader {
-        BlockOperationHeader {
-            operation_id: reader.get_operation_id(),
-            data_offset: reader.get_data_offset(),
-            data_size: reader.get_data_size(),
-        }
-    }
-
-    fn copy_into_builder(&self, builder: &mut block_operation_header::Builder) {
-        builder.set_operation_id(self.operation_id);
-        builder.set_data_size(self.data_size);
-        builder.set_data_offset(self.data_offset);
-    }
-}
-
-///
-/// Represents operations stored in a block.
+/// Wraps operations header stored in a block.
 ///
 pub struct BlockOperations {
     multihash_bytes: Vec<u8>,
@@ -495,10 +469,34 @@ impl BlockOperations {
 }
 
 ///
-/// Represents signatures stored in a block. Since a node writes a block as soon as it has enough
-/// signatures, signatures can differ from one node to the other. Signatures frame is pre-allocated,
-/// which means that not all signatures may fit. But in theory, it should always contain enough
-/// space for all nodes to add their signature.
+/// Header of an operation stored within a block. It represents the position in the bytes of the block.
+///
+struct BlockOperationHeader {
+    operation_id: u64,
+    data_offset: u32,
+    data_size: u32,
+}
+
+impl BlockOperationHeader {
+    fn from_reader(reader: &block_operation_header::Reader) -> BlockOperationHeader {
+        BlockOperationHeader {
+            operation_id: reader.get_operation_id(),
+            data_offset: reader.get_data_offset(),
+            data_size: reader.get_data_size(),
+        }
+    }
+
+    fn copy_into_builder(&self, builder: &mut block_operation_header::Builder) {
+        builder.set_operation_id(self.operation_id);
+        builder.set_data_size(self.data_size);
+        builder.set_data_offset(self.data_offset);
+    }
+}
+
+///
+/// Represents signatures stored in a block. Since a node writes a block as soon as it has enough signatures, signatures can
+/// differ from one node to the other. Signatures frame is pre-allocated, which means that not all signatures may fit. But in
+/// theory, it should always contain enough space for all nodes to add their own signature.
 ///
 pub struct BlockSignatures {
     signatures: Vec<BlockSignature>,

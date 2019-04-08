@@ -2,29 +2,11 @@ use exocore_common::time::Clock;
 use std::time::{Duration, Instant};
 
 ///
-/// Configuration for RequestTracker
-///
-#[derive(Clone, Copy, Debug)]
-pub struct Config {
-    base_interval: Duration,
-    max_interval: Duration,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Config {
-            base_interval: Duration::from_secs(5),
-            max_interval: Duration::from_secs(30),
-        }
-    }
-}
-
-///
 /// Handles time tracking of synchronization request and response for timeouts, retries and backoff.
 ///
 pub struct RequestTracker {
     clock: Clock,
-    config: Config,
+    config: RequestTrackerConfig,
 
     last_request_send: Option<Instant>,
     last_response_receive: Option<Instant>,
@@ -35,11 +17,11 @@ pub struct RequestTracker {
 }
 
 impl RequestTracker {
-    pub fn new(config: Config) -> RequestTracker {
+    pub fn new(config: RequestTrackerConfig) -> RequestTracker {
         RequestTracker::new_with_clock(Clock::new(), config)
     }
 
-    pub fn new_with_clock(clock: Clock, config: Config) -> RequestTracker {
+    pub fn new_with_clock(clock: Clock, config: RequestTrackerConfig) -> RequestTracker {
         RequestTracker {
             clock,
             config,
@@ -101,6 +83,24 @@ impl RequestTracker {
     }
 }
 
+///
+/// Configuration for RequestTracker
+///
+#[derive(Clone, Copy, Debug)]
+pub struct RequestTrackerConfig {
+    base_interval: Duration,
+    max_interval: Duration,
+}
+
+impl Default for RequestTrackerConfig {
+    fn default() -> Self {
+        RequestTrackerConfig {
+            base_interval: Duration::from_secs(5),
+            max_interval: Duration::from_secs(30),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,7 +109,8 @@ mod tests {
     #[test]
     fn test_can_send_request_interval() {
         let mock_clock = Clock::new_mocked();
-        let mut tracker = RequestTracker::new_with_clock(mock_clock.clone(), Config::default());
+        let mut tracker =
+            RequestTracker::new_with_clock(mock_clock.clone(), RequestTrackerConfig::default());
 
         // should be able to do request right away
         assert!(tracker.can_send_request());
@@ -129,7 +130,8 @@ mod tests {
     #[test]
     fn test_force_request() {
         let mock_clock = Clock::new_mocked();
-        let mut tracker = RequestTracker::new_with_clock(mock_clock.clone(), Config::default());
+        let mut tracker =
+            RequestTracker::new_with_clock(mock_clock.clone(), RequestTrackerConfig::default());
 
         tracker.can_send_request();
         tracker.set_last_send(mock_clock.instant());
@@ -142,7 +144,8 @@ mod tests {
     #[test]
     fn test_can_send_request_timeout_backoff() {
         let mock_clock = Clock::new_fixed_mocked(Instant::now());
-        let mut tracker = RequestTracker::new_with_clock(mock_clock.clone(), Config::default());
+        let mut tracker =
+            RequestTracker::new_with_clock(mock_clock.clone(), RequestTrackerConfig::default());
 
         tracker.can_send_request();
         tracker.set_last_send(mock_clock.instant());

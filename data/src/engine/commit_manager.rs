@@ -22,22 +22,6 @@ use crate::pending::OperationType;
 use super::Error;
 
 ///
-/// CommitManager's configuration
-///
-#[derive(Copy, Clone, Debug)]
-pub struct CommitManagerConfig {
-    pub operations_cleanup_after_block_depth: BlockDepth,
-}
-
-impl Default for CommitManagerConfig {
-    fn default() -> Self {
-        CommitManagerConfig {
-            operations_cleanup_after_block_depth: 3,
-        }
-    }
-}
-
-///
 /// Manages commit of pending store's operations to the chain. It does that by monitoring the pending store for incoming
 /// block proposal, signing/refusing them or proposing new blocks.
 ///
@@ -82,7 +66,7 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
         // find all blocks (proposed, committed, refused, etc.) in pending store
         let mut pending_blocks = PendingBlocks::new(self, pending_store, chain_store, nodes)?;
 
-        // we sort potential next blocks by which block has better potential to become a block
+        // get all potential next blocks sorted by most probable to less probable
         let potential_next_blocks = pending_blocks.potential_next_blocks();
 
         if let Some(next_block_id) =
@@ -188,7 +172,7 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
             }
         }
 
-        // validate hash of entries of block
+        // validate hash of operations of block
         let block_operations = Self::get_block_operations(block, pending_store)?.map(|op| op.frame);
         let operations_hash = chain::BlockOperations::hash_operations(block_operations)?;
         let block_reader = block_frame.get_typed_reader()?;
@@ -389,6 +373,7 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
             Self::get_block_operations(next_block, pending_store)?.map(|operation| operation.frame);
 
         // make sure that the hash of operations is same as defined by the block
+        // this should never happen since we wouldn't have signed the block if hash didn't match
         let block_operations = chain::BlockOperations::from_operations(block_operations)?;
         if block_operations.multihash_bytes() != block_reader.get_operations_hash()? {
             return Err(Error::Fatal(
@@ -466,6 +451,22 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
 }
 
 ///
+/// CommitManager's configuration
+///
+#[derive(Copy, Clone, Debug)]
+pub struct CommitManagerConfig {
+    pub operations_cleanup_after_block_depth: BlockDepth,
+}
+
+impl Default for CommitManagerConfig {
+    fn default() -> Self {
+        CommitManagerConfig {
+            operations_cleanup_after_block_depth: 3,
+        }
+    }
+}
+
+///
 /// Represents all the blocks that are currently in the pending store
 ///
 struct PendingBlocks {
@@ -499,102 +500,109 @@ impl PendingBlocks {
         // then we get all operations for each block proposal
         let mut blocks = HashMap::<OperationID, PendingBlock>::new();
         for group_id in groups_id.iter_mut() {
-            if let Some(group_operations) = pending_store.get_group_operations(*group_id)? {
-                let mut operations = Vec::new();
-                let mut proposal: Option<PendingBlockProposal> = None;
-                let mut signatures = Vec::new();
-                let mut refusals = Vec::new();
-
-                for operation in group_operations.operations {
-                    let operation_reader: pending_operation::Reader =
-                        operation.frame.get_typed_reader()?;
-                    let node_id = operation_reader.get_node_id()?;
-
-                    match operation_reader.get_operation().which()? {
-                        pending_operation::operation::Which::BlockPropose(reader) => {
-                            let reader: operation_block_propose::Reader = reader?;
-                            let block_frame =
-                                TypedSliceFrame::<block::Owned>::new(reader.get_block()?)?;
-                            let block_reader: block::Reader = block_frame.get_typed_reader()?;
-
-                            for operation_header in block_reader.get_operations_header()? {
-                                operations.push(operation_header.get_operation_id());
-                            }
-
-                            proposal = Some(PendingBlockProposal {
-                                node_id: node_id.to_string(),
-                                offset: block_reader.get_offset(),
-                                operation,
-                            })
-                        }
-                        pending_operation::operation::Which::BlockSign(_reader) => {
-                            signatures.push(PendingBlockSignature::from_pending_operation(
-                                operation_reader,
-                            )?);
-                        }
-                        pending_operation::operation::Which::BlockRefuse(_reader) => {
-                            refusals.push(PendingBlockRefusal::from_pending_operation(
-                                operation_reader,
-                            )?);
-                        }
-                        pending_operation::operation::Which::PendingIgnore(_)
-                        | pending_operation::operation::Which::Entry(_) => {
-                            warn!("Found a non-block related operation in block group, which shouldn't be possible (group_id={})", group_id);
-                        }
-                    };
-                }
-
-                let proposal = proposal
-                    .expect("Couldn't find proposal operation within a group of the proposal");
-                let has_my_refusal = refusals
-                    .iter()
-                    .any(|sig| sig.node_id == commit_manager.node_id);
-                let has_my_signature = signatures
-                    .iter()
-                    .any(|sig| sig.node_id == commit_manager.node_id);
-
-                let status = match chain_store.get_block(proposal.offset).ok() {
-                    Some(block) => {
-                        let block_reader: block::Reader = block.block.get_typed_reader()?;
-                        if block_reader.get_proposed_operation_id() == *group_id {
-                            BlockStatus::PastCommitted
-                        } else {
-                            BlockStatus::PastRefused
-                        }
-                    }
-                    None => {
-                        if proposal.offset < next_offset {
-                            // means it was a proposed block for a diverged chain
-                            BlockStatus::PastRefused
-                        } else if refusals.len() >= nb_nodes_consensus || has_my_refusal {
-                            BlockStatus::NextRefused
-                        } else {
-                            BlockStatus::NextPotential
-                        }
-                    }
-                };
-
-                debug!("Block {} status {:?}", proposal.offset, status);
-
-                blocks.insert(
-                    *group_id,
-                    PendingBlock {
-                        group_id: *group_id,
-                        status,
-
-                        proposal,
-                        refusals,
-                        signatures,
-
-                        has_my_refusal,
-                        has_my_signature,
-
-                        operations,
-                    },
-                );
+            let group_operations = if let Some(group_operations) =
+                pending_store.get_group_operations(*group_id)?
+            {
+                group_operations
             } else {
                 warn!("Didn't have any operations for block proposal with group_id={}, which shouldn't be possible", group_id);
+                continue;
+            };
+
+            let mut operations = Vec::new();
+            let mut proposal: Option<PendingBlockProposal> = None;
+            let mut signatures = Vec::new();
+            let mut refusals = Vec::new();
+
+            for operation in group_operations.operations {
+                let operation_reader: pending_operation::Reader =
+                    operation.frame.get_typed_reader()?;
+                let node_id = operation_reader.get_node_id()?;
+
+                match operation_reader.get_operation().which()? {
+                    pending_operation::operation::Which::BlockPropose(reader) => {
+                        let reader: operation_block_propose::Reader = reader?;
+                        let block_frame =
+                            TypedSliceFrame::<block::Owned>::new(reader.get_block()?)?;
+                        let block_reader: block::Reader = block_frame.get_typed_reader()?;
+
+                        for operation_header in block_reader.get_operations_header()? {
+                            operations.push(operation_header.get_operation_id());
+                        }
+
+                        proposal = Some(PendingBlockProposal {
+                            node_id: node_id.to_string(),
+                            offset: block_reader.get_offset(),
+                            operation,
+                        })
+                    }
+                    pending_operation::operation::Which::BlockSign(_reader) => {
+                        signatures.push(PendingBlockSignature::from_pending_operation(
+                            operation_reader,
+                        )?);
+                    }
+                    pending_operation::operation::Which::BlockRefuse(_reader) => {
+                        refusals.push(PendingBlockRefusal::from_pending_operation(
+                            operation_reader,
+                        )?);
+                    }
+                    pending_operation::operation::Which::PendingIgnore(_)
+                    | pending_operation::operation::Which::Entry(_) => {
+                        warn!("Found a non-block related operation in block group, which shouldn't be possible (group_id={})", group_id);
+                    }
+                };
             }
+
+            let proposal =
+                proposal.expect("Couldn't find proposal operation within a group of the proposal");
+            let has_my_refusal = refusals
+                .iter()
+                .any(|sig| sig.node_id == commit_manager.node_id);
+            let has_my_signature = signatures
+                .iter()
+                .any(|sig| sig.node_id == commit_manager.node_id);
+
+            let status = match chain_store.get_block(proposal.offset).ok() {
+                Some(block) => {
+                    let block_reader: block::Reader = block.block.get_typed_reader()?;
+                    if block_reader.get_proposed_operation_id() == *group_id {
+                        BlockStatus::PastCommitted
+                    } else {
+                        BlockStatus::PastRefused
+                    }
+                }
+                None => {
+                    if proposal.offset < next_offset {
+                        // means it was a proposed block for a diverged chain
+                        BlockStatus::PastRefused
+                    } else if refusals.len() >= nb_nodes_consensus || has_my_refusal {
+                        BlockStatus::NextRefused
+                    } else {
+                        BlockStatus::NextPotential
+                    }
+                }
+            };
+
+            debug!(
+                "Found pending store's block {} with status {:?}",
+                proposal.offset, status
+            );
+            blocks.insert(
+                *group_id,
+                PendingBlock {
+                    group_id: *group_id,
+                    status,
+
+                    proposal,
+                    refusals,
+                    signatures,
+
+                    has_my_refusal,
+                    has_my_signature,
+
+                    operations,
+                },
+            );
         }
 
         let operations_blocks = Self::map_operations_blocks(&blocks);

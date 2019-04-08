@@ -13,7 +13,7 @@ use exocore_data::{
     DirectoryChainStore, DirectoryChainStoreConfig, Engine, EngineConfig, MemoryPendingStore,
     MockTransportHub,
 };
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 // TODO: To be completed in https://github.com/appaquet/exocore/issues/42
 
@@ -61,25 +61,44 @@ fn test_engine_integration_single_node() -> Result<(), failure::Error> {
     // TODO: Find another way... engine may not have been started yet.
     std::thread::sleep(Duration::from_millis(300));
 
-    let _op1 = engine_handle.write_entry(b"i love jello")?;
-    let op2 = engine_handle.write_entry(b"i love jello")?;
+    let op1 = engine_handle.write_entry(b"i love jello")?;
+    let _op2 = engine_handle.write_entry(b"i love jello")?;
     let _op3 = engine_handle.write_entry(b"i love jello")?;
     let _op4 = engine_handle.write_entry(b"i love jello")?;
 
-    // TODO: Should wait for events
-    std::thread::sleep(Duration::from_millis(1000));
+    let (pending_operations, segments, entry) = try_for_duration::<_, _, failure::Error>(
+        || {
+            let pending_operations = engine_handle.get_pending_operations(..)?;
+            let segments = engine_handle.get_chain_segments()?;
+            let entry = engine_handle.get_chain_entry(332, op1)?;
 
-    let pending_operations = engine_handle.get_pending_operations(..)?;
+            Ok((pending_operations, segments, entry))
+        },
+        Duration::from_secs(10),
+    );
+
     info!("Got {} pending op", pending_operations.len());
-
-    let segments = engine_handle.get_chain_segments()?;
     info!("Available segments: {:?}", segments);
-
-    let entry = engine_handle.get_chain_entry(332, op2).unwrap();
     info!(
         "Chain op: {:?}",
         String::from_utf8_lossy(entry.operation_frame.frame_data())
     );
 
     Ok(())
+}
+
+fn try_for_duration<F, R, E>(f: F, time: Duration) -> R
+where
+    F: Fn() -> Result<R, E>,
+{
+    let begin = Instant::now();
+    loop {
+        if let Ok(res) = f() {
+            return res;
+        } else if begin.elapsed() >= time {
+            panic!("Couldn't get a result within time");
+        } else {
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
 }

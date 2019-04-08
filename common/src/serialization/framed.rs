@@ -1184,7 +1184,7 @@ pub mod tests {
     fn slice_frame_from_slice() -> Result<(), Error> {
         let mut data = [0u8; 1000];
 
-        // we write block a offset 321
+        // we write block at offset 321
         let mut block1_builder = build_test_block(3, 10000);
         let block1_metadata = write_framed_builder_into_buffer(
             &mut data[321..],

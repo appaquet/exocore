@@ -16,30 +16,6 @@ use crate::engine::request_tracker;
 use crate::engine::{Error, SyncContext};
 
 ///
-/// Chain synchronizer's configuration
-///
-#[derive(Copy, Clone, Debug)]
-pub struct ChainSyncConfig {
-    pub request_tracker: request_tracker::Config,
-    pub headers_sync_begin_count: chain::BlockOffset,
-    pub headers_sync_end_count: chain::BlockOffset,
-    pub headers_sync_sampled_count: chain::BlockOffset,
-    pub blocks_max_send_size: usize,
-}
-
-impl Default for ChainSyncConfig {
-    fn default() -> Self {
-        ChainSyncConfig {
-            request_tracker: request_tracker::Config::default(),
-            headers_sync_begin_count: 5,
-            headers_sync_end_count: 5,
-            headers_sync_sampled_count: 10,
-            blocks_max_send_size: 50 * 1024,
-        }
-    }
-}
-
-///
 /// Synchronizes the local chain against remote nodes' chain.
 ///
 /// It achieves synchronization in 3 stages:
@@ -63,7 +39,7 @@ pub(super) struct ChainSynchronizer<CS: ChainStore> {
     config: ChainSyncConfig,
     nodes_info: HashMap<NodeID, NodeSyncInfo>,
     status: Status,
-    current_leader: Option<NodeID>,
+    leader: Option<NodeID>,
     phantom: std::marker::PhantomData<CS>,
 }
 
@@ -81,7 +57,7 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
             config,
             status: Status::Unknown,
             nodes_info: HashMap::new(),
-            current_leader: None,
+            leader: None,
             phantom: std::marker::PhantomData,
         }
     }
@@ -110,19 +86,19 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
 
         // check if we need to gather data from a leader node
         if self.status != Status::Synchronized && majority_nodes_metadata_sync {
-            if self.current_leader.is_none() {
+            if self.leader.is_none() {
                 self.find_leader_node(&nodes, store)?;
             }
 
             let im_leader = self
-                .current_leader
+                .leader
                 .as_ref()
                 .map(|leader| leader == &node_id)
                 .unwrap_or(false);
             if im_leader {
                 debug!("I'm the leader. Switching status to synchronized");
                 self.status = Status::Synchronized;
-            } else if let Some(leader) = self.current_leader.clone() {
+            } else if let Some(leader) = self.leader.clone() {
                 debug!("Leader node is {}", leader);
                 let leader_node_info = self.get_or_create_node_info_mut(&leader);
 
@@ -513,7 +489,7 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
         store: &mut CS,
         response_reader: chain_sync_response::Reader,
     ) -> Result<(), Error> {
-        let lead_node_id = self.current_leader.as_ref().cloned();
+        let lead_node_id = self.leader.as_ref().cloned();
         let from_node_info = self.get_or_create_node_info_mut(&from_node.id());
 
         let is_from_leader = lead_node_id
@@ -620,7 +596,7 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
             .max_by(|(_node_a, offset_a), (_node_b, offset_b)| offset_a.cmp(offset_b));
 
         let last_local_block = store.get_last_block()?;
-        self.current_leader = match (maybe_leader, &last_local_block) {
+        self.leader = match (maybe_leader, &last_local_block) {
             (Some((_node_info, node_offset)), Some(last_local_block))
                 if last_local_block.offset > node_offset =>
             {
@@ -636,6 +612,30 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
         };
 
         Ok(())
+    }
+}
+
+///
+/// Chain synchronizer's configuration
+///
+#[derive(Copy, Clone, Debug)]
+pub struct ChainSyncConfig {
+    pub request_tracker: request_tracker::RequestTrackerConfig,
+    pub headers_sync_begin_count: chain::BlockOffset,
+    pub headers_sync_end_count: chain::BlockOffset,
+    pub headers_sync_sampled_count: chain::BlockOffset,
+    pub blocks_max_send_size: usize,
+}
+
+impl Default for ChainSyncConfig {
+    fn default() -> Self {
+        ChainSyncConfig {
+            request_tracker: request_tracker::RequestTrackerConfig::default(),
+            headers_sync_begin_count: 5,
+            headers_sync_end_count: 5,
+            headers_sync_sampled_count: 10,
+            blocks_max_send_size: 50 * 1024,
+        }
     }
 }
 
@@ -872,7 +872,7 @@ mod tests {
         cluster.tick_chain_synchronizer(0)?;
         assert_eq!(cluster.chains_synchronizer[0].status, Status::Downloading);
         assert_eq!(
-            cluster.chains_synchronizer[0].current_leader,
+            cluster.chains_synchronizer[0].leader,
             Some("node1".to_string())
         );
 
@@ -996,7 +996,7 @@ mod tests {
         test_nodes_run_sync_new(&mut cluster, 0, 1)?;
         assert_eq!(cluster.chains_synchronizer[0].status, Status::Synchronized);
         assert_eq!(
-            cluster.chains_synchronizer[0].current_leader,
+            cluster.chains_synchronizer[0].leader,
             Some("node1".to_string())
         );
 
@@ -1065,7 +1065,7 @@ mod tests {
 
         // we're leader and synchronized because of it
         assert_eq!(
-            cluster.chains_synchronizer[0].current_leader,
+            cluster.chains_synchronizer[0].leader,
             Some("node0".to_string())
         );
         assert_eq!(cluster.chains_synchronizer[0].status, Status::Synchronized);
@@ -1101,7 +1101,7 @@ mod tests {
 
         // node2 is leader
         assert_eq!(
-            cluster.chains_synchronizer[0].current_leader,
+            cluster.chains_synchronizer[0].leader,
             Some("node1".to_string())
         );
         assert_eq!(cluster.chains_synchronizer[0].status, Status::Synchronized);

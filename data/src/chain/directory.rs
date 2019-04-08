@@ -11,27 +11,7 @@ use exocore_common::serialization::framed::TypedFrame;
 use super::*;
 
 ///
-/// Configuration for directory based chain persistence.
-///
-#[derive(Copy, Clone, Debug)]
-pub struct DirectoryChainStoreConfig {
-    pub segment_over_allocate_size: u64,
-    pub segment_min_free_size: u64,
-    pub segment_max_size: u64,
-}
-
-impl Default for DirectoryChainStoreConfig {
-    fn default() -> Self {
-        DirectoryChainStoreConfig {
-            segment_over_allocate_size: 300 * 1024 * 1024, // 300mb
-            segment_min_free_size: 10 * 1024 * 1024,       // 10mb
-            segment_max_size: 4 * 1024 * 1024 * 1024,      // 4gb
-        }
-    }
-}
-
-///
-/// Directory based chain persistence. Chain is split in segments with maximum size, as defined by config.
+/// Directory based chain persistence. The chain is split in segments with configurable maximum size.
 /// This maximum size allows using mmap on 32bit systems by preventing segments from growing over 4gb.
 ///
 pub struct DirectoryChainStore {
@@ -273,6 +253,26 @@ impl ChainStore for DirectoryChainStore {
         }
 
         Ok(())
+    }
+}
+
+///
+/// Configuration for directory based chain persistence.
+///
+#[derive(Copy, Clone, Debug)]
+pub struct DirectoryChainStoreConfig {
+    pub segment_over_allocate_size: u64,
+    pub segment_min_free_size: u64,
+    pub segment_max_size: u64,
+}
+
+impl Default for DirectoryChainStoreConfig {
+    fn default() -> Self {
+        DirectoryChainStoreConfig {
+            segment_over_allocate_size: 300 * 1024 * 1024, // 300mb
+            segment_min_free_size: 10 * 1024 * 1024,       // 10mb
+            segment_max_size: 4 * 1024 * 1024 * 1024,      // 4gb
+        }
     }
 }
 
@@ -548,7 +548,7 @@ impl DirectorySegment {
         let operations_size = signatures_reader.get_operations_size() as usize;
         if operations_size > signatures_offset {
             return Err(Error::OutOfBound(format!(
-                "Tried to read block from next offset {}, but its entries size would exceed beginning of file (operations_size={} signatures_offset={})",
+                "Tried to read block from next offset {}, but its operations size would exceed beginning of file (operations_size={} signatures_offset={})",
                 next_offset, operations_size, signatures_offset,
             )));
         }
