@@ -8,5 +8,6 @@ edition = "2018"
 exocore-data = { path = "../data" }
 exocore-transport = { path = "../transport" }
 exocore-common = { path = "../common" }
+failure = "0.1.5"
 log = "0.4"
 tantivy = "0.8"
