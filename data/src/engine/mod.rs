@@ -718,6 +718,7 @@ impl Error {
         match self {
             Error::PendingStore(inner) => inner.is_fatal(),
             Error::ChainStore(inner) => inner.is_fatal(),
+            Error::ChainSync(inner) => inner.is_fatal(),
             Error::MyNodeNotFound
             | Error::MpscSendDropped
             | Error::InnerUpgrade

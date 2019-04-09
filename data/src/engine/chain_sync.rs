@@ -773,6 +773,15 @@ pub enum ChainSyncError {
     Other(String),
 }
 
+impl ChainSyncError {
+    pub fn is_fatal(&self) -> bool {
+        match *self {
+            ChainSyncError::Diverged(_) => true,
+            _ => false,
+        }
+    }
+}
+
 ///
 /// Samples the local chain and returns a collection of `BlockHeader` at different position in the asked range.
 ///
