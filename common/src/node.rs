@@ -67,6 +67,10 @@ impl Nodes {
         self.nodes.values()
     }
 
+    pub fn nodes_except<'a>(&'a self, node_id: &'a str) -> impl Iterator<Item = &'a Node> + 'a {
+        self.nodes.values().filter(move |n| n.id() != node_id)
+    }
+
     #[inline]
     pub fn get(&self, node_id: &str) -> Option<&Node> {
         self.nodes.get(node_id)

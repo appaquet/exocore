@@ -93,8 +93,7 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
             let im_leader = self
                 .leader
                 .as_ref()
-                .map(|leader| leader == &node_id)
-                .unwrap_or(false);
+                .map_or(false, |leader| leader == &node_id);
             if im_leader {
                 debug!("I'm the leader. Switching status to synchronized");
                 self.status = Status::Synchronized;
@@ -140,7 +139,7 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
         }
 
         // synchronize chain state with nodes
-        for node in nodes.nodes().filter(|n| n.id() != &node_id) {
+        for node in nodes.nodes_except(&node_id) {
             let node_info = self.get_or_create_node_info_mut(node.id());
 
             if node_info.request_tracker.can_send_request() {
@@ -277,27 +276,18 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
         let mut frame_builder = FrameBuilder::new();
         let mut request_builder: chain_sync_request::Builder = frame_builder.get_builder_typed();
 
-        let from_offset = node_info
-            .last_common_block
-            .as_ref()
-            .map(|b| {
-                // if we requesting blocks, we want data from next offset to prevent getting data
-                // for a block we have already have
-                if requested_details == RequestedDetails::Headers {
-                    b.offset
-                } else {
-                    b.next_offset()
-                }
-            })
-            .unwrap_or(0);
-
-        let to_offset = to_offset.unwrap_or_else(|| {
-            node_info
-                .last_known_block
-                .as_ref()
-                .map(|b| b.offset)
-                .unwrap_or(0)
+        let from_offset = node_info.last_common_block.as_ref().map_or(0, |b| {
+            // if we requesting blocks, we want data from next offset to prevent getting data
+            // for a block we have already have
+            if requested_details == RequestedDetails::Headers {
+                b.offset
+            } else {
+                b.next_offset()
+            }
         });
+
+        let to_offset = to_offset
+            .unwrap_or_else(|| node_info.last_known_block.as_ref().map_or(0, |b| b.offset));
 
         request_builder.set_from_offset(from_offset);
         request_builder.set_to_offset(to_offset);
@@ -446,8 +436,7 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
             let is_latest_offset = from_node_info
                 .last_known_block
                 .as_ref()
-                .map(|b| b.offset < offset)
-                .unwrap_or(true);
+                .map_or(true, |b| b.offset < offset);
             if is_latest_offset {
                 from_node_info.last_known_block =
                     Some(BlockHeader::from_block_header_reader(header_reader)?);
@@ -492,9 +481,8 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
         let lead_node_id = self.leader.as_ref().cloned();
         let from_node_info = self.get_or_create_node_info_mut(&from_node.id());
 
-        let is_from_leader = lead_node_id
-            .map(|lead_node_id| lead_node_id == from_node_info.node_id)
-            .unwrap_or(false);
+        let is_from_leader =
+            lead_node_id.map_or(false, |lead_node_id| lead_node_id == from_node_info.node_id);
         if is_from_leader {
             // write incoming blocks
             let mut last_local_block: Option<BlockHeader> = store
@@ -510,10 +498,7 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
                 let block = BlockRef::new(data)?;
 
                 // make sure the block was expected in our chain, then add it
-                let next_local_offset = last_local_block
-                    .as_ref()
-                    .map(|b| b.next_offset())
-                    .unwrap_or(0);
+                let next_local_offset = last_local_block.as_ref().map_or(0, |b| b.next_offset());
                 if block.offset() == next_local_offset {
                     store.write_block(&block)?;
                     let new_block_header = BlockHeader::from_stored_block(block)?;

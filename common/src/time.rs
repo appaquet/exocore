@@ -76,7 +76,9 @@ impl Clock {
         };
 
         let elaps = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-        elaps.as_secs() * 100_000 + u64::from(elaps.subsec_millis()) * 100 + counter as u64
+
+        // we shift by 1000 for milliseconds and then 100 for the counter
+        elaps.as_secs() * 1_000 * 100 + u64::from(elaps.subsec_millis()) * 100 + counter as u64
     }
 
     #[cfg(any(test, feature = "tests_utils"))]

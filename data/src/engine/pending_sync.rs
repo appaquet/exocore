@@ -62,7 +62,7 @@ impl<PS: PendingStore> PendingSynchronizer<PS> {
         nodes: &Nodes,
     ) -> Result<(), Error> {
         let my_node_id = self.node_id.clone();
-        for node in nodes.nodes().filter(|n| n.id() != &my_node_id) {
+        for node in nodes.nodes_except(&my_node_id) {
             let sync_info = self.get_or_create_node_info_mut(node.id());
             if sync_info.request_tracker.can_send_request() {
                 sync_info.request_tracker.set_last_send(Instant::now());
@@ -92,7 +92,7 @@ impl<PS: PendingStore> PendingSynchronizer<PS> {
 
         // create a sync request for which we send full detail for new op, but none for other ops
         let my_node_id = self.node_id.clone();
-        for node in nodes.nodes().filter(|n| n.id() != &my_node_id) {
+        for node in nodes.nodes_except(&my_node_id) {
             let request = self.create_sync_request_for_range(store, operation_id.., |op| {
                 if op.operation_id == operation_id {
                     OperationDetails::Full
