@@ -1,10 +1,12 @@
 use exocore_data;
 
+use tantivy::collector::TopDocs;
+use tantivy::query::QueryParser;
 use tantivy::schema::{IntOptions, Schema, SchemaBuilder, STORED, TEXT};
 use tantivy::{Document, Index, IndexWriter};
 
 use crate::entity::*;
-use std::collections::HashMap;
+use crate::queries::*;
 use std::io;
 use std::result::Result;
 
@@ -24,12 +26,11 @@ pub struct Indexer {
 impl Indexer {
     pub fn for_trait(t: &Trait) -> Result<Indexer, Error> {
         let schema = Indexer::build_schema(t);
-
         let index = Index::create_from_tempdir(schema.clone())?;
-        let mut index_writer = index.writer(50_000_000)?;
+        let writer = index.writer(50_000_000)?;
 
         Ok(Indexer {
-            writer: index_writer,
+            writer,
             index,
             schema,
         })
@@ -61,12 +62,41 @@ impl Indexer {
 
         let last_ts = self.writer.commit()?;
 
+        // Reload searcher to reflect state of commit for index
+        self.index.load_searchers()?;
+
         Ok(last_ts)
     }
 
+    pub fn search(&self, query: &dyn Query) -> Result<Vec<String>, Error> {
+        let searcher = self.index.searcher();
+
+        let fields = &query
+            .fields()
+            .iter()
+            .flat_map(|f| self.schema.get_field(&f))
+            .collect::<Vec<_>>();
+
+        let mut query_parser = QueryParser::for_index(&self.index, fields.clone());
+
+        let query = query_parser.parse_query(&query.value())?;
+        let mut top_collector = TopDocs::with_limit(10);
+
+        let results = searcher.search(&*query, &mut top_collector)?;
+
+        let mut res = Vec::new();
+        for (score, doc) in results {
+            let r = searcher.doc(doc)?;
+            res.push(format!(
+                "Result for {:?} -> {:?} score {:?}",
+                query, r, score
+            ));
+        }
+
+        Ok(res)
+    }
+
     fn build_schema(t: &Trait) -> Schema {
-        // FIXME : to_string shouldn't be needed
-        //        self.trait_schemas.entry(t.name.to_string()).or_insert_with(|| {
         let mut schema_builder = SchemaBuilder::default();
 
         schema_builder.add_text_field("type", TEXT | STORED);
@@ -86,7 +116,7 @@ impl Indexer {
                     schema_builder.add_u64_field(&field.name, options);
                 }
                 FieldType::Text => {
-                    // FIXME : Allow different text indexing options
+                    // TODO : Allow different text indexing options
                     let mut options = TEXT;
                     if field.stored {
                         options = options.set_stored();
@@ -98,7 +128,6 @@ impl Indexer {
         });
 
         schema_builder.build()
-        //        })
     }
 }
 
@@ -120,6 +149,12 @@ where
     }
 }
 
+impl From<tantivy::query::QueryParserError> for Error {
+    fn from(err: tantivy::query::QueryParserError) -> Self {
+        Error::QueryParserError(err)
+    }
+}
+
 impl From<tantivy::TantivyError> for Error {
     fn from(err: tantivy::TantivyError) -> Self {
         Error::TantivyError(err)
@@ -134,6 +169,8 @@ impl From<io::Error> for Error {
 
 #[derive(Debug, Fail)]
 pub enum Error {
+    #[fail(display = "An error as occurred in Query parsing: {:?}", _0)]
+    QueryParserError(tantivy::query::QueryParserError),
     #[fail(display = "An error as occurred in Tantivy: {}", _0)]
     TantivyError(tantivy::TantivyError),
     #[fail(display = "A file error as occurred.")]
@@ -165,12 +202,19 @@ mod tests {
         );
 
         let traits = vec![&contact_trait];
-
         let mut indexer = Indexer::for_trait(&contact_trait)?;
-
         let last_ts = indexer.index_segment(traits.into_iter())?;
 
         assert!(last_ts > 0);
+
+        let q = FieldMatchQuery {
+            field_name: "email",
+            value: "justin.trudeau@gov.ca",
+        };
+
+        let res = indexer.search(&q)?;
+
+        assert_eq!(res.len(), 1);
 
         Ok(())
     }
