@@ -10,4 +10,5 @@ extern crate failure;
 extern crate tantivy;
 
 pub mod entity;
+pub mod queries;
 pub mod store;

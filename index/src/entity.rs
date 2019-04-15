@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::option::Option;
-use std::time::Instant;
 use std::vec::Vec;
 
 trait Record {
@@ -22,7 +21,7 @@ pub enum FieldValue {
     Long(u64),
     Text(String),
     Bool(bool),
-    Date(Instant),
+    Date(u64), // TODO : Use chrono::DateTime
 }
 
 pub trait Indexable {
