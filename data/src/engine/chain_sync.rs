@@ -417,8 +417,7 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
                         let is_latest_common_offset = from_node_info
                             .last_common_block
                             .as_ref()
-                            .map(|b| b.offset < offset)
-                            .unwrap_or(true);
+                            .map_or(true, |b| b.offset < offset);
                         if is_latest_common_offset {
                             from_node_info.last_common_block =
                                 Some(BlockHeader::from_block_header_reader(header_reader)?);

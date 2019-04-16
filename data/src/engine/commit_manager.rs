@@ -111,7 +111,7 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
                 .iter()
                 .filter(|sig| next_block.validate_signature(nodes, sig));
             if next_block.has_my_signature && nodes.is_quorum(valid_signatures.count()) {
-                debug!("Block has enough signatures ! We should commit!");
+                debug!("Block has enough signatures, we should commit");
                 self.commit_block(next_block, pending_store, chain_store, nodes)?;
             }
         } else if self.should_propose_block(nodes, chain_store, &pending_blocks)? {
@@ -297,7 +297,7 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
                 let operation_is_committed = pending_blocks
                     .operations_blocks
                     .get(&operation.operation_id)
-                    .map(|blocks| {
+                    .map_or(false, |blocks| {
                         blocks.iter().any(|block| {
                             let block_status = pending_blocks
                                 .blocks_status
@@ -305,8 +305,7 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
                                 .expect("Couldn't find status of a current block");
                             *block_status == BlockStatus::PastCommitted
                         })
-                    })
-                    .unwrap_or(false);
+                    });
 
                 let operation_in_chain = chain_store
                     .get_block_by_operation_id(operation.operation_id)
@@ -386,12 +385,15 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
         let signatures = next_block
             .signatures
             .iter()
-            .filter(|pending_signature| next_block.validate_signature(nodes, pending_signature))
-            .map(|pending_signature| {
-                chain::BlockSignature::new(
-                    pending_signature.node_id.clone(),
-                    pending_signature.signature.clone(),
-                )
+            .filter_map(|pending_signature| {
+                if next_block.validate_signature(nodes, pending_signature) {
+                    Some(chain::BlockSignature::new(
+                        pending_signature.node_id.clone(),
+                        pending_signature.signature.clone(),
+                    ))
+                } else {
+                    None
+                }
             })
             .collect::<Vec<_>>();
         let block_signatures = chain::BlockSignatures::new_from_signatures(signatures);

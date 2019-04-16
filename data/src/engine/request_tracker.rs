@@ -49,10 +49,9 @@ impl RequestTracker {
         }
 
         let next_request_interval = self.next_request_interval();
-        let should_send_request = self
-            .last_request_send
-            .map(|send_time| (self.clock.instant() - send_time) >= next_request_interval)
-            .unwrap_or(true);
+        let should_send_request = self.last_request_send.map_or(true, |send_time| {
+            (self.clock.instant() - send_time) >= next_request_interval
+        });
 
         if should_send_request {
             if self.last_request_send.is_some() && !self.has_responded_last_request() {

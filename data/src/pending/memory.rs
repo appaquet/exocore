@@ -195,45 +195,40 @@ mod test {
     use super::*;
 
     #[test]
-    fn put_and_retrieve_operation() {
+    fn put_and_retrieve_operation() -> Result<(), failure::Error> {
         let mut store = MemoryPendingStore::new();
 
-        store
-            .put_operation(create_dummy_new_entry_op(105, 200))
-            .unwrap();
-        store
-            .put_operation(create_dummy_new_entry_op(100, 200))
-            .unwrap();
-        store
-            .put_operation(create_dummy_new_entry_op(102, 201))
-            .unwrap();
+        store.put_operation(create_dummy_new_entry_op(105, 200))?;
+        store.put_operation(create_dummy_new_entry_op(100, 200))?;
+        store.put_operation(create_dummy_new_entry_op(102, 201))?;
 
         let timeline: Vec<(OperationID, GroupID)> = store
-            .operations_iter(..)
-            .unwrap()
+            .operations_iter(..)?
             .map(|op| (op.operation_id, op.group_id))
             .collect();
         assert_eq!(timeline, vec![(100, 200), (102, 201), (105, 200),]);
 
-        assert!(store.get_operation(42).unwrap().is_none());
+        assert!(store.get_operation(42)?.is_none());
 
-        let group_operations = store.get_group_operations(200).unwrap().unwrap();
+        let group_operations = store.get_group_operations(200)?.unwrap();
         assert_eq!(group_operations.group_id, 200);
 
-        let op_ids: Vec<OperationID> = group_operations
+        let op_ids = group_operations
             .operations
             .iter()
             .map(|op| {
-                let reader = op.frame.get_typed_reader().unwrap();
-                reader.get_operation_id()
+                let reader = op.frame.get_typed_reader()?;
+                Ok(reader.get_operation_id())
             })
-            .collect();
+            .collect::<Result<Vec<OperationID>, failure::Error>>()?;
 
         assert_eq!(op_ids, vec![100, 105]);
+
+        Ok(())
     }
 
     #[test]
-    fn operations_iteration() {
+    fn operations_iteration() -> Result<(), failure::Error> {
         let mut store = MemoryPendingStore::new();
 
         store
@@ -252,6 +247,8 @@ mod test {
             .put_operation(create_dummy_new_entry_op(110, 203))
             .unwrap();
 
-        assert_eq!(store.operations_iter(..).unwrap().count(), 5);
+        assert_eq!(store.operations_iter(..)?.count(), 5);
+
+        Ok(())
     }
 }

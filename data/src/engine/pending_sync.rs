@@ -443,7 +443,7 @@ impl SyncRangesBuilder {
         if self.ranges.is_empty() {
             self.create_new_range(Bound::Unbounded);
         } else {
-            let last_range_size = self.ranges.last().map(|r| r.operations_count).unwrap_or(0);
+            let last_range_size = self.ranges.last().map_or(0, |r| r.operations_count);
             if last_range_size > MAX_OPERATIONS_PER_RANGE {
                 let last_range_to = self.last_range_to_bound().expect("Should had a last range");
 

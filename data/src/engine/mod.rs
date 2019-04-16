@@ -869,37 +869,37 @@ impl SyncContextMessage {
     ) -> Result<OutMessage, Error> {
         let signer = local_node.frame_signer();
 
+        let to_node = self.to_node();
+        let to_nodes = nodes
+            .nodes()
+            .filter(|n| n.id() == to_node)
+            .cloned()
+            .collect();
+
         let message = match self {
-            SyncContextMessage::PendingSyncRequest(to_node, request_builder) => {
-                let to_nodes = nodes
-                    .nodes()
-                    .filter(|n| n.id() == &to_node)
-                    .cloned()
-                    .collect();
+            SyncContextMessage::PendingSyncRequest(_, request_builder) => {
                 let frame = request_builder.as_owned_framed(signer)?;
                 OutMessage::from_framed_message(local_node, to_nodes, frame)?
             }
-            SyncContextMessage::ChainSyncRequest(to_node, request_builder) => {
-                let to_nodes = nodes
-                    .nodes()
-                    .filter(|n| n.id() == &to_node)
-                    .cloned()
-                    .collect();
+            SyncContextMessage::ChainSyncRequest(_, request_builder) => {
                 let frame = request_builder.as_owned_framed(signer)?;
                 OutMessage::from_framed_message(local_node, to_nodes, frame)?
             }
-            SyncContextMessage::ChainSyncResponse(to_node, response_builder) => {
-                let to_nodes = nodes
-                    .nodes()
-                    .filter(|n| n.id() == &to_node)
-                    .cloned()
-                    .collect();
+            SyncContextMessage::ChainSyncResponse(_, response_builder) => {
                 let frame = response_builder.as_owned_framed(signer)?;
                 OutMessage::from_framed_message(local_node, to_nodes, frame)?
             }
         };
 
         Ok(message)
+    }
+
+    fn to_node(&self) -> &str {
+        match self {
+            SyncContextMessage::PendingSyncRequest(to_node, _) => &to_node,
+            SyncContextMessage::ChainSyncRequest(to_node, _) => &to_node,
+            SyncContextMessage::ChainSyncResponse(to_node, _) => &to_node,
+        }
     }
 }
 
