@@ -16,7 +16,6 @@ use std::result::Result;
         https://doc.rust-lang.org/std/macro.thread_local.html
 */
 
-======
 pub struct Indexer {
     writer: IndexWriter,
     index: Index,
@@ -62,14 +61,13 @@ impl Indexer {
 
         let last_ts = self.writer.commit()?;
 
-        // Reload searcher to reflect state of commit for index
-        self.index.load_searchers()?;
-
         Ok(last_ts)
     }
 
     pub fn search(&self, query: &dyn Query) -> Result<Vec<String>, Error> {
-        let searcher = self.index.searcher();
+        // TODO: Should not re-create index reader at every search
+        let index_reader = self.index.reader()?;
+        let searcher = index_reader.searcher();
 
         let fields = &query
             .fields()
@@ -77,12 +75,12 @@ impl Indexer {
             .flat_map(|f| self.schema.get_field(&f))
             .collect::<Vec<_>>();
 
-        let mut query_parser = QueryParser::for_index(&self.index, fields.clone());
+        let query_parser = QueryParser::for_index(&self.index, fields.clone());
 
         let query = query_parser.parse_query(&query.value())?;
-        let mut top_collector = TopDocs::with_limit(10);
+        let top_collector = TopDocs::with_limit(10);
 
-        let results = searcher.search(&*query, &mut top_collector)?;
+        let results = searcher.search(&*query, &top_collector)?;
 
         let mut res = Vec::new();
         for (score, doc) in results {
@@ -133,16 +131,16 @@ impl Indexer {
 
 pub struct Store<CP, PP>
 where
-    CP: exocore_data::chain::Store,
-    PP: exocore_data::pending::Store,
+    CP: exocore_data::chain::ChainStore,
+    PP: exocore_data::pending::PendingStore,
 {
-    _data_handle: exocore_data::engine::Handle<CP, PP>,
+    _data_handle: exocore_data::engine::EngineHandle<CP, PP>,
 }
 
 impl<CP, PP> Store<CP, PP>
 where
-    CP: exocore_data::chain::Store,
-    PP: exocore_data::pending::Store,
+    CP: exocore_data::chain::ChainStore,
+    PP: exocore_data::pending::PendingStore,
 {
     fn start(&mut self) -> Result<(), Error> {
         Ok(())
@@ -219,4 +217,3 @@ mod tests {
         Ok(())
     }
 }
->>>>>>> 5a9d986... Indexer creation + index_segment taken out
