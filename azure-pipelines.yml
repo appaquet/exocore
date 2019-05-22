@@ -36,7 +36,7 @@ steps:
     displayName: 'Test all'
 
   - script: |
-      ./utils/coverage.sh
+      ./utils/coverage.sh Xml
       bash <(curl -s https://codecov.io/bash)
     displayName: 'Code coverage'
 
