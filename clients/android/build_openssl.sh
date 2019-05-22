@@ -2,12 +2,7 @@
 set -e
 CUR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if [[ -z $ANDROID_NDK ]]; then
-  echo "Environment ANDROID_NDK should be set"
-  exit 1
-fi
-export PATH=$ANDROID_NDK/toolchains/arm-linux-androideabi-4.9/prebuilt/linux-x86_64/bin:$PATH
-export ANDROID_NDK_HOME=$ANDROID_NDK
+. ./env.sh
 
 rm -rf $CUR_DIR/openssl
 mkdir $CUR_DIR/openssl
@@ -25,6 +20,7 @@ cd $CUR_DIR/openssl/openssl-$OPENSSL_VERSION/
 export PREFIX=$TARGET_DIR/arm
 mkdir $PREFIX
 # See https://github.com/openssl/openssl/blob/master/NOTES.ANDROID
+export PATH=$ANDROID_NDK/toolchains/arm-linux-androideabi-4.9/prebuilt/linux-x86_64/bin:$PATH
 ./Configure android-arm -D__ANDROID_API__=14 --prefix=$PREFIX
 make -j12
 make -j12 install
