@@ -60,7 +60,7 @@ A cell consists of:
 
 * Android build (optional):
   * Using Docker
-      * Build with `docker run --rm -v "$pwd:/root/src" -w /root/src appaquet/cargo-apk ./clients/android/build.sh` 
+      * Build with `docker run --rm -v "$PWD:/root/src" -w /root/src appaquet/cargo-apk ./clients/android/build.sh` 
       
   * Using host machine
       * Install Rust targets:
