@@ -22,5 +22,5 @@ mkdir $PREFIX
 # See https://github.com/openssl/openssl/blob/master/NOTES.ANDROID
 export PATH=$ANDROID_NDK/toolchains/arm-linux-androideabi-4.9/prebuilt/linux-x86_64/bin:$PATH
 ./Configure android-arm -D__ANDROID_API__=14 --prefix=$PREFIX
-make -j12
-make -j12 install
+make
+make install
