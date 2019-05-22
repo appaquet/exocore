@@ -8,7 +8,7 @@ cd $CUR_DIR/../
 TARPAULIN_VERSION=$(cargo tarpaulin --version)
 if [[ $? -ne 0 || $FORCE_DOCKER ]]; then
     echo "Executing through Docker..."
-    sudo docker run -it --rm --security-opt seccomp=unconfined -v "$PWD:/volume" appaquet/tarpaulin:0.7.0 ./utils/coverage.sh
+    sudo docker run --rm --security-opt seccomp=unconfined -v "$PWD:/volume" appaquet/tarpaulin:0.7.0 ./utils/coverage.sh
 else
     # First try with all cores for faster compilation, which will fail because of https://github.com/xd009642/tarpaulin/issues/190#issuecomment-491040656
     cargo tarpaulin --verbose --all --out Html \
