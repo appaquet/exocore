@@ -15,7 +15,8 @@ serde_derive = "1.0"
 parity-multihash = "0.1"
 sha3 = "0.8"
 bs58 = "0.2"
-capnp = { git = "https://github.com/appaquet/capnproto-rust.git", branch = "thread-safe-arena-readlimiter" }
+#capnp = { git = "https://github.com/appaquet/capnproto-rust.git", branch = "thread-safe-arena-readlimiter" }
+capnp = "0.10"
 byteorder = "1.2"
 owning_ref = "0.4"
 lazycell = "1.2"
@@ -27,7 +28,7 @@ libp2p-core = "0.8"
 log4rs = { version = "0.8", optional = true }
 
 [build-dependencies]
-capnpc = "0.9"
+capnpc = "0.10"
 
 [dev-dependencies]
 tempdir = "0.3"
