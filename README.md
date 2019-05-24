@@ -67,6 +67,7 @@ A cell consists of:
       * Install Rust targets:
         * `rustup target add i686-linux-android`
         * `rustup target add arm-linux-androideabi`
+        * `rustup target add aarch64-linux-android`
       * Follow instructions from [`android-rs-glue`](https://github.com/rust-windowing/android-rs-glue#setting-up-your-environment).
         * You need to install Android NDK 17 since GCC isn't packaged since NDK 17 (now clang). See this [issue](https://github.com/rust-windowing/android-rs-glue/issues/208).
         * If installation of cargo-apk doesn't work, use this patched version:

@@ -16,4 +16,7 @@ android_glue = "0.2.3"
 
 [package.metadata.android]
 label = "Exocore Android Client"
-build_targets = ["arm-linux-androideabi"]
+build_targets = ["arm-linux-androideabi", "aarch64-linux-android"]
+android_version = 21
+target_sdk_version = 21
+min_sdk_version = 21

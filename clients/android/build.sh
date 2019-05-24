@@ -15,5 +15,10 @@ if [[ ! -x "$(command -v cargo-apk)" ]]; then
     exit 1
 fi
 
+$ANDROID_SDK/tools/bin/sdkmanager "platform-tools" "platforms;android-21" "build-tools;26.0.1"
+
 export OPENSSL_DIR=$CUR_DIR/openssl/target/arm
-cargo-apk build --lib -p exocore-client-android
+cargo-apk build --lib -p exocore-client-android --target arm-linux-androideabi
+
+export OPENSSL_DIR=$CUR_DIR/openssl/target/aarch64
+cargo-apk build --lib -p exocore-client-android --target aarch64-linux-android
