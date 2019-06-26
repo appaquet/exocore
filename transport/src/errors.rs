@@ -1,4 +1,4 @@
-use exocore_common::serialization::{capnp, framed};
+use exocore_common::serialization::capnp;
 
 #[cfg(any(feature = "libp2p_transport", feature = "websocket_transport"))]
 use std::sync::Arc;
@@ -13,9 +13,6 @@ pub enum Error {
     #[cfg(feature = "websocket_transport")]
     #[fail(display = "Websocket transport error: {:?}", _0)]
     WebsocketTransport(Arc<crate::ws::WebSocketError>),
-
-    #[fail(display = "Error in framing serialization: {:?}", _0)]
-    Framing(#[fail(cause)] framed::Error),
 
     #[fail(display = "Error in capnp serialization: kind={:?} msg={}", _0, _1)]
     Serialization(capnp::ErrorKind, String),
@@ -50,12 +47,6 @@ where
 impl From<crate::ws::WebSocketError> for Error {
     fn from(err: crate::ws::WebSocketError) -> Self {
         Error::WebsocketTransport(Arc::new(err))
-    }
-}
-
-impl From<framed::Error> for Error {
-    fn from(err: framed::Error) -> Self {
-        Error::Framing(err)
     }
 }
 

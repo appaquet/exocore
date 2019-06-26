@@ -4,7 +4,7 @@ use wasm_bindgen::prelude::*;
 
 use stdweb;
 
-use exocore_common::framing::{TypedCapnpFrame, CapnpFrameBuilder, FrameBuilder};
+use exocore_common::framing::{CapnpFrameBuilder, FrameBuilder, TypedCapnpFrame};
 use exocore_common::serialization::protos::data_transport_capnp::envelope;
 use stdweb::traits::*;
 use stdweb::web::event::{SocketMessageEvent, SocketOpenEvent};
@@ -51,7 +51,7 @@ impl ExocoreClient {
     #[wasm_bindgen]
     pub fn send(&self, text: &str) {
         let mut frame_builder = CapnpFrameBuilder::<envelope::Owned>::new();
-        let mut envelope_builder: envelope::Builder = frame_builder.get_builder_typed();
+        let mut envelope_builder: envelope::Builder = frame_builder.get_builder();
         envelope_builder.set_data(text.as_bytes());
         self.ws.send_bytes(&frame_builder.as_bytes()).unwrap();
     }

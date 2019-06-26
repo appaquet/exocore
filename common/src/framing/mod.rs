@@ -75,12 +75,10 @@ pub trait FrameReader {
         Ok(whole_data.len())
     }
 
-    #[deprecated]
     fn frame_data(&self) -> &[u8] {
         self.whole_data()
     }
 
-    #[deprecated]
     fn frame_size(&self) -> usize {
         self.whole_data().len()
     }

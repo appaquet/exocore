@@ -5,8 +5,8 @@ use exocore_common::data_chain_capnp::pending_operation;
 use exocore_common::framing;
 use exocore_common::framing::{CapnpFrameBuilder, FrameBuilder};
 use exocore_common::node::{LocalNode, NodeId};
+use exocore_common::serialization::capnp;
 use exocore_common::serialization::protos::data_chain_capnp::block_signature;
-use exocore_common::serialization::{capnp, framed};
 
 pub type GroupId = u64;
 pub type OperationId = u64;
@@ -201,8 +201,6 @@ impl crate::operation::Operation for NewOperation {
 pub enum Error {
     #[fail(display = "The operation is not any entry operation")]
     NotAnEntry,
-    #[fail(display = "Error in message serialization")]
-    Framing(#[fail(cause)] framed::Error),
     #[fail(display = "IO error: {}", _0)]
     IO(String),
     #[fail(display = "Error in capnp serialization: kind={:?} msg={}", _0, _1)]
@@ -211,12 +209,6 @@ pub enum Error {
     SerializationNotInSchema(u16),
     #[fail(display = "Other operation error: {}", _0)]
     Other(String),
-}
-
-impl From<framed::Error> for Error {
-    fn from(err: framed::Error) -> Self {
-        Error::Framing(err)
-    }
 }
 
 impl From<capnp::Error> for Error {

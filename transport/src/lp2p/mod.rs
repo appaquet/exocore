@@ -426,7 +426,7 @@ impl Drop for Libp2pTransportHandle {
 mod tests {
     use super::*;
     use exocore_common::cell::FullCell;
-    use exocore_common::serialization::framed::FrameBuilder;
+    use exocore_common::framing::CapnpFrameBuilder;
     use exocore_common::serialization::protos::data_chain_capnp::block_operation_header;
     use exocore_common::tests_utils::expect_eventually;
     use std::sync::Mutex;
@@ -462,19 +462,19 @@ mod tests {
         // give time for nodes to connect to each others
         std::thread::sleep(Duration::from_secs(1));
 
-        // create dummy frame
-        let frame_builder = FrameBuilder::<block_operation_header::Owned>::new();
-        let frame = frame_builder.as_owned_unsigned_framed()?;
-
         // send 1 to 2
         let to_nodes = vec![node2.node().clone()];
-        let msg = OutMessage::from_framed_message(&node1_cell, to_nodes, frame.clone())?;
+        let mut frame_builder = CapnpFrameBuilder::<block_operation_header::Owned>::new();
+        let _builder = frame_builder.get_builder();
+        let msg = OutMessage::from_framed_message(&node1_cell, to_nodes, frame_builder)?;
         handle1_tester.send(msg);
         expect_eventually(|| handle2_tester.received().len() == 1);
 
         // send 2 to twice 1 to test multiple nodes
         let to_nodes = vec![node1.node().clone(), node1.node().clone()];
-        let msg = OutMessage::from_framed_message(&node2_cell, to_nodes, frame)?;
+        let mut frame_builder = CapnpFrameBuilder::<block_operation_header::Owned>::new();
+        let _builder = frame_builder.get_builder();
+        let msg = OutMessage::from_framed_message(&node2_cell, to_nodes, frame_builder)?;
         handle2_tester.send(msg);
         expect_eventually(|| handle1_tester.received().len() == 2);
 

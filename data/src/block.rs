@@ -10,7 +10,7 @@ use exocore_common::framing::{
     PaddedFrame, PaddedFrameBuilder, SizedFrame, SizedFrameBuilder, TypedCapnpFrame,
 };
 use exocore_common::node::NodeId;
-use exocore_common::serialization::{capnp, framed};
+use exocore_common::serialization::capnp;
 use std::sync::Arc;
 
 pub type BlockOffset = u64;
@@ -336,9 +336,9 @@ impl BlockOwned {
         block_builder.set_signatures_size(signature_frame.frame_size() as BlockSignaturesSize);
 
         // serialize block and then re-read it
-        let block_frame_data: Vec<u8> = SizedFrameBuilder::new(MultihashFrameBuilder::<Sha3_256, _>::new(
-            block_frame_builder,
-        ))
+        let block_frame_data: Vec<u8> = SizedFrameBuilder::new(
+            MultihashFrameBuilder::<Sha3_256, _>::new(block_frame_builder),
+        )
         .as_bytes();
         let block_frame = read_block_frame(block_frame_data)?;
 
@@ -490,7 +490,6 @@ impl<'a> Iterator for ChainBlockIterator<'a> {
                 self.current_offset += block.total_size() as usize;
                 Some(block)
             }
-            Err(Error::Framing(framed::Error::EOF(_))) => None,
             Err(other) => {
                 self.last_error = Some(other);
                 None
@@ -757,8 +756,6 @@ pub enum Error {
     Integrity(String),
     #[fail(display = "An offset is out of the block data: {}", _0)]
     OutOfBound(String),
-    #[fail(display = "Error in message serialization")]
-    Framing(#[fail(cause)] framed::Error),
     #[fail(display = "IO error: {}", _0)]
     IO(String),
     #[fail(display = "Error in capnp serialization: kind={:?} msg={}", _0, _1)]
@@ -767,12 +764,6 @@ pub enum Error {
     SerializationNotInSchema(u16),
     #[fail(display = "Other operation error: {}", _0)]
     Other(String),
-}
-
-impl From<framed::Error> for Error {
-    fn from(err: framed::Error) -> Self {
-        Error::Framing(err)
-    }
 }
 
 impl From<capnp::Error> for Error {

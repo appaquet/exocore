@@ -11,8 +11,7 @@ use tokio::timer::Interval;
 use crate::operation::OperationId;
 use exocore_common;
 use exocore_common::node::NodeId;
-use exocore_common::serialization::framed::TypedFrame;
-use exocore_common::serialization::framed::{FrameBuilder, MessageType, TypedSliceFrame};
+use exocore_common::serialization::framed::MessageType;
 use exocore_common::serialization::protos::data_chain_capnp::pending_operation;
 use exocore_common::serialization::protos::data_transport_capnp::{
     chain_sync_request, chain_sync_response, envelope, pending_sync_request,
@@ -39,6 +38,7 @@ pub use chain_sync::ChainSyncConfig;
 pub use commit_manager::CommitManagerConfig;
 pub use errors::Error;
 use exocore_common::cell::{Cell, CellNodes};
+use exocore_common::framing::{CapnpFrameBuilder, FrameReader, TypedCapnpFrame};
 use exocore_common::utils::completion_notifier::{
     CompletionError, CompletionListener, CompletionNotifier,
 };
@@ -305,17 +305,17 @@ where
         match envelope_reader.get_type() {
             <pending_sync_request::Owned as MessageType>::MESSAGE_TYPE => {
                 let data = envelope_reader.get_data()?;
-                let sync_request = TypedSliceFrame::<pending_sync_request::Owned>::new(data)?;
+                let sync_request = TypedCapnpFrame::<_, pending_sync_request::Owned>::new(data)?;
                 inner.handle_incoming_pending_sync_request(&message, sync_request)?;
             }
             <chain_sync_request::Owned as MessageType>::MESSAGE_TYPE => {
                 let data = envelope_reader.get_data()?;
-                let sync_request = TypedSliceFrame::<chain_sync_request::Owned>::new(data)?;
+                let sync_request = TypedCapnpFrame::<_, chain_sync_request::Owned>::new(data)?;
                 inner.handle_incoming_chain_sync_request(&message, sync_request)?;
             }
             <chain_sync_response::Owned as MessageType>::MESSAGE_TYPE => {
                 let data = envelope_reader.get_data()?;
-                let sync_response = TypedSliceFrame::<chain_sync_response::Owned>::new(data)?;
+                let sync_response = TypedCapnpFrame::<_, chain_sync_response::Owned>::new(data)?;
                 inner.handle_incoming_chain_sync_response(&message, sync_response)?;
             }
             msg_type => {
@@ -442,14 +442,11 @@ where
         Ok(())
     }
 
-    fn handle_incoming_pending_sync_request<R>(
+    fn handle_incoming_pending_sync_request<R: FrameReader>(
         &mut self,
         message: &InMessage,
-        request: R,
-    ) -> Result<(), Error>
-    where
-        R: TypedFrame<pending_sync_request::Owned>,
-    {
+        request: TypedCapnpFrame<R, pending_sync_request::Owned>,
+    ) -> Result<(), Error> {
         // to prevent sending pending operations that may have already been committed, we don't accept
         // any pending sync requests until the chain is synchronized
         if !self.chain_is_synchronized() {
@@ -471,14 +468,11 @@ where
         Ok(())
     }
 
-    fn handle_incoming_chain_sync_request<R>(
+    fn handle_incoming_chain_sync_request<F: FrameReader>(
         &mut self,
         message: &InMessage,
-        request: R,
-    ) -> Result<(), Error>
-    where
-        R: TypedFrame<chain_sync_request::Owned>,
-    {
+        request: TypedCapnpFrame<F, chain_sync_request::Owned>,
+    ) -> Result<(), Error> {
         let mut sync_context = SyncContext::new(self.sync_state);
         self.chain_synchronizer.handle_sync_request(
             &mut sync_context,
@@ -494,14 +488,11 @@ where
         Ok(())
     }
 
-    fn handle_incoming_chain_sync_response<R>(
+    fn handle_incoming_chain_sync_response<F: FrameReader>(
         &mut self,
         message: &InMessage,
-        response: R,
-    ) -> Result<(), Error>
-    where
-        R: TypedFrame<chain_sync_response::Owned>,
-    {
+        response: TypedCapnpFrame<F, chain_sync_response::Owned>,
+    ) -> Result<(), Error> {
         let mut sync_context = SyncContext::new(self.sync_state);
         self.chain_synchronizer.handle_sync_response(
             &mut sync_context,
@@ -823,7 +814,7 @@ impl SyncContext {
     fn push_pending_sync_request(
         &mut self,
         node_id: NodeId,
-        request_builder: FrameBuilder<pending_sync_request::Owned>,
+        request_builder: CapnpFrameBuilder<pending_sync_request::Owned>,
     ) {
         self.messages.push(SyncContextMessage::PendingSyncRequest(
             node_id,
@@ -834,7 +825,7 @@ impl SyncContext {
     fn push_chain_sync_request(
         &mut self,
         node_id: NodeId,
-        request_builder: FrameBuilder<chain_sync_request::Owned>,
+        request_builder: CapnpFrameBuilder<chain_sync_request::Owned>,
     ) {
         self.messages.push(SyncContextMessage::ChainSyncRequest(
             node_id,
@@ -845,7 +836,7 @@ impl SyncContext {
     fn push_chain_sync_response(
         &mut self,
         node_id: NodeId,
-        response_builder: FrameBuilder<chain_sync_response::Owned>,
+        response_builder: CapnpFrameBuilder<chain_sync_response::Owned>,
     ) {
         self.messages.push(SyncContextMessage::ChainSyncResponse(
             node_id,
@@ -859,9 +850,9 @@ impl SyncContext {
 }
 
 enum SyncContextMessage {
-    PendingSyncRequest(NodeId, FrameBuilder<pending_sync_request::Owned>),
-    ChainSyncRequest(NodeId, FrameBuilder<chain_sync_request::Owned>),
-    ChainSyncResponse(NodeId, FrameBuilder<chain_sync_response::Owned>),
+    PendingSyncRequest(NodeId, CapnpFrameBuilder<pending_sync_request::Owned>),
+    ChainSyncRequest(NodeId, CapnpFrameBuilder<chain_sync_request::Owned>),
+    ChainSyncResponse(NodeId, CapnpFrameBuilder<chain_sync_response::Owned>),
 }
 
 impl SyncContextMessage {
@@ -873,19 +864,15 @@ impl SyncContextMessage {
             vec![]
         };
 
-        let signer = cell.local_node().frame_signer();
         let message = match self {
             SyncContextMessage::PendingSyncRequest(_, request_builder) => {
-                let frame = request_builder.as_owned_framed(signer)?;
-                OutMessage::from_framed_message(cell, to_nodes, frame)?
+                OutMessage::from_framed_message(cell, to_nodes, request_builder)?
             }
             SyncContextMessage::ChainSyncRequest(_, request_builder) => {
-                let frame = request_builder.as_owned_framed(signer)?;
-                OutMessage::from_framed_message(cell, to_nodes, frame)?
+                OutMessage::from_framed_message(cell, to_nodes, request_builder)?
             }
             SyncContextMessage::ChainSyncResponse(_, response_builder) => {
-                let frame = response_builder.as_owned_framed(signer)?;
-                OutMessage::from_framed_message(cell, to_nodes, frame)?
+                OutMessage::from_framed_message(cell, to_nodes, response_builder)?
             }
         };
 

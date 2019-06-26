@@ -3,7 +3,6 @@ use std::ops::Range;
 use crate::block;
 use crate::block::{Block, BlockOffset, BlockRef};
 use crate::operation::OperationId;
-use exocore_common::serialization::framed;
 
 pub mod directory;
 
@@ -61,8 +60,6 @@ pub enum Error {
     Block(#[fail(cause)] block::Error),
     #[fail(display = "The store is in an unexpected state: {}", _0)]
     UnexpectedState(String),
-    #[fail(display = "Error from the framing serialization: {:?}", _0)]
-    Framing(#[fail(cause)] framed::Error),
     #[fail(display = "The store has an integrity problem: {}", _0)]
     Integrity(String),
     #[fail(display = "A segment has reached its full capacity")]
@@ -91,12 +88,6 @@ impl Error {
 impl From<block::Error> for Error {
     fn from(err: block::Error) -> Self {
         Error::Block(err)
-    }
-}
-
-impl From<framed::Error> for Error {
-    fn from(err: framed::Error) -> Self {
-        Error::Framing(err)
     }
 }
 
