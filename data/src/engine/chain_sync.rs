@@ -17,6 +17,7 @@ use crate::engine::request_tracker::RequestTracker;
 use crate::engine::{request_tracker, Event};
 use crate::engine::{Error, SyncContext};
 use exocore_common::cell::{Cell, CellNodes, CellNodesOwned};
+use exocore_common::framing::FrameReader;
 
 ///
 /// Synchronizes the local chain against remote nodes' chain.

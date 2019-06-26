@@ -68,6 +68,10 @@ impl<D: MultihashDigest, I: FrameBuilder> MultihashFrameBuilder<D, I> {
             phantom: std::marker::PhantomData,
         }
     }
+
+    pub fn inner(&mut self) -> &mut I {
+        &mut self.inner
+    }
 }
 
 impl<D: MultihashDigest, I: FrameBuilder> FrameBuilder for MultihashFrameBuilder<D, I> {
@@ -99,6 +103,12 @@ impl<D: MultihashDigest, I: FrameBuilder> FrameBuilder for MultihashFrameBuilder
         into[inner_size..total_size].copy_from_slice(&multihash_bytes);
 
         Ok(total_size)
+    }
+
+    fn expected_size(&self) -> Option<usize> {
+        self.inner
+            .expected_size()
+            .map(|inner_size| inner_size + D::multihash_output_size())
     }
 
     fn as_owned_frame(&self) -> Self::OwnedFrameType {

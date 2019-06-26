@@ -60,6 +60,14 @@ impl<I: FrameBuilder> PaddedFrameBuilder<I> {
             minimum_size,
         }
     }
+
+    pub fn inner(&mut self) -> &mut I {
+        &mut self.inner
+    }
+
+    pub fn set_minimum_size(&mut self, minimum_size: usize) {
+        self.minimum_size = minimum_size;
+    }
 }
 
 impl<I: FrameBuilder> FrameBuilder for PaddedFrameBuilder<I> {
@@ -102,6 +110,16 @@ impl<I: FrameBuilder> FrameBuilder for PaddedFrameBuilder<I> {
         (&mut into[inner_size + padding_size..]).write_u32::<LittleEndian>(padding_size as u32)?;
 
         Ok(total_size)
+    }
+
+    fn expected_size(&self) -> Option<usize> {
+        self.inner.expected_size().map(|inner_size| {
+            if inner_size < self.minimum_size {
+                self.minimum_size + 4
+            } else {
+                inner_size + 4
+            }
+        })
     }
 
     fn as_owned_frame(&self) -> Self::OwnedFrameType {

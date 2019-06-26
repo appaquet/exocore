@@ -6,9 +6,10 @@ use exocore_common::data_chain_capnp::{
     block, block_operation_header, block_signature, block_signatures,
 };
 use exocore_common::framing;
+use exocore_common::framing::{CapnpFrameBuilder, FrameBuilder, FrameReader};
 use exocore_common::node::NodeId;
 use exocore_common::serialization::framed::{
-    FrameBuilder, OwnedTypedFrame, SignedFrame, TypedFrame, TypedSliceFrame,
+    OwnedTypedFrame, SignedFrame, TypedFrame, TypedSliceFrame,
 };
 use exocore_common::serialization::protos::data_chain_capnp::pending_operation;
 use exocore_common::serialization::{capnp, framed};
@@ -18,14 +19,10 @@ pub type BlockDepth = u64;
 pub type BlockOperationsSize = u32;
 pub type BlockSignaturesSize = u16;
 
-pub type BlockFrame<I> =
-    framing::capnp::TypedCapnpFrame<framing::sized::SizedFrame<I>, block::Owned>;
+pub type BlockFrame<I> = framing::TypedCapnpFrame<framing::SizedFrame<I>, block::Owned>;
 
 pub type SignaturesFrame<I> =
-    framing::capnp::TypedCapnpFrame<framing::sized::SizedFrame<I>, block_signatures::Owned>;
-
-pub type SignaturesFrameBuilder =
-    framing::sized::SizedFrame<framing::capnp::CapnpFrameBuilder<block_signatures::Owned>>;
+    framing::TypedCapnpFrame<framing::PaddedFrame<framing::SizedFrame<I>>, block_signatures::Owned>;
 
 ///
 /// A trait representing a block stored or to be stored in the chain.
@@ -42,19 +39,20 @@ pub type SignaturesFrameBuilder =
 /// contain enough space for all nodes to add their own signature.
 ///
 pub trait Block {
-    type SignaturesFrameData: framing::FrameReader;
+    type SignaturesFrameData: framing::FrameReader<OwnedType = Vec<u8>>;
 
     type BlockType: TypedFrame<block::Owned> + SignedFrame;
-    type SignaturesType: TypedFrame<block_signatures::Owned> + SignedFrame;
 
     fn offset(&self) -> BlockOffset;
     fn block(&self) -> &Self::BlockType;
     fn operations_data(&self) -> &[u8];
-    fn signatures(&self) -> &Self::SignaturesType;
+    fn signatures(&self) -> &SignaturesFrame<Self::SignaturesFrameData>;
 
     #[inline]
     fn total_size(&self) -> usize {
-        self.block().frame_size() + self.operations_data().len() + self.signatures().frame_size()
+        self.block().frame_size()
+            + self.operations_data().len()
+            + self.signatures().whole_data().len()
     }
 
     #[inline]
@@ -62,6 +60,7 @@ pub trait Block {
         self.offset() + self.total_size() as BlockOffset
     }
 
+    // TODO:Should return error
     #[inline]
     fn copy_data_into(&self, data: &mut [u8]) {
         let operations_data = self.operations_data();
@@ -70,14 +69,16 @@ pub trait Block {
 
         self.block().copy_into(data);
         (&mut data[operations_offset..signatures_offset]).copy_from_slice(operations_data);
-        self.signatures().copy_into(&mut data[signatures_offset..]);
+        self.signatures()
+            .write_into(&mut data[signatures_offset..])
+            .expect("Couldn't write signatures into given buffer");
     }
 
     fn as_data_vec(&self) -> Vec<u8> {
         vec![
             self.block().frame_data(),
             self.operations_data(),
-            self.signatures().frame_data(),
+            self.signatures().whole_data(),
         ]
         .concat()
     }
@@ -134,10 +135,12 @@ pub trait Block {
     }
 
     fn validate(&self) -> Result<(), Error> {
+        // TODO: Should actually check signatures too
+
         let block_reader: block::Reader = self.block().get_typed_reader()?;
 
         let sig_size_header = block_reader.get_signatures_size() as usize;
-        let sig_size_stored = self.signatures().frame_size();
+        let sig_size_stored = self.signatures().whole_data().len();
         if sig_size_header != sig_size_stored {
             return Err(Error::Integrity(format!(
                 "Signatures size don't match: sig_size_header={}, sig_size_stored={}",
@@ -216,7 +219,7 @@ pub struct BlockOwned {
     pub offset: BlockOffset,
     pub block: OwnedTypedFrame<block::Owned>,
     pub operations_data: Vec<u8>,
-    pub signatures: OwnedTypedFrame<block_signatures::Owned>,
+    pub signatures: SignaturesFrame<Vec<u8>>,
 }
 
 impl BlockOwned {
@@ -224,7 +227,7 @@ impl BlockOwned {
         offset: BlockOffset,
         block: OwnedTypedFrame<block::Owned>,
         operations_data: Vec<u8>,
-        signatures: OwnedTypedFrame<block_signatures::Owned>,
+        signatures: SignaturesFrame<Vec<u8>>,
     ) -> BlockOwned {
         BlockOwned {
             offset,
@@ -287,7 +290,7 @@ impl BlockOwned {
         let operations_data_size = operations.data.len() as u32;
 
         // initialize block
-        let mut block_frame_builder = FrameBuilder::<block::Owned>::new();
+        let mut block_frame_builder = framed::FrameBuilder::<block::Owned>::new();
         let mut block_builder: block::Builder = block_frame_builder.get_builder_typed();
         block_builder.set_offset(offset);
         block_builder.set_depth(depth + 1);
@@ -327,7 +330,6 @@ impl Block for BlockOwned {
     type SignaturesFrameData = Vec<u8>;
 
     type BlockType = framed::OwnedTypedFrame<block::Owned>;
-    type SignaturesType = framed::OwnedTypedFrame<block_signatures::Owned>;
 
     fn offset(&self) -> u64 {
         self.offset
@@ -341,7 +343,7 @@ impl Block for BlockOwned {
         &self.operations_data
     }
 
-    fn signatures(&self) -> &Self::SignaturesType {
+    fn signatures(&self) -> &SignaturesFrame<Self::SignaturesFrameData> {
         &self.signatures
     }
 }
@@ -353,7 +355,7 @@ pub struct BlockRef<'a> {
     pub offset: BlockOffset,
     pub block: framed::TypedSliceFrame<'a, block::Owned>,
     pub operations_data: &'a [u8],
-    pub signatures: framed::TypedSliceFrame<'a, block_signatures::Owned>,
+    pub signatures: SignaturesFrame<&'a [u8]>,
 }
 
 impl<'a> BlockRef<'a> {
@@ -374,12 +376,42 @@ impl<'a> BlockRef<'a> {
         }
 
         let operations_data = &data[operations_offset..operations_offset + operations_size];
-        let signatures = framed::TypedSliceFrame::new(&data[signatures_offset..])?;
+        let signatures = BlockSignatures::read_frame_slice(&data[signatures_offset..])?;
 
         Ok(BlockRef {
             offset: block_reader.get_offset(),
             block,
             operations_data,
+            signatures,
+        })
+    }
+
+    pub fn new_from_next_offset(data: &[u8], next_offset: usize) -> Result<BlockRef, Error> {
+        let signatures = BlockSignatures::read_frame_from_next_offset(data, next_offset)?;
+        let signatures_reader: block_signatures::Reader = signatures.get_reader()?;
+        let signatures_offset = next_offset - signatures.frame_size();
+
+        let operations_size = signatures_reader.get_operations_size() as usize;
+        if operations_size > signatures_offset {
+            return Err(Error::OutOfBound(format!(
+                "Tried to read block from next offset {}, but its operations size would exceed beginning of file (operations_size={} signatures_offset={})",
+                next_offset, operations_size, signatures_offset,
+            )));
+        }
+
+        let operations_offset = signatures_offset - operations_size;
+        let operations_data = &data[operations_offset..operations_offset + operations_size];
+
+        let block = framed::TypedSliceFrame::<block::Owned>::new_from_next_offset(
+            &data[..],
+            operations_offset,
+        )?;
+        let block_reader = block.get_typed_reader()?;
+
+        Ok(BlockRef {
+            offset: block_reader.get_offset(),
+            operations_data,
+            block,
             signatures,
         })
     }
@@ -389,7 +421,6 @@ impl<'a> Block for BlockRef<'a> {
     type SignaturesFrameData = &'a [u8];
 
     type BlockType = framed::TypedSliceFrame<'a, block::Owned>;
-    type SignaturesType = framed::TypedSliceFrame<'a, block_signatures::Owned>;
 
     fn offset(&self) -> u64 {
         self.offset
@@ -403,7 +434,7 @@ impl<'a> Block for BlockRef<'a> {
         &self.operations_data
     }
 
-    fn signatures(&self) -> &Self::SignaturesType {
+    fn signatures(&self) -> &SignaturesFrame<Self::SignaturesFrameData> {
         &self.signatures
     }
 }
@@ -576,10 +607,10 @@ impl BlockSignatures {
         BlockSignatures { signatures }
     }
 
-    fn to_frame_builder(&self) -> FrameBuilder<block_signatures::Owned> {
-        let mut frame_builder = FrameBuilder::new();
+    fn to_frame_builder(&self) -> CapnpFrameBuilder<block_signatures::Owned> {
+        let mut frame_builder = CapnpFrameBuilder::new();
 
-        let signatures_builder: block_signatures::Builder = frame_builder.get_builder_typed();
+        let signatures_builder: block_signatures::Builder = frame_builder.get_builder();
         let mut signatures_array = signatures_builder.init_signatures(self.signatures.len() as u32);
         for (i, signature) in self.signatures.iter().enumerate() {
             let mut signature_builder = signatures_array.reborrow().get(i as u32);
@@ -592,42 +623,91 @@ impl BlockSignatures {
     pub fn to_frame_for_new_block(
         &self,
         operations_size: BlockOperationsSize,
-    ) -> Result<OwnedTypedFrame<block_signatures::Owned>, Error> {
+    ) -> Result<SignaturesFrame<Vec<u8>>, Error> {
         let mut signatures_frame_builder = self.to_frame_builder();
-        let mut signatures_builder = signatures_frame_builder.get_builder_typed();
+        let mut signatures_builder = signatures_frame_builder.get_builder();
         signatures_builder.set_operations_size(operations_size);
 
-        Ok(signatures_frame_builder.as_owned_unsigned_framed()?)
+        let frame_builder = framing::SizedFrameBuilder::new(framing::PaddedFrameBuilder::new(
+            signatures_frame_builder,
+            0,
+        ));
+        let frame_data = frame_builder.as_bytes();
+        Self::read_frame(frame_data)
     }
 
     pub fn to_frame_for_existing_block(
         &self,
         block_reader: &block::Reader,
-    ) -> Result<OwnedTypedFrame<block_signatures::Owned>, Error> {
+    ) -> Result<SignaturesFrame<Vec<u8>>, Error> {
         let expected_signatures_size = usize::from(block_reader.get_signatures_size());
 
+        // create capnp frame
         let mut signatures_frame_builder = self.to_frame_builder();
         let mut signatures_builder: block_signatures::Builder =
-            signatures_frame_builder.get_builder_typed();
+            signatures_frame_builder.get_builder();
         signatures_builder.set_operations_size(block_reader.get_operations_size());
-        let signatures_frame = signatures_frame_builder.as_owned_unsigned_framed()?;
+        let signatures_frame_data = signatures_frame_builder.as_bytes();
+        let signatures_frame_data_len = signatures_frame_data.len();
+
+        // create the enclosure frame (sized & padded)
+        let mut frame_builder = framing::SizedFrameBuilder::new(framing::PaddedFrameBuilder::new(
+            signatures_frame_data,
+            0,
+        ));
+        let frame_expected_size = frame_builder
+            .expected_size()
+            .expect("Frame should had been sized");
+
+        // check if we need to add padding to match original signatures size
+        if frame_expected_size < expected_signatures_size {
+            let diff = expected_signatures_size - frame_expected_size;
+            frame_builder
+                .inner()
+                .set_minimum_size(signatures_frame_data_len + diff);
+        }
+
+        // we build the frame and re-read it
+        let frame_data = frame_builder.as_bytes();
+        let signatures_frame = Self::read_frame(frame_data)?;
 
         // make sure that the signatures frame size is not higher than pre-allocated space in block
-        if signatures_frame.frame_size() > expected_signatures_size {
+        if signatures_frame.frame_size() != expected_signatures_size {
             return Err(Error::Integrity(format!(
-                "Block local signatures are taking more space than allocated space ({} > {})",
+                "Block local signatures isn't the same size as expected (got={} expected={})",
                 signatures_frame.frame_size(),
                 block_reader.get_signatures_size()
             )));
         }
 
-        // build a signatures frame that has the right amount of space as defined at the block
-        let required_padding = (expected_signatures_size - signatures_frame.frame_size()) as u16;
-        if required_padding > 0 {
-            Ok(signatures_frame.padded(required_padding)?)
-        } else {
-            Ok(signatures_frame)
-        }
+        Ok(signatures_frame)
+    }
+
+    pub fn read_frame(data: Vec<u8>) -> Result<SignaturesFrame<Vec<u8>>, Error> {
+        let frame = framing::TypedCapnpFrame::new(framing::PaddedFrame::new(
+            framing::SizedFrame::new(data)?,
+        )?)?;
+
+        Ok(frame)
+    }
+
+    pub fn read_frame_slice(data: &[u8]) -> Result<SignaturesFrame<&[u8]>, Error> {
+        let frame = framing::TypedCapnpFrame::new(framing::PaddedFrame::new(
+            framing::SizedFrame::new(data)?,
+        )?)?;
+
+        Ok(frame)
+    }
+
+    pub fn read_frame_from_next_offset(
+        data: &[u8],
+        next_offset: usize,
+    ) -> Result<SignaturesFrame<&[u8]>, Error> {
+        let frame = framing::TypedCapnpFrame::new(framing::PaddedFrame::new(
+            framing::SizedFrame::new_from_next_offset(data, next_offset)?,
+        )?)?;
+
+        Ok(frame)
     }
 }
 
@@ -661,6 +741,8 @@ pub enum Error {
     OutOfBound(String),
     #[fail(display = "Error in message serialization")]
     Framing(#[fail(cause)] framed::Error),
+    #[fail(display = "IO error: {}", _0)]
+    IO(String),
     #[fail(display = "Error in capnp serialization: kind={:?} msg={}", _0, _1)]
     Serialization(capnp::ErrorKind, String),
     #[fail(display = "Field is not in capnp schema: code={}", _0)]
@@ -684,6 +766,12 @@ impl From<capnp::Error> for Error {
 impl From<capnp::NotInSchema> for Error {
     fn from(err: capnp::NotInSchema) -> Self {
         Error::SerializationNotInSchema(err.0)
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(err: std::io::Error) -> Self {
+        Error::IO(err.to_string())
     }
 }
 

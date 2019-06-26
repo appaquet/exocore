@@ -118,6 +118,7 @@ mod tests {
     use crate::block::{BlockOperations, BlockOwned};
     use crate::operation::OperationBuilder;
     use exocore_common::cell::FullCell;
+    use exocore_common::framing::FrameReader;
     use exocore_common::node::LocalNode;
     use exocore_common::serialization::framed::TypedFrame;
 
@@ -164,7 +165,7 @@ mod tests {
             second_block.operations_data.len() as u32
         );
 
-        let signatures_reader = second_block.signatures.get_typed_reader()?;
+        let signatures_reader = second_block.signatures.get_reader()?;
         assert_eq!(
             signatures_reader.get_operations_size(),
             second_block.operations_data.len() as u32

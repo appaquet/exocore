@@ -116,6 +116,34 @@ where
     pub fn get_reader(&self) -> Result<<T as Owned>::Reader, capnp::Error> {
         self.reader.get_root()
     }
+
+    #[deprecated]
+    pub fn get_typed_reader(&self) -> Result<<T as Owned>::Reader, capnp::Error> {
+        self.reader.get_root()
+    }
+}
+
+impl<I: FrameReader, T> FrameReader for TypedCapnpFrame<I, T>
+where
+    T: for<'a> MessageType<'a>,
+{
+    type OwnedType = TypedCapnpFrame<CapnpFrame<I::OwnedType>, T>;
+
+    fn exposed_data(&self) -> &[u8] {
+        let inner = self.reader.get_segments();
+        inner.exposed_data()
+    }
+
+    fn whole_data(&self) -> &[u8] {
+        let inner = self.reader.get_segments();
+        inner.whole_data()
+    }
+
+    fn to_owned(&self) -> Self::OwnedType {
+        let inner = self.reader.get_segments();
+        let owned_inner = inner.to_owned();
+        TypedCapnpFrame::new(owned_inner).expect("Couldn't read owned version of self")
+    }
 }
 
 ///
@@ -142,7 +170,12 @@ where
     }
 
     pub fn get_builder(&mut self) -> <T as capnp::traits::Owned>::Builder {
-        self.builder.init_root()
+        self.builder.get_root().unwrap()
+    }
+
+    #[deprecated]
+    pub fn get_builder_typed(&mut self) -> <T as capnp::traits::Owned>::Builder {
+        self.builder.get_root().unwrap()
     }
 }
 
@@ -165,6 +198,10 @@ where
         check_into_size(buffer.len(), into)?;
         into[0..buffer.len()].copy_from_slice(&buffer);
         Ok(buffer.len())
+    }
+
+    fn expected_size(&self) -> Option<usize> {
+        None
     }
 
     fn as_owned_frame(&self) -> Self::OwnedFrameType {

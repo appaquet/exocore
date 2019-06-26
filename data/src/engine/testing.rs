@@ -4,12 +4,11 @@ use exocore_common::node::{LocalNode, Node, NodeId};
 use exocore_common::serialization::framed::{
     FrameBuilder, MultihashFrameSigner, OwnedTypedFrame, TypedFrame,
 };
-use exocore_common::serialization::protos::data_chain_capnp::{
-    block, block_signatures, pending_operation,
-};
+use exocore_common::serialization::protos::data_chain_capnp::{block, pending_operation};
 
 use crate::block::{
-    Block, BlockDepth, BlockOffset, BlockOperations, BlockOwned, BlockSignaturesSize,
+    Block, BlockDepth, BlockOffset, BlockOperations, BlockOwned, BlockSignatures,
+    BlockSignaturesSize, SignaturesFrame,
 };
 use crate::chain::directory::{DirectoryChainStore, DirectoryChainStoreConfig as DirectoryConfig};
 use crate::chain::ChainStore;
@@ -20,6 +19,7 @@ use crate::operation::{GroupId, NewOperation, Operation, OperationBuilder, Opera
 use crate::pending::memory::MemoryPendingStore;
 use crate::pending::PendingStore;
 use exocore_common::cell::FullCell;
+use exocore_common::framing::FrameReader;
 use exocore_common::time::Clock;
 use std::collections::HashMap;
 
@@ -331,13 +331,11 @@ pub fn create_dummy_block<B: TypedFrame<block::Owned>>(
     msg_builder.as_owned_framed(signer).unwrap()
 }
 
-pub fn create_dummy_block_sigs(operations_size: u32) -> OwnedTypedFrame<block_signatures::Owned> {
-    let mut msg_builder = FrameBuilder::<block_signatures::Owned>::new();
-    let mut block_builder = msg_builder.get_builder_typed();
-    block_builder.set_operations_size(operations_size);
-
-    let signer = MultihashFrameSigner::new_sha3256();
-    msg_builder.as_owned_framed(signer).unwrap()
+pub fn create_dummy_block_sigs(operations_size: u32) -> SignaturesFrame<Vec<u8>> {
+    let block_signatures = BlockSignatures::new_from_signatures(vec![]);
+    block_signatures
+        .to_frame_for_new_block(operations_size)
+        .unwrap()
 }
 
 pub fn dummy_pending_ops_generator(

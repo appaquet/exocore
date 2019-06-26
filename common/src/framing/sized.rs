@@ -47,7 +47,7 @@ impl<I: FrameReader> FrameReader for SizedFrame<I> {
     }
 
     fn whole_data(&self) -> &[u8] {
-        self.inner.whole_data()
+        &self.inner.whole_data()[0..self.inner_size + 8]
     }
 
     fn to_owned(&self) -> Self::OwnedType {
@@ -68,6 +68,10 @@ pub struct SizedFrameBuilder<I: FrameBuilder> {
 impl<I: FrameBuilder> SizedFrameBuilder<I> {
     pub fn new(inner: I) -> SizedFrameBuilder<I> {
         SizedFrameBuilder { inner }
+    }
+
+    pub fn inner(&mut self) -> &mut I {
+        &mut self.inner
     }
 }
 
@@ -96,6 +100,10 @@ impl<I: FrameBuilder> FrameBuilder for SizedFrameBuilder<I> {
         (&mut into[4 + inner_size..]).write_u32::<LittleEndian>(inner_size as u32)?;
 
         Ok(total_size)
+    }
+
+    fn expected_size(&self) -> Option<usize> {
+        self.inner.expected_size().map(|inner_size| inner_size + 8)
     }
 
     fn as_owned_frame(&self) -> Self::OwnedFrameType {

@@ -18,6 +18,7 @@ pub trait FrameBuilder {
 
     fn write<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error>;
     fn write_into(&self, into: &mut [u8]) -> Result<usize, io::Error>;
+    fn expected_size(&self) -> Option<usize>;
 
     fn as_owned_frame(&self) -> Self::OwnedFrameType;
 
@@ -41,6 +42,10 @@ impl FrameBuilder for Vec<u8> {
         check_into_size(self.len(), into)?;
         into[0..self.len()].copy_from_slice(&self);
         Ok(self.len())
+    }
+
+    fn expected_size(&self) -> Option<usize> {
+        Some(self.len())
     }
 
     fn as_owned_frame(&self) -> Self::OwnedFrameType {
@@ -67,6 +72,16 @@ pub trait FrameReader {
         check_into_size(whole_data.len(), into)?;
         into[0..whole_data.len()].copy_from_slice(&whole_data);
         Ok(whole_data.len())
+    }
+
+    #[deprecated]
+    fn frame_data(&self) -> &[u8] {
+        self.whole_data()
+    }
+
+    #[deprecated]
+    fn frame_size(&self) -> usize {
+        self.whole_data().len()
     }
 }
 
@@ -159,6 +174,10 @@ fn assert_builder_equals<B: FrameBuilder>(frame_builder: &B) -> Result<(), failu
     assert_eq!(&buffer1[..], &buffer2[..size]);
 
     assert_eq!(frame_builder.as_bytes(), buffer1);
+
+    if let Some(expected_size) = frame_builder.expected_size() {
+        assert_eq!(expected_size, buffer1.len());
+    }
 
     Ok(())
 }
