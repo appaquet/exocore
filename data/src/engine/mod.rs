@@ -296,7 +296,7 @@ where
         let locked_inner = weak_inner.upgrade().ok_or(Error::InnerUpgrade)?;
         let mut inner = locked_inner.write()?;
 
-        let envelope_reader: envelope::Reader = message.envelope.get_typed_reader()?;
+        let envelope_reader: envelope::Reader = message.envelope.get_reader()?;
         debug!(
             "{}: Got message of type {} from node {}",
             inner.cell.local_node().id(),

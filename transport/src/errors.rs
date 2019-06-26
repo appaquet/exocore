@@ -23,6 +23,9 @@ pub enum Error {
     #[fail(display = "Field is not in capnp schema: code={}", _0)]
     SerializationNotInSchema(u16),
 
+    #[fail(display = "IO error: {}", _0)]
+    IO(String),
+
     #[fail(display = "Could not upgrade a weak reference")]
     Upgrade,
 
@@ -71,5 +74,11 @@ impl From<capnp::NotInSchema> for Error {
 impl<T> From<std::sync::PoisonError<T>> for Error {
     fn from(_err: std::sync::PoisonError<T>) -> Self {
         Error::Poisoned
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(err: std::io::Error) -> Self {
+        Error::IO(err.to_string())
     }
 }

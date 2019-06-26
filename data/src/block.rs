@@ -5,6 +5,7 @@ use exocore_common::crypto::signature::Signature;
 use exocore_common::data_chain_capnp::{
     block, block_operation_header, block_signature, block_signatures,
 };
+use exocore_common::framing;
 use exocore_common::node::NodeId;
 use exocore_common::serialization::framed::{
     FrameBuilder, OwnedTypedFrame, SignedFrame, TypedFrame, TypedSliceFrame,
@@ -16,6 +17,15 @@ pub type BlockOffset = u64;
 pub type BlockDepth = u64;
 pub type BlockOperationsSize = u32;
 pub type BlockSignaturesSize = u16;
+
+pub type BlockFrame<I> =
+    framing::capnp::TypedCapnpFrame<framing::sized::SizedFrame<I>, block::Owned>;
+
+pub type SignaturesFrame<I> =
+    framing::capnp::TypedCapnpFrame<framing::sized::SizedFrame<I>, block_signatures::Owned>;
+
+pub type SignaturesFrameBuilder =
+    framing::sized::SizedFrame<framing::capnp::CapnpFrameBuilder<block_signatures::Owned>>;
 
 ///
 /// A trait representing a block stored or to be stored in the chain.
@@ -32,6 +42,8 @@ pub type BlockSignaturesSize = u16;
 /// contain enough space for all nodes to add their own signature.
 ///
 pub trait Block {
+    type SignaturesFrameData: framing::FrameReader;
+
     type BlockType: TypedFrame<block::Owned> + SignedFrame;
     type SignaturesType: TypedFrame<block_signatures::Owned> + SignedFrame;
 
@@ -312,6 +324,8 @@ impl BlockOwned {
 }
 
 impl Block for BlockOwned {
+    type SignaturesFrameData = Vec<u8>;
+
     type BlockType = framed::OwnedTypedFrame<block::Owned>;
     type SignaturesType = framed::OwnedTypedFrame<block_signatures::Owned>;
 
@@ -372,6 +386,8 @@ impl<'a> BlockRef<'a> {
 }
 
 impl<'a> Block for BlockRef<'a> {
+    type SignaturesFrameData = &'a [u8];
+
     type BlockType = framed::TypedSliceFrame<'a, block::Owned>;
     type SignaturesType = framed::TypedSliceFrame<'a, block_signatures::Owned>;
 

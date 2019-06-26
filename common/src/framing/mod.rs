@@ -5,6 +5,11 @@ pub mod multihash;
 pub mod padded;
 pub mod sized;
 
+pub use self::capnp::{CapnpFrame, CapnpFrameBuilder, TypedCapnpFrame};
+pub use multihash::{MultihashFrame, MultihashFrameBuilder};
+pub use padded::{PaddedFrame, PaddedFrameBuilder};
+pub use sized::{IteratedSizedFrame, SizedFrame, SizedFrameBuilder, SizedFrameIterator};
+
 // TODO: use case of blocks to store operations, signatures, signed block seperately ("compound" ?)
 
 ///
@@ -14,10 +19,11 @@ pub trait FrameBuilder {
     fn write<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error>;
     fn write_into(&self, into: &mut [u8]) -> Result<usize, io::Error>;
 
-    fn as_bytes(&self) -> Result<Vec<u8>, io::Error> {
+    fn as_bytes(&self) -> Vec<u8> {
         let mut buffer = Vec::new();
-        self.write(&mut buffer)?;
-        Ok(buffer)
+        self.write(&mut buffer)
+            .expect("Couldn't write frame into in-memory vec");
+        buffer
     }
 }
 
@@ -53,10 +59,6 @@ pub trait FrameReader {
         check_into_size(whole_data.len(), into)?;
         into[0..whole_data.len()].copy_from_slice(&whole_data);
         Ok(whole_data.len())
-    }
-
-    fn to_bytes(&self) -> Vec<u8> {
-        self.whole_data().to_vec()
     }
 }
 
@@ -94,14 +96,14 @@ impl FrameReader for &[u8] {
 
 fn check_into_size(needed: usize, into: &[u8]) -> Result<(), io::Error> {
     if into.len() < needed {
-        return Err(io::Error::new(
+        Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!(
                 "Buffer not big enough to write {} bytes (buffer is {} bytes)",
                 needed,
                 into.len()
             ),
-        ));
+        ))
     } else {
         Ok(())
     }
@@ -109,14 +111,14 @@ fn check_into_size(needed: usize, into: &[u8]) -> Result<(), io::Error> {
 
 fn check_from_size(needed: usize, from: &[u8]) -> Result<(), io::Error> {
     if from.len() < needed {
-        return Err(io::Error::new(
+        Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!(
                 "Buffer not big enough to read {} bytes (read is {} bytes)",
                 needed,
                 from.len()
             ),
-        ));
+        ))
     } else {
         Ok(())
     }
@@ -124,14 +126,14 @@ fn check_from_size(needed: usize, from: &[u8]) -> Result<(), io::Error> {
 
 fn check_offset_substract(offset: usize, sub_offset: usize) -> Result<(), io::Error> {
     if sub_offset > offset {
-        return Err(io::Error::new(
+        Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!(
                 "Tried to substract offset {} from offset {}, which would yield into negative offset",
                 sub_offset,
                 offset,
             ),
-        ));
+        ))
     } else {
         Ok(())
     }

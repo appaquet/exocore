@@ -8,8 +8,8 @@ use crate::Error;
 use crate::{TransportHandle, TransportLayer};
 use behaviour::{ExocoreBehaviour, ExocoreBehaviourEvent, ExocoreBehaviourMessage};
 use exocore_common::cell::{Cell, CellId, CellNodes};
+use exocore_common::framing::TypedCapnpFrame;
 use exocore_common::node::{LocalNode, NodeId};
-use exocore_common::serialization::framed::{TypedFrame, TypedSliceFrame};
 use exocore_common::serialization::protos::data_transport_capnp::envelope;
 use exocore_common::utils::completion_notifier::{
     CompletionError, CompletionListener, CompletionNotifier,
@@ -235,23 +235,15 @@ impl Libp2pTransport {
                 .poll()
                 .expect("Couldn't poll behaviour channel")
             {
-                // we don't need to sign the message since it's going through a authenticated channel (secio)
-                match msg.envelope.as_owned_unsigned_framed() {
-                    Ok(frame) => {
-                        let frame_data = frame.frame_data().to_vec();
+                let frame_data = msg.envelope_data;
 
-                        // prevent cloning frame if we only send to 1 node
-                        if msg.to.len() == 1 {
-                            let to_node = msg.to.first().unwrap();
-                            swarm.send_message(to_node.peer_id().clone(), frame_data);
-                        } else {
-                            for to_node in msg.to {
-                                swarm.send_message(to_node.peer_id().clone(), frame_data.clone());
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        error!("Couldn't serialize frame to data: {}", err);
+                // prevent cloning frame if we only send to 1 node
+                if msg.to.len() == 1 {
+                    let to_node = msg.to.first().unwrap();
+                    swarm.send_message(to_node.peer_id().clone(), frame_data);
+                } else {
+                    for to_node in msg.to {
+                        swarm.send_message(to_node.peer_id().clone(), frame_data.clone());
                     }
                 }
             }
@@ -260,11 +252,11 @@ impl Libp2pTransport {
             while let Async::Ready(Some(data)) = swarm.poll().expect("Couldn't poll swarm") {
                 match data {
                     ExocoreBehaviourEvent::Message(msg) => {
-                        if let Err(err) = Self::dispatch_message(&inner, &msg) {
-                            warn!("Couldn't dispatch message from {}: {}", msg.source, err);
-                        }
+                        trace!("Got message from {}", msg.source);
 
-                        trace!("Got message from {}", msg.source,);
+                        if let Err(err) = Self::dispatch_message(&inner, msg) {
+                            warn!("Couldn't dispatch message: {}", err);
+                        }
                     }
                 }
             }
@@ -297,10 +289,10 @@ impl Libp2pTransport {
     ///
     fn dispatch_message(
         inner: &RwLock<InnerTransport>,
-        message: &ExocoreBehaviourMessage,
+        message: ExocoreBehaviourMessage,
     ) -> Result<(), Error> {
-        let frame = TypedSliceFrame::<envelope::Owned>::new(&message.data)?;
-        let frame_reader: envelope::Reader = frame.get_typed_reader()?;
+        let frame = TypedCapnpFrame::<_, envelope::Owned>::new(message.data)?;
+        let frame_reader: envelope::Reader = frame.get_reader()?;
         let cell_id_bytes = frame_reader.get_cell_id()?;
 
         let mut inner = inner.write()?;

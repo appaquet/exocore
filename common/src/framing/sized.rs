@@ -1,7 +1,7 @@
 use super::{check_into_size, FrameBuilder, FrameReader};
+use crate::framing::{check_from_size, check_offset_substract};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io;
-use crate::framing::{check_from_size, check_offset_substract};
 
 ///
 ///
@@ -23,7 +23,10 @@ impl<I: FrameReader> SizedFrame<I> {
 }
 
 impl SizedFrame<&[u8]> {
-    pub fn new_from_next_offset(buffer: &[u8], next_offset: usize) -> Result<SizedFrame<&[u8]>, io::Error> {
+    pub fn new_from_next_offset(
+        buffer: &[u8],
+        next_offset: usize,
+    ) -> Result<SizedFrame<&[u8]>, io::Error> {
         check_offset_substract(next_offset, 4)?;
         check_from_size(next_offset - 4, buffer)?;
 
@@ -114,7 +117,7 @@ impl<'a> SizedFrameIterator<'a> {
 }
 
 impl<'a> Iterator for SizedFrameIterator<'a> {
-    type Item = IteratedFrame<'a>;
+    type Item = IteratedSizedFrame<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let offset = self.current_offset;
@@ -123,7 +126,7 @@ impl<'a> Iterator for SizedFrameIterator<'a> {
         match SizedFrame::new(slice) {
             Ok(frame) => {
                 self.current_offset += frame.size();
-                Some(IteratedFrame { offset, frame })
+                Some(IteratedSizedFrame { offset, frame })
             }
             Err(err) => {
                 self.last_error = Some(err);
@@ -133,7 +136,7 @@ impl<'a> Iterator for SizedFrameIterator<'a> {
     }
 }
 
-pub struct IteratedFrame<'a> {
+pub struct IteratedSizedFrame<'a> {
     pub offset: usize,
     pub frame: SizedFrame<&'a [u8]>,
 }
@@ -166,7 +169,7 @@ mod tests {
         frame_reader.write(&mut buf3)?;
         assert_eq!(buf1, buf3);
 
-        assert_eq!(buf1, frame_reader.to_bytes());
+        assert_eq!(buf1, frame_reader.whole_data());
 
         let mut buf4 = vec![0u8; 1000];
         let written_size = frame_reader.write_into(&mut buf4)?;
@@ -232,7 +235,7 @@ mod tests {
     #[test]
     fn invalid_from_next_offset() -> Result<(), failure::Error> {
         let frame1 = SizedFrameBuilder::new(vec![1u8; 10]);
-        let buffer = frame1.as_bytes()?;
+        let buffer = frame1.as_bytes();
 
         let result = SizedFrame::new_from_next_offset(&buffer[..], 1);
         assert!(result.is_err());

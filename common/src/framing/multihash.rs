@@ -1,4 +1,4 @@
-use super::{check_into_size, check_from_size, FrameBuilder, FrameReader};
+use super::{check_from_size, check_into_size, FrameBuilder, FrameReader};
 use crate::crypto::hash::MultihashDigest;
 use std::io;
 
@@ -109,7 +109,7 @@ mod tests {
 
     #[test]
     fn can_write_read_multihash_frame() -> Result<(), failure::Error> {
-        let inner = "hello".as_bytes().to_vec();
+        let inner = b"hello".to_vec();
         let builder = MultihashFrameBuilder::<Sha3_256, _>::new(inner.clone());
 
         let mut buffer1_1 = Vec::new();
@@ -125,7 +125,7 @@ mod tests {
         assert!(reader1.verify()?);
 
         let mut modified_buffer = buffer1_1.clone();
-        modified_buffer[0..5].copy_from_slice("world".as_bytes());
+        modified_buffer[0..5].copy_from_slice(b"world");
         let reader2 = MultihashFrame::<Sha3_256, _>::new(&modified_buffer[..])?;
         assert!(!reader2.verify()?);
 

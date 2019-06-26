@@ -1,5 +1,5 @@
 use super::{check_into_size, FrameBuilder, FrameReader};
-use crate::framing::{check_from_size};
+use crate::framing::check_from_size;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io;
 
@@ -16,8 +16,12 @@ impl<I: FrameReader> PaddedFrame<I> {
         let exposed_data = inner.exposed_data();
         check_from_size(4, exposed_data)?;
 
-        let padding_size = (&exposed_data[exposed_data.len() - 4..]).read_u32::<LittleEndian>()? as usize;
-        Ok(PaddedFrame { inner, padding_size })
+        let padding_size =
+            (&exposed_data[exposed_data.len() - 4..]).read_u32::<LittleEndian>()? as usize;
+        Ok(PaddedFrame {
+            inner,
+            padding_size,
+        })
     }
 }
 
@@ -106,17 +110,17 @@ mod tests {
     #[test]
     fn padded_frame_build_read() -> Result<(), failure::Error> {
         let builder = PaddedFrameBuilder::new(vec![1; 10], 0);
-        let frame = PaddedFrame::new(builder.as_bytes()?)?;
+        let frame = PaddedFrame::new(builder.as_bytes())?;
         assert_eq!(vec![1; 10], frame.exposed_data());
 
         let builder = PaddedFrameBuilder::new(vec![1; 10], 10);
-        let mut buffer = vec![0;100];
+        let mut buffer = vec![0; 100];
         let len = builder.write_into(&mut buffer[..])?;
         let frame = PaddedFrame::new(&buffer[..len])?;
         assert_eq!(vec![1; 10], frame.exposed_data());
 
         let builder = PaddedFrameBuilder::new(vec![1; 10], 20);
-        let frame = PaddedFrame::new(builder.as_bytes()?)?;
+        let frame = PaddedFrame::new(builder.as_bytes())?;
         assert_eq!(vec![1; 10], frame.exposed_data());
         assert_eq!(10, frame.padding_size);
         assert!(frame.whole_data().len() > 20);

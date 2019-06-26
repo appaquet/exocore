@@ -1,11 +1,11 @@
 use super::{FrameBuilder, FrameReader};
 
+use crate::framing::check_into_size;
 use crate::serialization::framed::MessageType;
 use capnp::message::{Builder, HeapAllocator, Reader, ReaderSegments};
 use capnp::traits::Owned;
 use capnp::Word;
 use std::io;
-use crate::framing::check_into_size;
 
 ///
 ///
@@ -141,8 +141,8 @@ where
         }
     }
 
-    pub fn get_builder(&mut self) -> Result<<T as capnp::traits::Owned>::Builder, capnp::Error> {
-        self.builder.get_root()
+    pub fn get_builder(&mut self) -> <T as capnp::traits::Owned>::Builder {
+        self.builder.init_root()
     }
 }
 
@@ -166,20 +166,29 @@ where
     }
 }
 
+impl<T> Default for CapnpFrameBuilder<T>
+where
+    T: for<'a> MessageType<'a>,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::serialization::protos::data_chain_capnp::block;
 
     #[test]
-    fn assert_typed_frame_send_sync() -> Result<(), failure::Error>{
+    fn assert_typed_frame_send_sync() -> Result<(), failure::Error> {
         fn test_sync<S: Send + Sync>(_sync: S) {}
 
         let mut frame_builder = CapnpFrameBuilder::<block::Owned>::new();
-        let mut builder = frame_builder.get_builder()?;
+        let mut builder = frame_builder.get_builder();
         builder.set_depth(1234);
 
-        let frame = TypedCapnpFrame::<_, block::Owned>::new(frame_builder.as_bytes()?)?;
+        let frame = TypedCapnpFrame::<_, block::Owned>::new(frame_builder.as_bytes())?;
         test_sync(frame);
 
         Ok(())
@@ -188,7 +197,7 @@ mod tests {
     #[test]
     fn capnp_build_and_read() -> Result<(), failure::Error> {
         let mut frame_builder = CapnpFrameBuilder::<block::Owned>::new();
-        let mut builder = frame_builder.get_builder()?;
+        let mut builder = frame_builder.get_builder();
         builder.set_depth(1234);
 
         let mut buffer = vec![0u8; 0];
@@ -208,7 +217,7 @@ mod tests {
     #[test]
     fn capnp_build_into_and_read() -> Result<(), failure::Error> {
         let mut frame_builder = CapnpFrameBuilder::<block::Owned>::new();
-        let mut builder = frame_builder.get_builder()?;
+        let mut builder = frame_builder.get_builder();
         builder.set_depth(1234);
 
         let mut buffer = vec![0; 100];
