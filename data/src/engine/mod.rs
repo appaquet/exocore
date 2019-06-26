@@ -12,9 +12,7 @@ use crate::operation::OperationId;
 use exocore_common;
 use exocore_common::node::NodeId;
 use exocore_common::serialization::framed::TypedFrame;
-use exocore_common::serialization::framed::{
-    FrameBuilder, MessageType, OwnedTypedFrame, TypedSliceFrame,
-};
+use exocore_common::serialization::framed::{FrameBuilder, MessageType, TypedSliceFrame};
 use exocore_common::serialization::protos::data_chain_capnp::pending_operation;
 use exocore_common::serialization::protos::data_transport_capnp::{
     chain_sync_request, chain_sync_response, envelope, pending_sync_request,
@@ -684,7 +682,7 @@ where
         let operation_id = unlocked_inner.clock.consistent_time(my_node);
 
         let operation_builder = OperationBuilder::new_entry(operation_id, my_node.id(), data);
-        let operation = operation_builder.sign_and_build(my_node.frame_signer())?;
+        let operation = operation_builder.sign_and_build(&my_node)?;
 
         unlocked_inner.handle_add_pending_operation(operation)?;
 
@@ -958,7 +956,7 @@ pub enum Event {
 pub struct EngineOperation {
     pub operation_id: OperationId,
     pub status: EngineOperationStatus,
-    pub operation_frame: Arc<OwnedTypedFrame<pending_operation::Owned>>,
+    pub operation_frame: Arc<super::operation::OperationFrame<Vec<u8>>>,
 }
 
 impl EngineOperation {
@@ -995,7 +993,7 @@ impl EngineOperation {
 
 impl crate::operation::Operation for EngineOperation {
     fn get_operation_reader(&self) -> Result<pending_operation::Reader, operation::Error> {
-        Ok(self.operation_frame.get_typed_reader()?)
+        Ok(self.operation_frame.get_reader()?)
     }
 }
 

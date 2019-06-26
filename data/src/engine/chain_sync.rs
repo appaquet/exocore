@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use capnp::traits::ToU16;
 use exocore_common::node::{Node, NodeId};
 use exocore_common::serialization::capnp;
-use exocore_common::serialization::framed::{FrameBuilder, SignedFrame, TypedFrame};
+use exocore_common::serialization::framed::{FrameBuilder, TypedFrame};
 use exocore_common::serialization::protos::data_chain_capnp::{block, block_header};
 use exocore_common::serialization::protos::data_transport_capnp::{
     chain_sync_request, chain_sync_request::RequestedDetails, chain_sync_response,
@@ -490,13 +490,7 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
         if blocks_len > 0 {
             let mut blocks_builder = response_builder.init_blocks(blocks_len);
             for i in 0..blocks_len {
-                let block_and_signatures = vec![
-                    blocks[i as usize].block().frame_data(),
-                    blocks[i as usize].operations_data(),
-                    blocks[i as usize].signatures().frame_data(),
-                ]
-                .concat();
-
+                let block_and_signatures = blocks[i as usize].as_data_vec();
                 blocks_builder.reborrow().set(i, &block_and_signatures);
             }
 
@@ -552,10 +546,7 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
             // the block locally, and update the last_common_block
             if first_non_common_block.is_none() {
                 if let Ok(local_block) = store.get_block(offset) {
-                    let local_block_signature = local_block
-                        .block
-                        .signature_data()
-                        .expect("A stored block didn't have a signature");
+                    let local_block_signature = local_block.block.inner().inner().multihash_bytes();
                     if header_reader.get_block_hash()? == local_block_signature {
                         let is_latest_common_offset = from_node_info
                             .last_common_block
@@ -928,11 +919,8 @@ struct BlockHeader {
 
 impl BlockHeader {
     fn from_stored_block<B: Block>(stored_block: B) -> Result<BlockHeader, Error> {
-        let block_reader: block::Reader = stored_block.block().get_typed_reader()?;
-        let block_signature = stored_block
-            .block()
-            .signature_data()
-            .expect("A stored block didn't signature data");
+        let block_reader: block::Reader = stored_block.block().get_reader()?;
+        let block_signature = stored_block.block().inner().inner().multihash_bytes();
 
         Ok(BlockHeader {
             offset: stored_block.offset(),
@@ -1042,7 +1030,7 @@ fn chain_sample_block_headers<CS: chain::ChainStore>(
         ChainSyncError::Other("Expected a last block since ranges were not empty".to_string())
     })?;
 
-    let last_block_reader: block::Reader = last_block.block.get_typed_reader()?;
+    let last_block_reader: block::Reader = last_block.block.get_reader()?;
     let last_block_depth = last_block_reader.get_depth();
 
     let mut blocks_iter = store
@@ -1053,7 +1041,7 @@ fn chain_sample_block_headers<CS: chain::ChainStore>(
     let first_block = blocks_iter.peek().ok_or_else(|| {
         ChainSyncError::Other("Expected a first block since ranges were not empty".to_string())
     })?;
-    let first_block_reader: block::Reader = first_block.block.get_typed_reader()?;
+    let first_block_reader: block::Reader = first_block.block.get_reader()?;
     let first_block_depth = first_block_reader.get_depth();
 
     let range_blocks_count = last_block_depth - first_block_depth;
@@ -1096,6 +1084,7 @@ mod tests {
     use super::*;
     use crate::operation::OperationBuilder;
     use itertools::Itertools;
+    use std::rc::Rc;
 
     #[test]
     fn handle_sync_response_blocks() -> Result<(), failure::Error> {
@@ -1386,12 +1375,13 @@ mod tests {
         let operations = (0..10)
             .map(|_i| {
                 let op_id = cluster.consistent_clock(0);
-                let frame_signer = node_0.frame_signer();
                 let data = vec![0u8; operation_size + 1];
-                OperationBuilder::new_entry(op_id, node_0.id(), &data)
-                    .sign_and_build(frame_signer)
-                    .unwrap()
-                    .frame
+                Rc::new(
+                    OperationBuilder::new_entry(op_id, node_0.id(), &data)
+                        .sign_and_build(&node_0)
+                        .unwrap()
+                        .frame,
+                )
             })
             .collect_vec();
         cluster.chain_add_block_with_operations(0, operations.into_iter())?;

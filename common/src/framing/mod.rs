@@ -62,7 +62,7 @@ pub trait FrameReader {
 
     fn exposed_data(&self) -> &[u8];
     fn whole_data(&self) -> &[u8];
-    fn to_owned(&self) -> Self::OwnedType;
+    fn to_owned_frame(&self) -> Self::OwnedType;
 
     fn write<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         writer.write_all(self.whole_data())
@@ -97,7 +97,7 @@ impl FrameReader for Vec<u8> {
         self.as_slice()
     }
 
-    fn to_owned(&self) -> Self::OwnedType {
+    fn to_owned_frame(&self) -> Self::OwnedType {
         self.clone()
     }
 }
@@ -113,7 +113,7 @@ impl FrameReader for &[u8] {
         self
     }
 
-    fn to_owned(&self) -> Self::OwnedType {
+    fn to_owned_frame(&self) -> Self::OwnedType {
         self.to_vec()
     }
 }

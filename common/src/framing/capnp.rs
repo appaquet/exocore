@@ -33,6 +33,10 @@ impl<I: FrameReader> CapnpFrame<I> {
             offset,
         })
     }
+
+    pub fn inner(&self) -> &I {
+        &self.inner
+    }
 }
 
 impl<I: FrameReader> ReaderSegments for CapnpFrame<I> {
@@ -66,9 +70,19 @@ impl<I: FrameReader> FrameReader for CapnpFrame<I> {
         self.inner.whole_data()
     }
 
-    fn to_owned(&self) -> Self::OwnedType {
-        let owned_inner = self.inner.to_owned();
+    fn to_owned_frame(&self) -> Self::OwnedType {
+        let owned_inner = self.inner.to_owned_frame();
         CapnpFrame::new(owned_inner).expect("Couldn't read owned version of self")
+    }
+}
+
+impl<I: FrameReader + Clone> Clone for CapnpFrame<I> {
+    fn clone(&self) -> Self {
+        CapnpFrame {
+            inner: self.inner.clone(),
+            segment_slices: self.segment_slices.clone(),
+            offset: self.offset,
+        }
     }
 }
 
@@ -102,9 +116,13 @@ where
         }
     }
 
+    pub fn inner(&self) -> &CapnpFrame<I> {
+        self.reader.get_segments()
+    }
+
     pub fn to_owned(&self) -> TypedCapnpFrame<I::OwnedType, T> {
         let inner = self.reader.get_segments();
-        let inner_owned = inner.to_owned();
+        let inner_owned = inner.to_owned_frame();
         TypedCapnpFrame::from_capnp(inner_owned)
     }
 }
@@ -139,10 +157,19 @@ where
         inner.whole_data()
     }
 
-    fn to_owned(&self) -> Self::OwnedType {
+    fn to_owned_frame(&self) -> Self::OwnedType {
         let inner = self.reader.get_segments();
-        let owned_inner = inner.to_owned();
+        let owned_inner = inner.to_owned_frame();
         TypedCapnpFrame::new(owned_inner).expect("Couldn't read owned version of self")
+    }
+}
+
+impl<I: FrameReader + Clone, T> Clone for TypedCapnpFrame<I, T>
+where
+    T: for<'a> MessageType<'a>,
+{
+    fn clone(&self) -> Self {
+        Self::from_capnp(self.reader.get_segments().clone())
     }
 }
 

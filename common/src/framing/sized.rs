@@ -13,7 +13,12 @@ pub struct SizedFrame<I: FrameReader> {
 
 impl<I: FrameReader> SizedFrame<I> {
     pub fn new(inner: I) -> Result<SizedFrame<I>, io::Error> {
-        let inner_size = inner.exposed_data().read_u32::<LittleEndian>()? as usize;
+        let mut inner_data = inner.exposed_data();
+        check_from_size(4, inner_data)?;
+
+        let inner_size = inner_data.read_u32::<LittleEndian>()? as usize;
+        check_from_size(4 + inner_size, inner_data)?;
+
         Ok(SizedFrame { inner, inner_size })
     }
 
@@ -50,9 +55,18 @@ impl<I: FrameReader> FrameReader for SizedFrame<I> {
         &self.inner.whole_data()[0..self.inner_size + 8]
     }
 
-    fn to_owned(&self) -> Self::OwnedType {
+    fn to_owned_frame(&self) -> Self::OwnedType {
         SizedFrame {
-            inner: self.inner.to_owned(),
+            inner: self.inner.to_owned_frame(),
+            inner_size: self.inner_size,
+        }
+    }
+}
+
+impl<I: FrameReader + Clone> Clone for SizedFrame<I> {
+    fn clone(&self) -> Self {
+        SizedFrame {
+            inner: self.inner.clone(),
             inner_size: self.inner_size,
         }
     }
@@ -70,7 +84,7 @@ impl<I: FrameBuilder> SizedFrameBuilder<I> {
         SizedFrameBuilder { inner }
     }
 
-    pub fn inner(&mut self) -> &mut I {
+    pub fn inner_mut(&mut self) -> &mut I {
         &mut self.inner
     }
 }
@@ -171,7 +185,7 @@ mod tests {
         let frame_reader = SizedFrame::new(buf1.clone())?;
         assert_eq!(inner, frame_reader.exposed_data());
 
-        let frame_reader_owned = frame_reader.to_owned();
+        let frame_reader_owned = frame_reader.to_owned_frame();
         assert_eq!(inner, frame_reader_owned.exposed_data());
 
         let mut buf3 = Vec::new();

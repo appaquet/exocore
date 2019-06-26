@@ -37,9 +37,18 @@ impl<I: FrameReader> FrameReader for PaddedFrame<I> {
         self.inner.whole_data()
     }
 
-    fn to_owned(&self) -> Self::OwnedType {
+    fn to_owned_frame(&self) -> Self::OwnedType {
         PaddedFrame {
-            inner: self.inner.to_owned(),
+            inner: self.inner.to_owned_frame(),
+            padding_size: self.padding_size,
+        }
+    }
+}
+
+impl<I: FrameReader + Clone> Clone for PaddedFrame<I> {
+    fn clone(&self) -> Self {
+        PaddedFrame {
+            inner: self.inner.clone(),
             padding_size: self.padding_size,
         }
     }
@@ -61,7 +70,7 @@ impl<I: FrameBuilder> PaddedFrameBuilder<I> {
         }
     }
 
-    pub fn inner(&mut self) -> &mut I {
+    pub fn inner_mut(&mut self) -> &mut I {
         &mut self.inner
     }
 

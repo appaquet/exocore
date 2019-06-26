@@ -1,4 +1,4 @@
-use crate::serialization::framed::SignedFrame;
+use crate::framing;
 
 pub use parity_multihash as multihash;
 pub use parity_multihash::{Hash, Multihash};
@@ -11,11 +11,11 @@ pub trait MultihashDigest: Digest + Sized {
         2 + usize::from(Self::hash_type().size())
     }
 
-    fn input_signed_frame<F: SignedFrame>(&mut self, frame: &F) {
-        let signature_data = frame
-            .signature_data()
-            .expect("The frame didn't have a signature");
-        self.input(signature_data);
+    fn input_signed_frame<I: framing::FrameReader>(
+        &mut self,
+        frame: &framing::MultihashFrame<Self, I>,
+    ) {
+        self.input(frame.multihash_bytes());
     }
 
     fn into_multihash_bytes(self) -> Vec<u8> {

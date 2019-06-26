@@ -60,7 +60,7 @@ impl<'p, I: FrameReader> FrameReader for CompoundSideReader<'p, I> {
         self.frame.inner.whole_data()
     }
 
-    fn to_owned(&self) -> Self::OwnedType {
+    fn to_owned_frame(&self) -> Self::OwnedType {
         self.exposed_data().to_vec()
     }
 }
@@ -97,7 +97,7 @@ impl<A: FrameBuilder, B: FrameBuilder> FrameBuilder for CompoundFrameBuilder<A, 
     fn write_into(&self, into: &mut [u8]) -> Result<usize, io::Error> {
         let left_size = self.left.write_into(into)?;
         let right_size = self.right.write_into(&mut into[left_size..])?;
-        
+
         check_into_size(left_size + right_size + 4, into)?;
         (&mut into[left_size + right_size..]).write_u32::<LittleEndian>(left_size as u32)?;
 

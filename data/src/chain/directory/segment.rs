@@ -2,8 +2,6 @@ use std::fs::{File, OpenOptions};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-use exocore_common::serialization::framed::TypedFrame;
-
 use super::Error;
 use crate::block::{Block, BlockOffset, BlockRef, ChainBlockIterator};
 
@@ -32,7 +30,7 @@ impl DirectorySegment {
         directory: &Path,
         block: &B,
     ) -> Result<DirectorySegment, Error> {
-        let block_reader = block.block().get_typed_reader().unwrap();
+        let block_reader = block.block().get_reader().unwrap();
         let first_block_offset = block_reader.get_offset();
 
         let segment_path = Self::segment_path(directory, first_block_offset);

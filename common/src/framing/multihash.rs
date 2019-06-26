@@ -12,6 +12,7 @@ pub struct MultihashFrame<D: MultihashDigest, I: FrameReader> {
 
 impl<D: MultihashDigest, I: FrameReader> MultihashFrame<D, I> {
     pub fn new(inner: I) -> Result<MultihashFrame<D, I>, io::Error> {
+        check_from_size(D::multihash_output_size(), inner.exposed_data())?;
         Ok(MultihashFrame {
             inner,
             phantom: std::marker::PhantomData,
@@ -30,6 +31,12 @@ impl<D: MultihashDigest, I: FrameReader> MultihashFrame<D, I> {
 
         Ok(digest_output == frame_hash)
     }
+
+    pub fn multihash_bytes(&self) -> &[u8] {
+        let multihash_size = D::multihash_output_size();
+        let inner_exposed_data = self.inner.exposed_data();
+        &inner_exposed_data[inner_exposed_data.len() - multihash_size..]
+    }
 }
 
 impl<D: MultihashDigest, I: FrameReader> FrameReader for MultihashFrame<D, I> {
@@ -45,9 +52,18 @@ impl<D: MultihashDigest, I: FrameReader> FrameReader for MultihashFrame<D, I> {
         self.inner.whole_data()
     }
 
-    fn to_owned(&self) -> Self::OwnedType {
+    fn to_owned_frame(&self) -> Self::OwnedType {
         MultihashFrame {
-            inner: self.inner.to_owned(),
+            inner: self.inner.to_owned_frame(),
+            phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<D: MultihashDigest, I: FrameReader + Clone> Clone for MultihashFrame<D, I> {
+    fn clone(&self) -> Self {
+        MultihashFrame {
+            inner: self.inner.clone(),
             phantom: std::marker::PhantomData,
         }
     }

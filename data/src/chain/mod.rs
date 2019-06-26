@@ -120,7 +120,7 @@ mod tests {
     use exocore_common::cell::FullCell;
     use exocore_common::framing::FrameReader;
     use exocore_common::node::LocalNode;
-    use exocore_common::serialization::framed::TypedFrame;
+    use std::rc::Rc;
 
     #[test]
     fn test_block_create_and_read() -> Result<(), failure::Error> {
@@ -128,11 +128,11 @@ mod tests {
         let cell = FullCell::generate(local_node.clone());
         let genesis = BlockOwned::new_genesis(&cell)?;
 
-        let operations = vec![
+        let operations = vec![Rc::new(
             OperationBuilder::new_entry(123, local_node.id(), b"some_data")
-                .sign_and_build(local_node.frame_signer())?
+                .sign_and_build(&local_node)?
                 .frame,
-        ];
+        )];
         let operations = BlockOperations::from_operations(operations.into_iter())?;
 
         let second_block = BlockOwned::new_with_prev_block(&cell, &genesis, 0, operations)?;
@@ -154,7 +154,7 @@ mod tests {
             read_second_block.signatures.frame_data()
         );
 
-        let block_reader = second_block.block.get_typed_reader()?;
+        let block_reader = second_block.block.get_reader()?;
         assert_eq!(block_reader.get_offset(), genesis.next_offset());
         assert_eq!(
             block_reader.get_signatures_size(),
@@ -190,10 +190,12 @@ mod tests {
         // 5 operations
         let operations = (0..5)
             .map(|i| {
-                OperationBuilder::new_entry(i, local_node.id(), b"op1")
-                    .sign_and_build(local_node.frame_signer())
-                    .unwrap()
-                    .frame
+                Rc::new(
+                    OperationBuilder::new_entry(i, local_node.id(), b"op1")
+                        .sign_and_build(&local_node)
+                        .unwrap()
+                        .frame,
+                )
             })
             .collect::<Vec<_>>();
 

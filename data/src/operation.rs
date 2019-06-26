@@ -1,13 +1,24 @@
 use crate::block::Block;
+use exocore_common::crypto::hash::Sha3_256;
 use exocore_common::crypto::signature::Signature;
 use exocore_common::data_chain_capnp::pending_operation;
-use exocore_common::node::NodeId;
-use exocore_common::serialization::framed::{FrameBuilder, FrameSigner, TypedFrame};
-use exocore_common::serialization::protos::data_chain_capnp::{block, block_signature};
+use exocore_common::framing;
+use exocore_common::framing::{CapnpFrameBuilder, FrameBuilder};
+use exocore_common::node::{LocalNode, NodeId};
+use exocore_common::serialization::protos::data_chain_capnp::block_signature;
 use exocore_common::serialization::{capnp, framed};
 
 pub type GroupId = u64;
 pub type OperationId = u64;
+
+pub type OperationFrame<I> = framing::TypedCapnpFrame<
+    framing::MultihashFrame<Sha3_256, framing::SizedFrame<I>>,
+    pending_operation::Owned,
+>;
+
+pub type OperationFrameBuilder = framing::SizedFrameBuilder<
+    framing::MultihashFrameBuilder<Sha3_256, framing::CapnpFrameBuilder<pending_operation::Owned>>,
+>;
 
 ///
 /// Wraps an operation that is stored either in the pending store, or in the
@@ -60,14 +71,14 @@ pub enum OperationType {
 /// Pending operation helper
 ///
 pub struct OperationBuilder {
-    pub frame_builder: FrameBuilder<pending_operation::Owned>,
+    pub frame_builder: CapnpFrameBuilder<pending_operation::Owned>,
 }
 
 impl OperationBuilder {
     pub fn new_entry(operation_id: OperationId, node_id: &NodeId, data: &[u8]) -> OperationBuilder {
-        let mut frame_builder = FrameBuilder::new();
+        let mut frame_builder = CapnpFrameBuilder::new();
 
-        let mut operation_builder: pending_operation::Builder = frame_builder.get_builder_typed();
+        let mut operation_builder: pending_operation::Builder = frame_builder.get_builder();
         operation_builder.set_operation_id(operation_id);
         operation_builder.set_group_id(operation_id);
         operation_builder.set_node_id(node_id.to_str());
@@ -85,9 +96,9 @@ impl OperationBuilder {
         node_id: &NodeId,
         block: &B,
     ) -> Result<OperationBuilder, Error> {
-        let mut frame_builder = FrameBuilder::new();
+        let mut frame_builder = CapnpFrameBuilder::new();
 
-        let mut operation_builder: pending_operation::Builder = frame_builder.get_builder_typed();
+        let mut operation_builder: pending_operation::Builder = frame_builder.get_builder();
         operation_builder.set_operation_id(operation_id);
         operation_builder.set_group_id(operation_id);
         operation_builder.set_node_id(node_id.to_str());
@@ -99,15 +110,15 @@ impl OperationBuilder {
         Ok(OperationBuilder { frame_builder })
     }
 
-    pub fn new_signature_for_block<B: TypedFrame<block::Owned>>(
+    pub fn new_signature_for_block<I: framing::FrameReader>(
         group_id: OperationId,
         operation_id: OperationId,
         node_id: &NodeId,
-        block: &B,
+        _block: &crate::block::BlockFrame<I>,
     ) -> Result<OperationBuilder, Error> {
-        let mut frame_builder = FrameBuilder::new();
+        let mut frame_builder = CapnpFrameBuilder::new();
 
-        let mut operation_builder: pending_operation::Builder = frame_builder.get_builder_typed();
+        let mut operation_builder: pending_operation::Builder = frame_builder.get_builder();
         operation_builder.set_operation_id(operation_id);
         operation_builder.set_group_id(group_id);
         operation_builder.set_node_id(node_id.to_str());
@@ -117,9 +128,6 @@ impl OperationBuilder {
 
         // TODO: Create signature for real
         let signature = Signature::empty();
-        let _block_hash = block.signature_data().ok_or_else(|| {
-            Error::Other("Tried to create a signature from a block without hash".to_string())
-        })?;
 
         let mut sig_builder: block_signature::Builder = new_sig_builder.init_signature();
         sig_builder.set_node_id(node_id.to_str());
@@ -133,9 +141,9 @@ impl OperationBuilder {
         operation_id: OperationId,
         node_id: &NodeId,
     ) -> Result<OperationBuilder, Error> {
-        let mut frame_builder = FrameBuilder::new();
+        let mut frame_builder = CapnpFrameBuilder::new();
 
-        let mut operation_builder: pending_operation::Builder = frame_builder.get_builder_typed();
+        let mut operation_builder: pending_operation::Builder = frame_builder.get_builder();
         operation_builder.set_operation_id(operation_id);
         operation_builder.set_group_id(group_id);
         operation_builder.set_node_id(node_id.to_str());
@@ -146,10 +154,24 @@ impl OperationBuilder {
         Ok(OperationBuilder { frame_builder })
     }
 
-    pub fn sign_and_build<S: FrameSigner>(self, frame_signer: S) -> Result<NewOperation, Error> {
-        let frame = self.frame_builder.as_owned_framed(frame_signer)?;
-        Ok(NewOperation::from_frame(frame))
+    pub fn sign_and_build(self, _local_node: &LocalNode) -> Result<NewOperation, Error> {
+        // TODO: Signature ticket: https://github.com/appaquet/exocore/issues/46
+        //       Include signature, not just hash.
+        let msg_frame = self.frame_builder.as_bytes();
+        let signed_frame_builder = framing::MultihashFrameBuilder::<Sha3_256, _>::new(msg_frame);
+        let sized_frame_builder = framing::SizedFrameBuilder::new(signed_frame_builder);
+        let final_frame = read_operation_frame(sized_frame_builder.as_bytes())?;
+
+        Ok(NewOperation::from_frame(final_frame))
     }
+}
+
+pub fn read_operation_frame<I: framing::FrameReader>(inner: I) -> Result<OperationFrame<I>, Error> {
+    let frame = framing::TypedCapnpFrame::new(framing::MultihashFrame::<Sha3_256, _>::new(
+        framing::SizedFrame::new(inner)?,
+    )?)?;
+
+    Ok(frame)
 }
 
 ///
@@ -157,18 +179,18 @@ impl OperationBuilder {
 ///
 #[derive(Clone)]
 pub struct NewOperation {
-    pub frame: framed::OwnedTypedFrame<pending_operation::Owned>,
+    pub frame: OperationFrame<Vec<u8>>,
 }
 
 impl NewOperation {
-    pub fn from_frame(frame: framed::OwnedTypedFrame<pending_operation::Owned>) -> NewOperation {
+    pub fn from_frame(frame: OperationFrame<Vec<u8>>) -> NewOperation {
         NewOperation { frame }
     }
 }
 
 impl crate::operation::Operation for NewOperation {
     fn get_operation_reader(&self) -> Result<pending_operation::Reader, Error> {
-        Ok(self.frame.get_typed_reader()?)
+        Ok(self.frame.get_reader()?)
     }
 }
 
@@ -181,6 +203,8 @@ pub enum Error {
     NotAnEntry,
     #[fail(display = "Error in message serialization")]
     Framing(#[fail(cause)] framed::Error),
+    #[fail(display = "IO error: {}", _0)]
+    IO(String),
     #[fail(display = "Error in capnp serialization: kind={:?} msg={}", _0, _1)]
     Serialization(capnp::ErrorKind, String),
     #[fail(display = "Field is not in capnp schema: code={}", _0)]
@@ -204,5 +228,11 @@ impl From<capnp::Error> for Error {
 impl From<capnp::NotInSchema> for Error {
     fn from(err: capnp::NotInSchema) -> Self {
         Error::SerializationNotInSchema(err.0)
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(err: std::io::Error) -> Self {
+        Error::IO(err.to_string())
     }
 }

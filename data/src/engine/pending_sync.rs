@@ -7,9 +7,7 @@ use crate::operation::OperationId;
 use exocore_common::crypto::hash::{Digest, MultihashDigest, Sha3_256};
 use exocore_common::node::{Node, NodeId};
 use exocore_common::serialization::framed::*;
-use exocore_common::serialization::protos::data_chain_capnp::{
-    pending_operation, pending_operation_header,
-};
+use exocore_common::serialization::protos::data_chain_capnp::pending_operation_header;
 use exocore_common::serialization::protos::data_transport_capnp::{
     pending_sync_range, pending_sync_request,
 };
@@ -20,6 +18,7 @@ use crate::engine::{Error, SyncContext};
 use crate::operation::{NewOperation, Operation};
 use crate::pending::{CommitStatus, PendingStore, StoredOperation};
 use exocore_common::cell::{Cell, CellNodes};
+use exocore_common::framing::FrameReader;
 use exocore_common::time::Clock;
 
 ///
@@ -201,10 +200,9 @@ impl<PS: PendingStore> PendingSynchronizer<PS> {
                 for operation_frame_res in sync_range_reader.get_operations()?.iter() {
                     let operation_frame_data = operation_frame_res?;
                     let operation_frame =
-                        TypedSliceFrame::<pending_operation::Owned>::new(operation_frame_data)?
-                            .to_owned();
+                        crate::operation::read_operation_frame(operation_frame_data)?.to_owned();
 
-                    let operation_frame_reader = operation_frame.get_typed_reader()?;
+                    let operation_frame_reader = operation_frame.get_reader()?;
                     let operation_id = operation_frame_reader.get_operation_id();
                     included_operations.insert(operation_id);
 
@@ -340,7 +338,7 @@ impl<PS: PendingStore> PendingSynchronizer<PS> {
         let operations_iter =
             self.operations_iter_from_depth(store, range, operations_from_depth)?;
         for operation in operations_iter {
-            frame_hasher.input_signed_frame(operation.frame.as_ref());
+            frame_hasher.input_signed_frame(operation.frame.inner().inner());
             count += 1;
         }
 
@@ -677,7 +675,7 @@ impl SyncRangeBuilder {
         self.operations_count += 1;
 
         if let Some(hasher) = self.hasher.as_mut() {
-            hasher.input_signed_frame(operation.frame.as_ref())
+            hasher.input_signed_frame(operation.frame.inner().inner())
         }
 
         match details {
@@ -738,10 +736,7 @@ impl SyncRangeBuilder {
                 op_header_builder.set_group_id(operation.group_id);
                 op_header_builder.set_operation_id(operation.operation_id);
 
-                let signature_data = operation
-                    .frame
-                    .signature_data()
-                    .expect("The frame didn't have a signature");
+                let signature_data = operation.frame.inner().inner().multihash_bytes();
                 op_header_builder.set_operation_signature(&signature_data);
             }
         }
@@ -1271,9 +1266,9 @@ mod tests {
 
         let operations = frame0_reader.get_operations()?;
         let operation0_data = operations.get(0)?;
-        let operation0_frame = TypedSliceFrame::<pending_operation::Owned>::new(operation0_data)?;
+        let operation0_frame = crate::operation::read_operation_frame(operation0_data)?;
 
-        let operation0_reader: pending_operation::Reader = operation0_frame.get_typed_reader()?;
+        let operation0_reader: pending_operation::Reader = operation0_frame.get_reader()?;
         let operation0_inner_reader = operation0_reader.get_operation();
         assert!(operation0_inner_reader.has_entry());
 
