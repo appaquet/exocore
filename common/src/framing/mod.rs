@@ -1,6 +1,7 @@
 use std::io;
 
 pub mod capnp;
+pub mod compound;
 pub mod multihash;
 pub mod padded;
 pub mod sized;
