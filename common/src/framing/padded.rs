@@ -63,6 +63,8 @@ impl<I: FrameBuilder> PaddedFrameBuilder<I> {
 }
 
 impl<I: FrameBuilder> FrameBuilder for PaddedFrameBuilder<I> {
+    type OwnedFrameType = PaddedFrame<Vec<u8>>;
+
     fn write<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         let inner_size = self.inner.write(writer)?;
 
@@ -101,29 +103,46 @@ impl<I: FrameBuilder> FrameBuilder for PaddedFrameBuilder<I> {
 
         Ok(total_size)
     }
+
+    fn as_owned_frame(&self) -> Self::OwnedFrameType {
+        PaddedFrame::new(self.as_bytes()).expect("Couldn't read just-created frame")
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::framing::assert_builder_equals;
 
     #[test]
-    fn padded_frame_build_read() -> Result<(), failure::Error> {
+    fn can_build_and_read() -> Result<(), failure::Error> {
         let builder = PaddedFrameBuilder::new(vec![1; 10], 0);
+        assert_builder_equals(&builder)?;
+
         let frame = PaddedFrame::new(builder.as_bytes())?;
         assert_eq!(vec![1; 10], frame.exposed_data());
 
         let builder = PaddedFrameBuilder::new(vec![1; 10], 10);
-        let mut buffer = vec![0; 100];
-        let len = builder.write_into(&mut buffer[..])?;
-        let frame = PaddedFrame::new(&buffer[..len])?;
+        assert_builder_equals(&builder)?;
+        let frame = PaddedFrame::new(builder.as_bytes())?;
+        assert_eq!(0, frame.padding_size);
         assert_eq!(vec![1; 10], frame.exposed_data());
 
         let builder = PaddedFrameBuilder::new(vec![1; 10], 20);
+        assert_builder_equals(&builder)?;
         let frame = PaddedFrame::new(builder.as_bytes())?;
         assert_eq!(vec![1; 10], frame.exposed_data());
         assert_eq!(10, frame.padding_size);
         assert!(frame.whole_data().len() > 20);
+
+        Ok(())
+    }
+
+    #[test]
+    fn can_build_to_owned() -> Result<(), failure::Error> {
+        let builder = PaddedFrameBuilder::new(vec![1; 10], 0);
+        let frame = builder.as_owned_frame();
+        assert_eq!(vec![1; 10], frame.exposed_data());
 
         Ok(())
     }

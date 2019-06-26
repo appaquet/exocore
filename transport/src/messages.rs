@@ -9,7 +9,7 @@ use exocore_common::framing::{CapnpFrameBuilder, FrameBuilder, TypedCapnpFrame};
 /// Message to be sent to a another node
 pub struct OutMessage {
     pub to: Vec<Node>,
-    pub envelope_data: Vec<u8>,
+    pub envelope_builder: CapnpFrameBuilder<envelope::Owned>,
 }
 
 impl OutMessage {
@@ -32,15 +32,14 @@ impl OutMessage {
 
         Ok(OutMessage {
             to: to_nodes,
-            envelope_data: envelope_frame_builder.as_bytes(),
+            envelope_builder: envelope_frame_builder,
         })
     }
 
     pub fn to_in_message(&self, from_node: Node) -> InMessage {
         InMessage {
             from: from_node,
-            envelope: TypedCapnpFrame::new(self.envelope_data.clone())
-                .expect("Couldn't read back envelope frame"),
+            envelope: self.envelope_builder.as_owned_frame(),
         }
     }
 }

@@ -168,7 +168,7 @@ mod test {
     use exocore_common::tests_utils::*;
 
     use super::*;
-    use exocore_common::framing::{CapnpFrameBuilder, FrameBuilder};
+    use exocore_common::framing::CapnpFrameBuilder;
     use exocore_common::node::LocalNode;
     use exocore_common::serialization::protos::data_transport_capnp::envelope;
 
@@ -229,13 +229,13 @@ mod test {
     }
 
     fn send_message(rt: &mut Runtime, sink: MpscHandleSink, to: Vec<Node>, type_id: u16) {
-        let mut message = CapnpFrameBuilder::<envelope::Owned>::new();
-        let mut builder = message.get_builder();
+        let mut envelope_builder = CapnpFrameBuilder::<envelope::Owned>::new();
+        let mut builder = envelope_builder.get_builder();
         builder.set_type(type_id);
 
         let out_message = OutMessage {
             to,
-            envelope_data: message.as_bytes(),
+            envelope_builder,
         };
 
         rt.block_on(sink.send(out_message)).unwrap();

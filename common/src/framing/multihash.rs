@@ -71,6 +71,8 @@ impl<D: MultihashDigest, I: FrameBuilder> MultihashFrameBuilder<D, I> {
 }
 
 impl<D: MultihashDigest, I: FrameBuilder> FrameBuilder for MultihashFrameBuilder<D, I> {
+    type OwnedFrameType = MultihashFrame<D, Vec<u8>>;
+
     fn write<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         // TODO: optimize by creating a proxied writer that digests
         let mut buffer = Vec::new();
@@ -98,36 +100,48 @@ impl<D: MultihashDigest, I: FrameBuilder> FrameBuilder for MultihashFrameBuilder
 
         Ok(total_size)
     }
+
+    fn as_owned_frame(&self) -> Self::OwnedFrameType {
+        MultihashFrame::new(self.as_bytes()).expect("Couldn't read just-created frame")
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::framing::assert_builder_equals;
     use sha3::Sha3_256;
 
-    // TODO: Validate invalid size
-
     #[test]
-    fn can_write_read_multihash_frame() -> Result<(), failure::Error> {
+    fn can_build_and_read_multihash() -> Result<(), failure::Error> {
         let inner = b"hello".to_vec();
         let builder = MultihashFrameBuilder::<Sha3_256, _>::new(inner.clone());
 
-        let mut buffer1_1 = Vec::new();
-        builder.write(&mut buffer1_1)?;
+        assert_builder_equals(&builder)?;
+        let frame_bytes = builder.as_bytes();
 
-        let mut buffer1_2 = vec![0; buffer1_1.len()];
-        builder.write_into(&mut buffer1_2)?;
-        assert_eq!(buffer1_1, buffer1_2);
-
-        let reader1 = MultihashFrame::<Sha3_256, _>::new(&buffer1_1[..])?;
-        assert_eq!(buffer1_1, reader1.whole_data());
+        let reader1 = MultihashFrame::<Sha3_256, _>::new(&frame_bytes[..])?;
+        assert_eq!(frame_bytes, reader1.whole_data());
         assert_eq!(inner, reader1.exposed_data());
         assert!(reader1.verify()?);
 
-        let mut modified_buffer = buffer1_1.clone();
+        let mut modified_buffer = frame_bytes.clone();
         modified_buffer[0..5].copy_from_slice(b"world");
         let reader2 = MultihashFrame::<Sha3_256, _>::new(&modified_buffer[..])?;
         assert!(!reader2.verify()?);
+
+        Ok(())
+    }
+
+    #[test]
+    fn can_build_to_owned() -> Result<(), failure::Error> {
+        let inner = b"hello".to_vec();
+        let builder = MultihashFrameBuilder::<Sha3_256, _>::new(inner.clone());
+
+        let frame = builder.as_owned_frame();
+        assert!(frame.verify()?);
+
+        assert_eq!(b"hello", frame.exposed_data());
 
         Ok(())
     }

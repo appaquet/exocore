@@ -8,7 +8,7 @@ use crate::Error;
 use crate::{TransportHandle, TransportLayer};
 use behaviour::{ExocoreBehaviour, ExocoreBehaviourEvent, ExocoreBehaviourMessage};
 use exocore_common::cell::{Cell, CellId, CellNodes};
-use exocore_common::framing::TypedCapnpFrame;
+use exocore_common::framing::{FrameBuilder, TypedCapnpFrame};
 use exocore_common::node::{LocalNode, NodeId};
 use exocore_common::serialization::protos::data_transport_capnp::envelope;
 use exocore_common::utils::completion_notifier::{
@@ -235,7 +235,7 @@ impl Libp2pTransport {
                 .poll()
                 .expect("Couldn't poll behaviour channel")
             {
-                let frame_data = msg.envelope_data;
+                let frame_data = msg.envelope_builder.as_bytes();
 
                 // prevent cloning frame if we only send to 1 node
                 if msg.to.len() == 1 {

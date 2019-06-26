@@ -10,14 +10,16 @@ pub use multihash::{MultihashFrame, MultihashFrameBuilder};
 pub use padded::{PaddedFrame, PaddedFrameBuilder};
 pub use sized::{IteratedSizedFrame, SizedFrame, SizedFrameBuilder, SizedFrameIterator};
 
-// TODO: use case of blocks to store operations, signatures, signed block seperately ("compound" ?)
-
 ///
 ///
 ///
 pub trait FrameBuilder {
+    type OwnedFrameType;
+
     fn write<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error>;
     fn write_into(&self, into: &mut [u8]) -> Result<usize, io::Error>;
+
+    fn as_owned_frame(&self) -> Self::OwnedFrameType;
 
     fn as_bytes(&self) -> Vec<u8> {
         let mut buffer = Vec::new();
@@ -28,6 +30,8 @@ pub trait FrameBuilder {
 }
 
 impl FrameBuilder for Vec<u8> {
+    type OwnedFrameType = Vec<u8>;
+
     fn write<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         writer.write_all(&self)?;
         Ok(self.len())
@@ -37,6 +41,10 @@ impl FrameBuilder for Vec<u8> {
         check_into_size(self.len(), into)?;
         into[0..self.len()].copy_from_slice(&self);
         Ok(self.len())
+    }
+
+    fn as_owned_frame(&self) -> Self::OwnedFrameType {
+        self.clone()
     }
 }
 
@@ -137,4 +145,20 @@ fn check_offset_substract(offset: usize, sub_offset: usize) -> Result<(), io::Er
     } else {
         Ok(())
     }
+}
+
+#[cfg(test)]
+fn assert_builder_equals<B: FrameBuilder>(frame_builder: &B) -> Result<(), failure::Error> {
+    let mut buffer1 = Vec::new();
+    frame_builder.write(&mut buffer1)?;
+
+    assert_ne!(0, buffer1.len());
+
+    let mut buffer2 = vec![0; 500];
+    let size = frame_builder.write_into(&mut buffer2)?;
+    assert_eq!(&buffer1[..], &buffer2[..size]);
+
+    assert_eq!(frame_builder.as_bytes(), buffer1);
+
+    Ok(())
 }

@@ -150,6 +150,8 @@ impl<T> FrameBuilder for CapnpFrameBuilder<T>
 where
     T: for<'a> MessageType<'a>,
 {
+    type OwnedFrameType = TypedCapnpFrame<Vec<u8>, T>;
+
     fn write<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         let mut buffer = Vec::new();
         capnp::serialize::write_message(&mut buffer, &self.builder)?;
@@ -163,6 +165,11 @@ where
         check_into_size(buffer.len(), into)?;
         into[0..buffer.len()].copy_from_slice(&buffer);
         Ok(buffer.len())
+    }
+
+    fn as_owned_frame(&self) -> Self::OwnedFrameType {
+        let bytes = self.as_bytes();
+        TypedCapnpFrame::new(bytes).expect("Couldn't read just-created frame")
     }
 }
 
@@ -178,6 +185,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::framing::assert_builder_equals;
     use crate::serialization::protos::data_chain_capnp::block;
 
     #[test]
@@ -195,15 +203,15 @@ mod tests {
     }
 
     #[test]
-    fn capnp_build_and_read() -> Result<(), failure::Error> {
+    fn can_build_and_read() -> Result<(), failure::Error> {
         let mut frame_builder = CapnpFrameBuilder::<block::Owned>::new();
         let mut builder = frame_builder.get_builder();
         builder.set_depth(1234);
 
-        let mut buffer = vec![0u8; 0];
-        frame_builder.write(&mut buffer)?;
+        assert_builder_equals(&frame_builder)?;
+        let frame_bytes = frame_builder.as_bytes();
 
-        let capnp_frame = TypedCapnpFrame::<_, block::Owned>::new(buffer)?;
+        let capnp_frame = TypedCapnpFrame::<_, block::Owned>::new(frame_bytes)?;
         let reader = capnp_frame.get_reader()?;
         assert_eq!(1234, reader.get_depth());
 
@@ -215,15 +223,12 @@ mod tests {
     }
 
     #[test]
-    fn capnp_build_into_and_read() -> Result<(), failure::Error> {
+    fn can_build_to_owned() -> Result<(), failure::Error> {
         let mut frame_builder = CapnpFrameBuilder::<block::Owned>::new();
         let mut builder = frame_builder.get_builder();
         builder.set_depth(1234);
 
-        let mut buffer = vec![0; 100];
-        let size = frame_builder.write_into(&mut buffer[..])?;
-
-        let capnp_frame = TypedCapnpFrame::<_, block::Owned>::new(&buffer[..size])?;
+        let capnp_frame = frame_builder.as_owned_frame();
         let reader = capnp_frame.get_reader()?;
         assert_eq!(1234, reader.get_depth());
 

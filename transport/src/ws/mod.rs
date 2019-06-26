@@ -7,7 +7,7 @@ pub use self::websocket::WebSocketError;
 use crate::transport::{MpscHandleSink, MpscHandleStream};
 use crate::{Error, InMessage, OutMessage, TransportHandle};
 use exocore_common::cell::{Cell, CellId};
-use exocore_common::framing::TypedCapnpFrame;
+use exocore_common::framing::{FrameBuilder, TypedCapnpFrame};
 use exocore_common::node::{Node, NodeId};
 use exocore_common::serialization::protos::data_transport_capnp::envelope;
 use exocore_common::utils::completion_notifier::{
@@ -280,11 +280,10 @@ impl WebsocketTransport {
         let inner = weak_inner.upgrade().ok_or(Error::Upgrade)?;
         let mut inner = inner.write()?;
 
+        let envelope_data = out_message.envelope_builder.as_bytes();
         for node in &out_message.to {
             if let Some(connection) = inner.connections.get_mut(node.id()) {
-                let send_result = connection
-                    .out_sink
-                    .try_send(out_message.envelope_data.clone());
+                let send_result = connection.out_sink.try_send(envelope_data.clone());
                 if let Err(err) = send_result {
                     error!("Couldn't send message to node {}: {}", node.id(), err);
                 }
@@ -504,7 +503,7 @@ mod tests {
 
                         let out_message = OutMessage {
                             to: vec![message.from.clone()],
-                            envelope_data: frame_builder.as_bytes(),
+                            envelope_builder: frame_builder,
                         };
                         Ok(out_message)
                     })

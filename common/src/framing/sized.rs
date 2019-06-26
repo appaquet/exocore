@@ -72,6 +72,8 @@ impl<I: FrameBuilder> SizedFrameBuilder<I> {
 }
 
 impl<I: FrameBuilder> FrameBuilder for SizedFrameBuilder<I> {
+    type OwnedFrameType = SizedFrame<Vec<u8>>;
+
     fn write<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         let mut buffer = Vec::new();
         self.inner.write(&mut buffer)?;
@@ -94,6 +96,10 @@ impl<I: FrameBuilder> FrameBuilder for SizedFrameBuilder<I> {
         (&mut into[4 + inner_size..]).write_u32::<LittleEndian>(inner_size as u32)?;
 
         Ok(total_size)
+    }
+
+    fn as_owned_frame(&self) -> Self::OwnedFrameType {
+        SizedFrame::new(self.as_bytes()).expect("Couldn't read just-created frame")
     }
 }
 
@@ -144,21 +150,16 @@ pub struct IteratedSizedFrame<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::framing::assert_builder_equals;
     use std::io::Cursor;
 
     #[test]
-    fn can_write_read_sized_frame() -> Result<(), failure::Error> {
+    fn can_build_and_read() -> Result<(), failure::Error> {
         let inner = vec![8u8; 100];
-        let sized_builder = SizedFrameBuilder::new(inner.clone());
+        let builder = SizedFrameBuilder::new(inner.clone());
+        assert_builder_equals(&builder)?;
 
-        let mut buf1 = Vec::new();
-        sized_builder.write(&mut buf1)?;
-
-        let mut buf2 = vec![0u8; 1000];
-        let written_size = sized_builder.write_into(&mut buf2)?;
-        assert_eq!(buf1, &buf2[0..written_size]);
-        assert_eq!(108, buf1.len());
-
+        let buf1 = builder.as_bytes();
         let frame_reader = SizedFrame::new(buf1.clone())?;
         assert_eq!(inner, frame_reader.exposed_data());
 
@@ -174,6 +175,17 @@ mod tests {
         let mut buf4 = vec![0u8; 1000];
         let written_size = frame_reader.write_into(&mut buf4)?;
         assert_eq!(buf1, &buf4[0..written_size]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn can_build_to_owned() -> Result<(), failure::Error> {
+        let builder = SizedFrameBuilder::new(vec![1; 10]);
+
+        let frame = builder.as_owned_frame();
+        assert_eq!(vec![1; 10], frame.exposed_data());
+        assert_eq!(10, frame.inner_size);
 
         Ok(())
     }
