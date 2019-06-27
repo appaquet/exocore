@@ -4,7 +4,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io;
 
 ///
-///
+/// Frame that pads an underlying frame so that it has a minimum size.
 ///
 pub struct PaddedFrame<I: FrameReader> {
     inner: I,
@@ -55,7 +55,7 @@ impl<I: FrameReader + Clone> Clone for PaddedFrame<I> {
 }
 
 ///
-///
+/// Padded frame builder
 ///
 pub struct PaddedFrameBuilder<I: FrameBuilder> {
     inner: I,
@@ -82,8 +82,8 @@ impl<I: FrameBuilder> PaddedFrameBuilder<I> {
 impl<I: FrameBuilder> FrameBuilder for PaddedFrameBuilder<I> {
     type OwnedFrameType = PaddedFrame<Vec<u8>>;
 
-    fn write<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let inner_size = self.inner.write(writer)?;
+    fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        let inner_size = self.inner.write_to(writer)?;
 
         let padding_size = if inner_size < self.minimum_size {
             let required_padding = self.minimum_size - inner_size;

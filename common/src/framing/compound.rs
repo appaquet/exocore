@@ -4,7 +4,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io;
 
 ///
-///
+/// Frame that wraps 2 underlying frame into a single frame (like a tuple)
 ///
 pub struct CompoundFrame<I: FrameReader> {
     inner: I,
@@ -66,7 +66,7 @@ impl<'p, I: FrameReader> FrameReader for CompoundSideReader<'p, I> {
 }
 
 ///
-///
+/// Compound frame builder
 ///
 pub struct CompoundFrameBuilder<A: FrameBuilder, B: FrameBuilder> {
     left: A,
@@ -86,9 +86,9 @@ impl<A: FrameBuilder, B: FrameBuilder> CompoundFrameBuilder<A, B> {
 impl<A: FrameBuilder, B: FrameBuilder> FrameBuilder for CompoundFrameBuilder<A, B> {
     type OwnedFrameType = CompoundFrame<Vec<u8>>;
 
-    fn write<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let left_size = self.left.write(writer)?;
-        let right_size = self.right.write(writer)?;
+    fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        let left_size = self.left.write_to(writer)?;
+        let right_size = self.right.write_to(writer)?;
         writer.write_u32::<LittleEndian>(left_size as u32)?;
 
         Ok(left_size + right_size + 4)
@@ -131,7 +131,7 @@ mod tests {
         assert_builder_equals(&builder)?;
 
         let mut buffer = Vec::new();
-        builder.write(&mut buffer)?;
+        builder.write_to(&mut buffer)?;
 
         let frame = CompoundFrame::new(buffer)?;
         assert_eq!(vec![1; 10], frame.reader_left().exposed_data());

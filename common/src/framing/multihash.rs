@@ -3,7 +3,7 @@ use crate::crypto::hash::MultihashDigest;
 use std::io;
 
 ///
-///
+/// Checksumed frame using a multihash encoded digest
 ///
 pub struct MultihashFrame<D: MultihashDigest, I: FrameReader> {
     inner: I,
@@ -70,7 +70,7 @@ impl<D: MultihashDigest, I: FrameReader + Clone> Clone for MultihashFrame<D, I> 
 }
 
 ///
-///
+/// Multihash frame builder
 ///
 pub struct MultihashFrameBuilder<D: MultihashDigest, I: FrameBuilder> {
     inner: I,
@@ -93,10 +93,10 @@ impl<D: MultihashDigest, I: FrameBuilder> MultihashFrameBuilder<D, I> {
 impl<D: MultihashDigest, I: FrameBuilder> FrameBuilder for MultihashFrameBuilder<D, I> {
     type OwnedFrameType = MultihashFrame<D, Vec<u8>>;
 
-    fn write<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        // TODO: optimize by creating a proxied writer that digests
+    fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        // TODO: optimize by creating a proxied writer that digests in streaming
         let mut buffer = Vec::new();
-        self.inner.write(&mut buffer)?;
+        self.inner.write_to(&mut buffer)?;
         writer.write_all(&buffer)?;
 
         let mut digest = D::new();

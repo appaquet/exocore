@@ -460,7 +460,6 @@ pub mod tests {
 
     use super::*;
     use exocore_common::cell::FullCell;
-    use std::rc::Rc;
 
     #[test]
     fn directory_chain_create_and_open() -> Result<(), failure::Error> {
@@ -781,7 +780,7 @@ pub mod tests {
 
         // only true for tests
         let operation_id = offset as u64 + 1;
-        let operations = vec![Rc::new(
+        let operations = vec![
             crate::operation::OperationBuilder::new_entry(
                 operation_id,
                 local_node.id(),
@@ -790,7 +789,7 @@ pub mod tests {
             .sign_and_build(&local_node)
             .unwrap()
             .frame,
-        )];
+        ];
 
         let proposed_operation_id = offset as u64;
         let block_operations = BlockOperations::from_operations(operations.into_iter()).unwrap();

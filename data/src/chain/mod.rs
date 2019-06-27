@@ -3,6 +3,7 @@ use std::ops::Range;
 use crate::block;
 use crate::block::{Block, BlockOffset, BlockRef};
 use crate::operation::OperationId;
+use exocore_common::serialization::capnp;
 
 pub mod directory;
 
@@ -64,6 +65,8 @@ pub enum Error {
     Integrity(String),
     #[fail(display = "A segment has reached its full capacity")]
     SegmentFull,
+    #[fail(display = "Error in capnp serialization: kind={:?} msg={}", _0, _1)]
+    Serialization(capnp::ErrorKind, String),
     #[fail(display = "An offset is out of the chain data: {}", _0)]
     OutOfBound(String),
     #[fail(display = "IO error of kind {:?}: {}", _0, _1)]
@@ -103,6 +106,12 @@ impl From<directory::DirectoryError> for Error {
     }
 }
 
+impl From<capnp::Error> for Error {
+    fn from(err: capnp::Error) -> Self {
+        Error::Serialization(err.kind, err.description)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,7 +120,6 @@ mod tests {
     use exocore_common::cell::FullCell;
     use exocore_common::framing::FrameReader;
     use exocore_common::node::LocalNode;
-    use std::rc::Rc;
 
     #[test]
     fn test_block_create_and_read() -> Result<(), failure::Error> {
@@ -119,11 +127,11 @@ mod tests {
         let cell = FullCell::generate(local_node.clone());
         let genesis = BlockOwned::new_genesis(&cell)?;
 
-        let operations = vec![Rc::new(
+        let operations = vec![
             OperationBuilder::new_entry(123, local_node.id(), b"some_data")
                 .sign_and_build(&local_node)?
                 .frame,
-        )];
+        ];
         let operations = BlockOperations::from_operations(operations.into_iter())?;
 
         let second_block = BlockOwned::new_with_prev_block(&cell, &genesis, 0, operations)?;
@@ -133,23 +141,23 @@ mod tests {
 
         let read_second_block = BlockRef::new(&data[0..second_block.total_size()])?;
         assert_eq!(
-            second_block.block.frame_data(),
-            read_second_block.block.frame_data()
+            second_block.block.whole_data(),
+            read_second_block.block.whole_data()
         );
         assert_eq!(
             second_block.operations_data,
             read_second_block.operations_data
         );
         assert_eq!(
-            second_block.signatures.frame_data(),
-            read_second_block.signatures.frame_data()
+            second_block.signatures.whole_data(),
+            read_second_block.signatures.whole_data()
         );
 
         let block_reader = second_block.block.get_reader()?;
         assert_eq!(block_reader.get_offset(), genesis.next_offset());
         assert_eq!(
             block_reader.get_signatures_size(),
-            second_block.signatures.frame_size() as u16
+            second_block.signatures.whole_data_size() as u16
         );
         assert_eq!(
             block_reader.get_operations_size(),
@@ -181,12 +189,10 @@ mod tests {
         // 5 operations
         let operations = (0..5)
             .map(|i| {
-                Rc::new(
-                    OperationBuilder::new_entry(i, local_node.id(), b"op1")
-                        .sign_and_build(&local_node)
-                        .unwrap()
-                        .frame,
-                )
+                OperationBuilder::new_entry(i, local_node.id(), b"op1")
+                    .sign_and_build(&local_node)
+                    .unwrap()
+                    .frame
             })
             .collect::<Vec<_>>();
 

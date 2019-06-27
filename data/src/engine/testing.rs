@@ -17,9 +17,11 @@ use crate::pending::memory::MemoryPendingStore;
 use crate::pending::PendingStore;
 use exocore_common::cell::FullCell;
 use exocore_common::crypto::hash::Sha3_256;
-use exocore_common::framing;
-use exocore_common::framing::{FrameBuilder, FrameReader};
+use exocore_common::framing::{
+    CapnpFrameBuilder, FrameBuilder, FrameReader, MultihashFrameBuilder, SizedFrameBuilder,
+};
 use exocore_common::time::Clock;
+use std::borrow::Borrow;
 use std::collections::HashMap;
 
 pub(super) struct TestCluster {
@@ -184,7 +186,7 @@ impl TestCluster {
             let prev_block_msg = previous_block.map(|b| b.block);
             let operations_data = vec![0u8; 123];
             let signatures = create_dummy_block_sigs(operations_data.len() as u32);
-            let signatures_size = signatures.frame_size() as BlockSignaturesSize;
+            let signatures_size = signatures.whole_data_size() as BlockSignaturesSize;
 
             let block_frame = create_dummy_block(
                 next_offset,
@@ -228,8 +230,8 @@ impl TestCluster {
     ) -> Result<(), crate::engine::Error>
     where
         I: Iterator<Item = M>,
-        M: AsRef<crate::operation::OperationFrame<F>>,
-        F: framing::FrameReader,
+        M: Borrow<crate::operation::OperationFrame<F>>,
+        F: FrameReader,
     {
         if self.chains[node_idx].get_last_block()?.is_none() {
             self.chain_add_genesis_block(node_idx);
@@ -302,7 +304,7 @@ impl TestCluster {
     }
 }
 
-pub fn create_dummy_block<I: framing::FrameReader>(
+pub fn create_dummy_block<I: FrameReader>(
     offset: u64,
     depth: u64,
     operations_size: u32,
@@ -310,7 +312,7 @@ pub fn create_dummy_block<I: framing::FrameReader>(
     previous_block: Option<crate::block::BlockFrame<I>>,
     seed: u64,
 ) -> crate::block::BlockFrame<Vec<u8>> {
-    let mut msg_builder = framing::CapnpFrameBuilder::<block::Owned>::new();
+    let mut msg_builder = CapnpFrameBuilder::<block::Owned>::new();
 
     {
         let mut block_builder: block::Builder = msg_builder.get_builder();
@@ -327,11 +329,8 @@ pub fn create_dummy_block<I: framing::FrameReader>(
         }
     }
 
-    let block_frame_data = framing::SizedFrameBuilder::new(framing::MultihashFrameBuilder::<
-        Sha3_256,
-        _,
-    >::new(msg_builder))
-    .as_bytes();
+    let hash_frame = MultihashFrameBuilder::<Sha3_256, _>::new(msg_builder);
+    let block_frame_data = SizedFrameBuilder::new(hash_frame);
     crate::block::read_block_frame(block_frame_data.as_bytes()).unwrap()
 }
 

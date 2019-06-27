@@ -172,7 +172,7 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
 
         // validate hash of operations of block
         let block_operations = Self::get_block_operations(block, pending_store)?.map(|op| op.frame);
-        let operations_hash = BlockOperations::hash_operations_arc(block_operations)?;
+        let operations_hash = BlockOperations::hash_operations(block_operations)?;
         let block_reader = block_frame.get_reader()?;
         if operations_hash.as_bytes() != block_reader.get_operations_hash()? {
             debug!(

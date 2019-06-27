@@ -9,6 +9,3 @@ members = [
   "clients/wasm",
   "clients/android",
 ]
-
-[patch.crates-io]
-capnp = { path = "./3rd/capnproto-rust/capnp" }

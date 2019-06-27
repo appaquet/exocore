@@ -744,7 +744,7 @@ impl SyncRangeBuilder {
                 .reborrow()
                 .init_operations(self.operations.len() as u32);
             for (i, operation) in self.operations.iter().enumerate() {
-                operations_builder.set(i as u32, operation.frame.frame_data());
+                operations_builder.set(i as u32, operation.frame.whole_data());
             }
         }
 

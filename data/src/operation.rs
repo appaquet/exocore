@@ -2,8 +2,10 @@ use crate::block::Block;
 use exocore_common::crypto::hash::Sha3_256;
 use exocore_common::crypto::signature::Signature;
 use exocore_common::data_chain_capnp::pending_operation;
-use exocore_common::framing;
-use exocore_common::framing::{CapnpFrameBuilder, FrameBuilder};
+use exocore_common::framing::{
+    CapnpFrameBuilder, FrameBuilder, FrameReader, MultihashFrame, MultihashFrameBuilder,
+    SizedFrame, SizedFrameBuilder, TypedCapnpFrame,
+};
 use exocore_common::node::{LocalNode, NodeId};
 use exocore_common::serialization::capnp;
 use exocore_common::serialization::protos::data_chain_capnp::block_signature;
@@ -11,14 +13,11 @@ use exocore_common::serialization::protos::data_chain_capnp::block_signature;
 pub type GroupId = u64;
 pub type OperationId = u64;
 
-pub type OperationFrame<I> = framing::TypedCapnpFrame<
-    framing::MultihashFrame<Sha3_256, framing::SizedFrame<I>>,
-    pending_operation::Owned,
->;
+pub type OperationFrame<I> =
+    TypedCapnpFrame<MultihashFrame<Sha3_256, SizedFrame<I>>, pending_operation::Owned>;
 
-pub type OperationFrameBuilder = framing::SizedFrameBuilder<
-    framing::MultihashFrameBuilder<Sha3_256, framing::CapnpFrameBuilder<pending_operation::Owned>>,
->;
+pub type OperationFrameBuilder =
+    SizedFrameBuilder<MultihashFrameBuilder<Sha3_256, CapnpFrameBuilder<pending_operation::Owned>>>;
 
 ///
 /// Wraps an operation that is stored either in the pending store, or in the
@@ -110,7 +109,7 @@ impl OperationBuilder {
         Ok(OperationBuilder { frame_builder })
     }
 
-    pub fn new_signature_for_block<I: framing::FrameReader>(
+    pub fn new_signature_for_block<I: FrameReader>(
         group_id: OperationId,
         operation_id: OperationId,
         node_id: &NodeId,
@@ -126,7 +125,8 @@ impl OperationBuilder {
         let inner_operation_builder = operation_builder.init_operation();
         let new_sig_builder = inner_operation_builder.init_block_sign();
 
-        // TODO: Create signature for real
+        // TODO: Signature ticket: https://github.com/appaquet/exocore/issues/46
+        //       Create signature for real
         let signature = Signature::empty();
 
         let mut sig_builder: block_signature::Builder = new_sig_builder.init_signature();
@@ -158,19 +158,18 @@ impl OperationBuilder {
         // TODO: Signature ticket: https://github.com/appaquet/exocore/issues/46
         //       Include signature, not just hash.
         let msg_frame = self.frame_builder.as_bytes();
-        let signed_frame_builder = framing::MultihashFrameBuilder::<Sha3_256, _>::new(msg_frame);
-        let sized_frame_builder = framing::SizedFrameBuilder::new(signed_frame_builder);
+        let signed_frame_builder = MultihashFrameBuilder::<Sha3_256, _>::new(msg_frame);
+        let sized_frame_builder = SizedFrameBuilder::new(signed_frame_builder);
         let final_frame = read_operation_frame(sized_frame_builder.as_bytes())?;
 
         Ok(NewOperation::from_frame(final_frame))
     }
 }
 
-pub fn read_operation_frame<I: framing::FrameReader>(inner: I) -> Result<OperationFrame<I>, Error> {
-    let frame = framing::TypedCapnpFrame::new(framing::MultihashFrame::<Sha3_256, _>::new(
-        framing::SizedFrame::new(inner)?,
-    )?)?;
-
+pub fn read_operation_frame<I: FrameReader>(inner: I) -> Result<OperationFrame<I>, Error> {
+    let sized_frame = SizedFrame::new(inner)?;
+    let multihash_frame = MultihashFrame::<Sha3_256, _>::new(sized_frame)?;
+    let frame = TypedCapnpFrame::new(multihash_frame)?;
     Ok(frame)
 }
 

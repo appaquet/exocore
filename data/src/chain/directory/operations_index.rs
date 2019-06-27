@@ -10,7 +10,7 @@ use itertools::Itertools;
 use serde_derive::{Deserialize, Serialize};
 
 use crate::operation::OperationId;
-use exocore_common::serialization::protos::data_chain_capnp::{block, pending_operation};
+use exocore_common::serialization::protos::data_chain_capnp::block;
 use exocore_common::simple_store::json_disk_store::JsonDiskStore;
 use exocore_common::simple_store::SimpleStore;
 
@@ -193,11 +193,7 @@ impl OperationsIndex {
 
         // we add all operations that are in the block
         for operation in block.operations_iter()? {
-            let operation_reader: pending_operation::Reader =
-                operation.get_reader().map_err(|err| {
-                    // TODO: Fix me
-                    Error::Other(format!("Couldn't read operation: {}", err))
-                })?;
+            let operation_reader = operation.get_reader()?;
             self.put_operation_block(operation_reader.get_operation_id(), block.offset());
         }
 

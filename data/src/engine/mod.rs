@@ -11,11 +11,11 @@ use tokio::timer::Interval;
 use crate::operation::OperationId;
 use exocore_common;
 use exocore_common::node::NodeId;
-use exocore_common::serialization::framed::MessageType;
 use exocore_common::serialization::protos::data_chain_capnp::pending_operation;
 use exocore_common::serialization::protos::data_transport_capnp::{
     chain_sync_request, chain_sync_response, envelope, pending_sync_request,
 };
+use exocore_common::serialization::protos::MessageType;
 
 use crate::block;
 use crate::block::{Block, BlockOffset, BlockRef};
@@ -305,17 +305,17 @@ where
         match envelope_reader.get_type() {
             <pending_sync_request::Owned as MessageType>::MESSAGE_TYPE => {
                 let data = envelope_reader.get_data()?;
-                let sync_request = TypedCapnpFrame::<_, pending_sync_request::Owned>::new(data)?;
+                let sync_request = TypedCapnpFrame::new(data)?;
                 inner.handle_incoming_pending_sync_request(&message, sync_request)?;
             }
             <chain_sync_request::Owned as MessageType>::MESSAGE_TYPE => {
                 let data = envelope_reader.get_data()?;
-                let sync_request = TypedCapnpFrame::<_, chain_sync_request::Owned>::new(data)?;
+                let sync_request = TypedCapnpFrame::new(data)?;
                 inner.handle_incoming_chain_sync_request(&message, sync_request)?;
             }
             <chain_sync_response::Owned as MessageType>::MESSAGE_TYPE => {
                 let data = envelope_reader.get_data()?;
-                let sync_response = TypedCapnpFrame::<_, chain_sync_response::Owned>::new(data)?;
+                let sync_response = TypedCapnpFrame::new(data)?;
                 inner.handle_incoming_chain_sync_response(&message, sync_response)?;
             }
             msg_type => {

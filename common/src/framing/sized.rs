@@ -4,7 +4,9 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io;
 
 ///
-///
+/// Frame that encode the size of the underlying frame so that it can expose the exact
+/// data when decoding. The size is prepended and appended to support to support iteration
+/// in both directions.
 ///
 pub struct SizedFrame<I: FrameReader> {
     inner: I,
@@ -73,7 +75,7 @@ impl<I: FrameReader + Clone> Clone for SizedFrame<I> {
 }
 
 ///
-///
+/// Sized frame builder
 ///
 pub struct SizedFrameBuilder<I: FrameBuilder> {
     inner: I,
@@ -92,15 +94,24 @@ impl<I: FrameBuilder> SizedFrameBuilder<I> {
 impl<I: FrameBuilder> FrameBuilder for SizedFrameBuilder<I> {
     type OwnedFrameType = SizedFrame<Vec<u8>>;
 
-    fn write<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut buffer = Vec::new();
-        self.inner.write(&mut buffer)?;
+    fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        if let Some(inner_size) = self.inner.expected_size() {
+            writer.write_u32::<LittleEndian>(inner_size as u32)?;
+            let written_size = self.inner.write_to(writer)?;
+            debug_assert_eq!(written_size, inner_size);
+            writer.write_u32::<LittleEndian>(inner_size as u32)?;
 
-        writer.write_u32::<LittleEndian>(buffer.len() as u32)?;
-        writer.write_all(&buffer)?;
-        writer.write_u32::<LittleEndian>(buffer.len() as u32)?;
+            Ok(4 + inner_size + 4)
+        } else {
+            let mut buffer = Vec::new();
+            self.inner.write_to(&mut buffer)?;
 
-        Ok(4 + buffer.len() + 4)
+            writer.write_u32::<LittleEndian>(buffer.len() as u32)?;
+            writer.write_all(&buffer)?;
+            writer.write_u32::<LittleEndian>(buffer.len() as u32)?;
+
+            Ok(4 + buffer.len() + 4)
+        }
     }
 
     fn write_into(&self, into: &mut [u8]) -> Result<usize, io::Error> {
@@ -126,7 +137,7 @@ impl<I: FrameBuilder> FrameBuilder for SizedFrameBuilder<I> {
 }
 
 ///
-///
+/// Iterate through a series of sized frame in the given buffer.
 ///
 pub struct SizedFrameIterator<'a> {
     buffer: &'a [u8],
@@ -172,11 +183,12 @@ pub struct IteratedSizedFrame<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::framing::assert_builder_equals;
+    use crate::framing::{assert_builder_equals, CapnpFrameBuilder, TypedCapnpFrame};
+    use crate::serialization::protos::data_chain_capnp::block;
     use std::io::Cursor;
 
     #[test]
-    fn can_build_and_read() -> Result<(), failure::Error> {
+    fn can_build_and_read_sized_inner() -> Result<(), failure::Error> {
         let inner = vec![8u8; 100];
         let builder = SizedFrameBuilder::new(inner.clone());
         assert_builder_equals(&builder)?;
@@ -189,14 +201,32 @@ mod tests {
         assert_eq!(inner, frame_reader_owned.exposed_data());
 
         let mut buf3 = Vec::new();
-        frame_reader.write(&mut buf3)?;
+        frame_reader.copy_to(&mut buf3)?;
         assert_eq!(buf1, buf3);
 
         assert_eq!(buf1, frame_reader.whole_data());
 
         let mut buf4 = vec![0u8; 1000];
-        let written_size = frame_reader.write_into(&mut buf4)?;
+        let written_size = frame_reader.copy_into(&mut buf4)?;
         assert_eq!(buf1, &buf4[0..written_size]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn can_build_and_read_unsized_inner() -> Result<(), failure::Error> {
+        // capnp builder cannot provide the size of the frame until it's serialized
+        let mut capnp_builder = CapnpFrameBuilder::<block::Owned>::new();
+        let mut msg_builder = capnp_builder.get_builder();
+        msg_builder.set_offset(1234);
+
+        let builder = SizedFrameBuilder::new(capnp_builder);
+        assert_builder_equals(&builder)?;
+        let frame_bytes = builder.as_bytes();
+
+        let frame = TypedCapnpFrame::<_, block::Owned>::new(SizedFrame::new(frame_bytes)?)?;
+        let msg_reader = frame.get_reader()?;
+        assert_eq!(1234, msg_reader.get_offset());
 
         Ok(())
     }
@@ -219,10 +249,10 @@ mod tests {
             let mut buffer_cursor = Cursor::new(buffer);
 
             let frame1 = SizedFrameBuilder::new(vec![1u8; 10]);
-            frame1.write(&mut buffer_cursor)?;
+            frame1.write_to(&mut buffer_cursor)?;
 
             let frame2 = SizedFrameBuilder::new(vec![2u8; 10]);
-            frame2.write(&mut buffer_cursor)?;
+            frame2.write_to(&mut buffer_cursor)?;
 
             buffer_cursor.into_inner()
         };
@@ -247,10 +277,10 @@ mod tests {
             let mut buffer_cursor = Cursor::new(buffer);
 
             let frame1 = SizedFrameBuilder::new(vec![1u8; 10]);
-            frame1.write(&mut buffer_cursor)?;
+            frame1.write_to(&mut buffer_cursor)?;
 
             let frame2 = SizedFrameBuilder::new(vec![2u8; 10]);
-            frame2.write(&mut buffer_cursor)?;
+            frame2.write_to(&mut buffer_cursor)?;
 
             buffer_cursor.into_inner()
         };

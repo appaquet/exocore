@@ -11,15 +11,16 @@ use exocore_common::framing::{
 };
 use exocore_common::node::NodeId;
 use exocore_common::serialization::capnp;
-use std::sync::Arc;
+use std::borrow::Borrow;
 
 pub type BlockOffset = u64;
 pub type BlockDepth = u64;
 pub type BlockOperationsSize = u32;
 pub type BlockSignaturesSize = u16;
 
-// TODO: Multihash --> Signature frame
 pub type BlockFrame<I> = TypedCapnpFrame<MultihashFrame<Sha3_256, SizedFrame<I>>, block::Owned>;
+pub type BlockFrameBuilder =
+    SizedFrameBuilder<MultihashFrameBuilder<Sha3_256, CapnpFrameBuilder<block::Owned>>>;
 pub type SignaturesFrame<I> = TypedCapnpFrame<PaddedFrame<SizedFrame<I>>, block_signatures::Owned>;
 
 ///
@@ -37,16 +38,18 @@ pub type SignaturesFrame<I> = TypedCapnpFrame<PaddedFrame<SizedFrame<I>>, block_
 /// contain enough space for all nodes to add their own signature.
 ///
 pub trait Block {
-    type FrameType: FrameReader<OwnedType = Vec<u8>>;
+    type UnderlyingFrame: FrameReader<OwnedType = Vec<u8>>;
 
     fn offset(&self) -> BlockOffset;
-    fn block(&self) -> &BlockFrame<Self::FrameType>;
+    fn block(&self) -> &BlockFrame<Self::UnderlyingFrame>;
     fn operations_data(&self) -> &[u8];
-    fn signatures(&self) -> &SignaturesFrame<Self::FrameType>;
+    fn signatures(&self) -> &SignaturesFrame<Self::UnderlyingFrame>;
 
     #[inline]
     fn total_size(&self) -> usize {
-        self.block().frame_size() + self.operations_data().len() + self.signatures().frame_size()
+        self.block().whole_data_size()
+            + self.operations_data().len()
+            + self.signatures().whole_data_size()
     }
 
     #[inline]
@@ -54,27 +57,26 @@ pub trait Block {
         self.offset() + self.total_size() as BlockOffset
     }
 
-    // TODO:Should return error
     #[inline]
     fn copy_data_into(&self, data: &mut [u8]) {
         let operations_data = self.operations_data();
-        let operations_offset = self.block().frame_size();
+        let operations_offset = self.block().whole_data_size();
         let signatures_offset = operations_offset + operations_data.len();
 
         self.block()
-            .write_into(data)
+            .copy_into(data)
             .expect("Couldn't write block into given buffer");
 
         (&mut data[operations_offset..signatures_offset]).copy_from_slice(operations_data);
 
         self.signatures()
-            .write_into(&mut data[signatures_offset..])
+            .copy_into(&mut data[signatures_offset..])
             .expect("Couldn't write signatures into given buffer");
     }
 
     fn as_data_vec(&self) -> Vec<u8> {
         vec![
-            self.block().frame_data(),
+            self.block().whole_data(),
             self.operations_data(),
             self.signatures().whole_data(),
         ]
@@ -133,12 +135,13 @@ pub trait Block {
     }
 
     fn validate(&self) -> Result<(), Error> {
-        // TODO: Should actually check signatures too
+        // TODO: Signature ticket: https://github.com/appaquet/exocore/issues/46
+        //       Should actually check signatures too
 
         let block_reader: block::Reader = self.block().get_reader()?;
 
         let sig_size_header = block_reader.get_signatures_size() as usize;
-        let sig_size_stored = self.signatures().whole_data().len();
+        let sig_size_stored = self.signatures().whole_data_size();
         if sig_size_header != sig_size_stored {
             return Err(Error::Integrity(format!(
                 "Signatures size don't match: sig_size_header={}, sig_size_stored={}",
@@ -156,8 +159,8 @@ pub trait Block {
         }
 
         if ops_size_header > 0 {
-            let ops_hash_stored =
-                BlockOperations::hash_operations(self.operations_iter()?)?.into_bytes();
+            let operations = self.operations_iter()?;
+            let ops_hash_stored = BlockOperations::hash_operations(operations)?.into_bytes();
             let ops_hash_header = block_reader.get_operations_hash()?;
             if ops_hash_stored != ops_hash_header {
                 return Err(Error::Integrity(format!(
@@ -172,10 +175,12 @@ pub trait Block {
 }
 
 ///
-/// Reads block frame from data
+/// Reads block frame from an underlying frame (or just data)
 ///
 pub fn read_block_frame<I: FrameReader>(inner: I) -> Result<BlockFrame<I>, Error> {
-    let frame = TypedCapnpFrame::new(MultihashFrame::new(SizedFrame::new(inner)?)?)?;
+    let sized_frame = SizedFrame::new(inner)?;
+    let multihash_frame = MultihashFrame::new(sized_frame)?;
+    let frame = TypedCapnpFrame::new(multihash_frame)?;
     Ok(frame)
 }
 
@@ -183,11 +188,14 @@ pub fn read_block_frame_from_next_offset(
     data: &[u8],
     next_offset: usize,
 ) -> Result<BlockFrame<&[u8]>, Error> {
-    let frame = TypedCapnpFrame::new(MultihashFrame::new(SizedFrame::new_from_next_offset(
-        data,
-        next_offset,
-    )?)?)?;
+    let sized_frame = SizedFrame::new_from_next_offset(data, next_offset)?;
+    let multihash_frame = MultihashFrame::new(sized_frame)?;
+    let frame = TypedCapnpFrame::new(multihash_frame)?;
     Ok(frame)
+}
+
+pub fn build_block_frame(block_frame: CapnpFrameBuilder<block::Owned>) -> BlockFrameBuilder {
+    SizedFrameBuilder::new(MultihashFrameBuilder::<Sha3_256, _>::new(block_frame))
 }
 
 ///
@@ -219,11 +227,7 @@ impl<'a> Iterator for BlockOperationsIterator<'a> {
         match frame_res {
             Ok(frame) => Some(frame),
             Err(err) => {
-                // TODO: fix me
-                self.last_error = Some(Error::Other(format!(
-                    "Couldn't read operation frame: {}",
-                    err
-                )));
+                self.last_error = Some(Error::Operation(err));
                 None
             }
         }
@@ -262,9 +266,7 @@ impl BlockOwned {
     pub fn new_genesis(cell: &FullCell) -> Result<BlockOwned, Error> {
         let operations = BlockOperations::empty();
         let block = Self::new_with_prev_info(cell, 0, 0, 0, &[], 0, operations)?;
-
         // TODO: Add master signature after doing https://github.com/appaquet/exocore/issues/46
-
         Ok(block)
     }
 
@@ -310,17 +312,17 @@ impl BlockOwned {
 
         // initialize block
         let mut block_frame_builder = CapnpFrameBuilder::<block::Owned>::new();
-        let mut block_builder = block_frame_builder.get_builder();
-        block_builder.set_offset(offset);
-        block_builder.set_depth(depth + 1);
-        block_builder.set_previous_offset(previous_offset);
-        block_builder.set_previous_hash(previous_hash);
-        block_builder.set_proposed_operation_id(proposed_operation_id);
-        block_builder.set_proposed_node_id(local_node.id().to_str());
-        block_builder.set_operations_size(operations_data_size);
-        block_builder.set_operations_hash(&operations.multihash_bytes);
+        let mut block_msg_builder = block_frame_builder.get_builder();
+        block_msg_builder.set_offset(offset);
+        block_msg_builder.set_depth(depth + 1);
+        block_msg_builder.set_previous_offset(previous_offset);
+        block_msg_builder.set_previous_hash(previous_hash);
+        block_msg_builder.set_proposed_operation_id(proposed_operation_id);
+        block_msg_builder.set_proposed_node_id(local_node.id().to_str());
+        block_msg_builder.set_operations_size(operations_data_size);
+        block_msg_builder.set_operations_hash(&operations.multihash_bytes);
 
-        let mut operations_builder = block_builder
+        let mut operations_builder = block_msg_builder
             .reborrow()
             .init_operations_header(operations.headers.len() as u32);
         for (i, header_builder) in operations.headers.iter().enumerate() {
@@ -333,18 +335,17 @@ impl BlockOwned {
             .to_frame_for_new_block(operations_data_size)?;
 
         // set required signatures size in block
-        block_builder.set_signatures_size(signature_frame.frame_size() as BlockSignaturesSize);
+        block_msg_builder
+            .set_signatures_size(signature_frame.whole_data_size() as BlockSignaturesSize);
 
         // serialize block and then re-read it
-        let block_frame_data: Vec<u8> = SizedFrameBuilder::new(
-            MultihashFrameBuilder::<Sha3_256, _>::new(block_frame_builder),
-        )
-        .as_bytes();
-        let block_frame = read_block_frame(block_frame_data)?;
+        let final_frame_builder = build_block_frame(block_frame_builder);
+        let final_frame_data: Vec<u8> = final_frame_builder.as_bytes();
+        let block = read_block_frame(final_frame_data)?;
 
         Ok(BlockOwned {
             offset,
-            block: block_frame,
+            block,
             operations_data: operations.data,
             signatures: signature_frame,
         })
@@ -352,13 +353,13 @@ impl BlockOwned {
 }
 
 impl Block for BlockOwned {
-    type FrameType = Vec<u8>;
+    type UnderlyingFrame = Vec<u8>;
 
     fn offset(&self) -> u64 {
         self.offset
     }
 
-    fn block(&self) -> &BlockFrame<Self::FrameType> {
+    fn block(&self) -> &BlockFrame<Self::UnderlyingFrame> {
         &self.block
     }
 
@@ -366,7 +367,7 @@ impl Block for BlockOwned {
         &self.operations_data
     }
 
-    fn signatures(&self) -> &SignaturesFrame<Self::FrameType> {
+    fn signatures(&self) -> &SignaturesFrame<Self::UnderlyingFrame> {
         &self.signatures
     }
 }
@@ -386,7 +387,7 @@ impl<'a> BlockRef<'a> {
         let block = read_block_frame(data)?;
         let block_reader: block::Reader = block.get_reader()?;
 
-        let operations_offset = block.frame_size();
+        let operations_offset = block.whole_data_size();
         let operations_size = block_reader.get_operations_size() as usize;
         let signatures_offset = operations_offset + operations_size;
 
@@ -412,7 +413,7 @@ impl<'a> BlockRef<'a> {
     pub fn new_from_next_offset(data: &[u8], next_offset: usize) -> Result<BlockRef, Error> {
         let signatures = BlockSignatures::read_frame_from_next_offset(data, next_offset)?;
         let signatures_reader: block_signatures::Reader = signatures.get_reader()?;
-        let signatures_offset = next_offset - signatures.frame_size();
+        let signatures_offset = next_offset - signatures.whole_data_size();
 
         let operations_size = signatures_reader.get_operations_size() as usize;
         if operations_size > signatures_offset {
@@ -438,13 +439,13 @@ impl<'a> BlockRef<'a> {
 }
 
 impl<'a> Block for BlockRef<'a> {
-    type FrameType = &'a [u8];
+    type UnderlyingFrame = &'a [u8];
 
     fn offset(&self) -> u64 {
         self.offset
     }
 
-    fn block(&self) -> &BlockFrame<Self::FrameType> {
+    fn block(&self) -> &BlockFrame<Self::UnderlyingFrame> {
         &self.block
     }
 
@@ -452,7 +453,7 @@ impl<'a> Block for BlockRef<'a> {
         &self.operations_data
     }
 
-    fn signatures(&self) -> &SignaturesFrame<Self::FrameType> {
+    fn signatures(&self) -> &SignaturesFrame<Self::UnderlyingFrame> {
         &self.signatures
     }
 }
@@ -519,7 +520,7 @@ impl BlockOperations {
     pub fn from_operations<I, M, F>(sorted_operations: I) -> Result<BlockOperations, Error>
     where
         I: Iterator<Item = M>,
-        M: AsRef<crate::operation::OperationFrame<F>>,
+        M: Borrow<crate::operation::OperationFrame<F>>,
         F: FrameReader,
     {
         let mut hasher = Sha3_256::new();
@@ -527,10 +528,10 @@ impl BlockOperations {
         let mut data = Vec::new();
 
         for operation in sorted_operations {
-            let operation = operation.as_ref();
+            let operation = operation.borrow();
             let operation_reader = operation.get_reader()?;
             let offset = data.len();
-            let entry_data = operation.frame_data();
+            let entry_data = operation.whole_data();
             hasher.input_signed_frame(&operation.inner().inner());
             data.extend_from_slice(entry_data);
 
@@ -548,26 +549,15 @@ impl BlockOperations {
         })
     }
 
-    pub fn hash_operations<I, F>(sorted_operations: I) -> Result<Multihash, Error>
+    pub fn hash_operations<I, M, F>(sorted_operations: I) -> Result<Multihash, Error>
     where
-        I: Iterator<Item = crate::operation::OperationFrame<F>>,
+        I: Iterator<Item = M>,
+        M: Borrow<crate::operation::OperationFrame<F>>,
         F: FrameReader,
     {
         let mut hasher = Sha3_256::new();
         for operation in sorted_operations {
-            hasher.input_signed_frame(&operation.inner().inner());
-        }
-        Ok(hasher.into_multihash())
-    }
-
-    pub fn hash_operations_arc<I, F>(sorted_operations: I) -> Result<Multihash, Error>
-    where
-        I: Iterator<Item = Arc<crate::operation::OperationFrame<F>>>,
-        F: FrameReader,
-    {
-        let mut hasher = Sha3_256::new();
-        for operation in sorted_operations {
-            hasher.input_signed_frame(&operation.inner().inner());
+            hasher.input_signed_frame(&operation.borrow().inner().inner());
         }
         Ok(hasher.into_multihash())
     }
@@ -695,14 +685,13 @@ impl BlockSignatures {
         }
 
         // we build the frame and re-read it
-        let frame_data = frame_builder.as_bytes();
-        let signatures_frame = Self::read_frame(frame_data)?;
+        let signatures_frame = Self::read_frame(frame_builder.as_bytes())?;
 
-        // make sure that the signatures frame size is not higher than pre-allocated space in block
-        if signatures_frame.frame_size() != expected_signatures_size {
+        // make sure that the signatures frame size is the same as the one in block header
+        if signatures_frame.whole_data_size() != expected_signatures_size {
             return Err(Error::Integrity(format!(
                 "Block local signatures isn't the same size as expected (got={} expected={})",
-                signatures_frame.frame_size(),
+                signatures_frame.whole_data_size(),
                 block_reader.get_signatures_size()
             )));
         }
@@ -711,7 +700,9 @@ impl BlockSignatures {
     }
 
     pub fn read_frame<I: FrameReader>(inner: I) -> Result<SignaturesFrame<I>, Error> {
-        let frame = TypedCapnpFrame::new(PaddedFrame::new(SizedFrame::new(inner)?)?)?;
+        let sized_frame = SizedFrame::new(inner)?;
+        let padded_frame = PaddedFrame::new(sized_frame)?;
+        let frame = TypedCapnpFrame::new(padded_frame)?;
         Ok(frame)
     }
 
@@ -719,11 +710,9 @@ impl BlockSignatures {
         data: &[u8],
         next_offset: usize,
     ) -> Result<SignaturesFrame<&[u8]>, Error> {
-        let frame = TypedCapnpFrame::new(PaddedFrame::new(SizedFrame::new_from_next_offset(
-            data,
-            next_offset,
-        )?)?)?;
-
+        let sized_frame = SizedFrame::new_from_next_offset(data, next_offset)?;
+        let padded_frame = PaddedFrame::new(sized_frame)?;
+        let frame = TypedCapnpFrame::new(padded_frame)?;
         Ok(frame)
     }
 }
@@ -756,6 +745,8 @@ pub enum Error {
     Integrity(String),
     #[fail(display = "An offset is out of the block data: {}", _0)]
     OutOfBound(String),
+    #[fail(display = "Operations related error: {}", _0)]
+    Operation(#[fail(cause)] crate::operation::Error),
     #[fail(display = "IO error: {}", _0)]
     IO(String),
     #[fail(display = "Error in capnp serialization: kind={:?} msg={}", _0, _1)]
@@ -798,14 +789,14 @@ mod tests {
 
         let block_ops = BlockOperations::empty();
         let block1 = BlockOwned::new_with_prev_block(cell, &genesis_block, 0, block_ops)?;
-        assert!(block1.signatures.frame_size() > 100);
+        assert!(block1.signatures.whole_data_size() > 100);
 
         let node2 = LocalNode::generate();
         full_cell.nodes_mut().add(node2.node().clone());
 
         let block_ops = BlockOperations::empty();
         let block2 = BlockOwned::new_with_prev_block(cell, &genesis_block, 0, block_ops)?;
-        assert!(block2.signatures.frame_size() > block1.signatures.frame_size());
+        assert!(block2.signatures.whole_data_size() > block1.signatures.whole_data_size());
 
         Ok(())
     }
@@ -828,7 +819,7 @@ mod tests {
         // new signatures frame should be the same size as the signatures specified in block
         assert_eq!(
             usize::from(block1_reader.get_signatures_size()),
-            signatures_frame.frame_size()
+            signatures_frame.whole_data_size()
         );
 
         Ok(())

@@ -922,7 +922,7 @@ impl BlockHeader {
             previous_offset: block_reader.get_previous_offset(),
             previous_hash: block_reader.get_previous_hash()?.to_vec(),
 
-            block_size: stored_block.block().frame_size() as u32,
+            block_size: stored_block.block().whole_data_size() as u32,
             operations_size: block_reader.get_operations_size(),
             signatures_size: block_reader.get_signatures_size(),
         })
@@ -1077,7 +1077,6 @@ mod tests {
     use crate::operation::OperationBuilder;
     use exocore_common::framing::FrameBuilder;
     use itertools::Itertools;
-    use std::rc::Rc;
 
     #[test]
     fn handle_sync_response_blocks() -> Result<(), failure::Error> {
@@ -1369,12 +1368,10 @@ mod tests {
             .map(|_i| {
                 let op_id = cluster.consistent_clock(0);
                 let data = vec![0u8; operation_size + 1];
-                Rc::new(
-                    OperationBuilder::new_entry(op_id, node_0.id(), &data)
-                        .sign_and_build(&node_0)
-                        .unwrap()
-                        .frame,
-                )
+                OperationBuilder::new_entry(op_id, node_0.id(), &data)
+                    .sign_and_build(&node_0)
+                    .unwrap()
+                    .frame
             })
             .collect_vec();
         cluster.chain_add_block_with_operations(0, operations.into_iter())?;
@@ -1702,12 +1699,12 @@ mod tests {
             .expect("Node 2 didn't have any data");
         assert_eq!(node1_last_block.offset, node2_last_block.offset);
         assert_eq!(
-            node1_last_block.block.frame_data(),
-            node2_last_block.block.frame_data()
+            node1_last_block.block.whole_data(),
+            node2_last_block.block.whole_data()
         );
         assert_eq!(
-            node1_last_block.signatures.frame_data(),
-            node2_last_block.signatures.frame_data()
+            node1_last_block.signatures.whole_data(),
+            node2_last_block.signatures.whole_data()
         );
     }
 }

@@ -1,6 +1,6 @@
 use exocore_common::data_transport_capnp::envelope;
 use exocore_common::node::Node;
-use exocore_common::serialization::framed::MessageType;
+use exocore_common::serialization::protos::MessageType;
 
 use crate::{Error, TransportLayer};
 use exocore_common::cell::Cell;
@@ -44,16 +44,8 @@ impl OutMessage {
 }
 
 /// Message receive from another node
+#[derive(Clone)]
 pub struct InMessage {
     pub from: Node,
     pub envelope: TypedCapnpFrame<Vec<u8>, envelope::Owned>,
-}
-
-impl Clone for InMessage {
-    fn clone(&self) -> Self {
-        InMessage {
-            from: self.from.clone(),
-            envelope: self.envelope.to_owned(),
-        }
-    }
 }
