@@ -1,5 +1,7 @@
 #[derive(Debug, Fail)]
 pub enum Error {
+    #[fail(display = "Error parsing schema: {}", _0)]
+    Schema(String),
     #[fail(display = "An error as occurred in Query parsing: {:?}", _0)]
     QueryParserError(tantivy::query::QueryParserError),
     #[fail(display = "An error as occurred in Tantivy: {}", _0)]

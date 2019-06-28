@@ -3,9 +3,9 @@ use tantivy::query::QueryParser;
 use tantivy::schema::{IntOptions, Schema, SchemaBuilder, STORED, TEXT};
 use tantivy::{Document, Index, IndexWriter};
 
-use crate::entity::*;
-use crate::errors::Error;
-use crate::queries::*;
+use crate::entity_old::*;
+use crate::error::Error;
+use crate::query::*;
 use std::result::Result;
 
 // TODO: Needs to decrypt
@@ -62,7 +62,7 @@ impl Indexer {
         Ok(last_ts)
     }
 
-    pub fn search(&self, query: &dyn Query) -> Result<Vec<String>, Error> {
+    pub fn search(&self, query: &dyn OldQuery) -> Result<Vec<String>, Error> {
         // TODO: Should not re-create index reader at every search
         let index_reader = self.index.reader()?;
         let searcher = index_reader.searcher();

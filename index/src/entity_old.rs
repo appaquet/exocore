@@ -4,15 +4,13 @@ use std::vec::Vec;
 
 // TODO: Check if Cow type could improve String manipulation here since we will have a common schema and always manipulate same names
 
-trait Record {
-    fn name(&self) -> String;
-    fn fields(&self) -> Vec<Field>;
-    fn get_field(&self, name: String) -> Option<Field>;
-}
-
+//trait Record {
+//    fn name(&self) -> String;
+//    fn fields(&self) -> Vec<Field>;
+//    fn get_field(&self, name: String) -> Option<Field>;
+//}
+//
 #[derive(Debug, PartialEq, Eq, Hash)]
-#[serde(rename_all = "snake_case")]
-#[derive(Serialize, Deserialize)]
 pub enum FieldType {
     Long,
     Text,
@@ -21,8 +19,6 @@ pub enum FieldType {
 }
 
 #[derive(Debug)]
-#[serde(rename_all = "snake_case")]
-#[derive(Serialize, Deserialize)]
 pub enum FieldValue {
     Long(u64),
     Text(String),
@@ -47,8 +43,6 @@ pub trait FieldAdder {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
-#[serde(rename_all = "snake_case")]
-#[derive(Serialize, Deserialize)]
 pub struct Field {
     pub name: String,
     pub typ: FieldType,
@@ -56,8 +50,6 @@ pub struct Field {
     pub stored: bool,
 }
 
-#[serde(rename_all = "snake_case")]
-#[derive(Serialize, Deserialize)]
 pub struct Entity {
     pub id: u64,
     pub creation_date: u64,
@@ -66,8 +58,6 @@ pub struct Entity {
 }
 
 #[derive(Debug, PartialEq)]
-#[serde(rename_all = "snake_case")]
-#[derive(Serialize, Deserialize)]
 pub enum TraitType {
     Unique,
     Repeated,
@@ -76,8 +66,6 @@ pub enum TraitType {
 }
 
 // Concrete traits implementation
-#[serde(rename_all = "snake_case")]
-#[derive(Serialize, Deserialize)]
 pub struct Trait {
     pub name: String,
     pub trait_type: TraitType,

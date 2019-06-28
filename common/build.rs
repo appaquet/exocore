@@ -7,6 +7,7 @@ fn main() {
             "proto/common.capnp",
             "proto/data_chain.capnp",
             "proto/data_transport.capnp",
+            "proto/index_domain.capnp",
         ];
 
         for proto_file in protos_file {

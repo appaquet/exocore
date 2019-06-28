@@ -6,10 +6,13 @@ extern crate failure;
 extern crate serde_derive;
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate maplit;
 
-pub mod entity;
-pub mod errors;
+pub mod entity_old;
+pub mod error;
 pub mod index;
-pub mod mutations;
-pub mod queries;
+pub mod mutation;
+pub mod query;
+pub mod schema;
 pub mod store;
