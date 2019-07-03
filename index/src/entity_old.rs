@@ -163,7 +163,7 @@ mod tests {
 
         assert_eq!(contact_trait.trait_type, TraitType::Unique);
         assert_eq!(contact_trait.name, "contact".to_owned());
-        assert!(contact_trait.fields.iter().any(|(f, v)| f.name == "email"));
-        assert!(contact_trait.fields.iter().any(|(f, v)| f.name == "name"));
+        assert!(contact_trait.fields.iter().any(|(f, _v)| f.name == "email"));
+        assert!(contact_trait.fields.iter().any(|(f, _v)| f.name == "name"));
     }
 }

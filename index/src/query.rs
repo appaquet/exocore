@@ -1,3 +1,5 @@
+use crate::entities::entity::Entity;
+
 ///
 ///
 ///
@@ -76,8 +78,8 @@ impl QueryResults {
 #[serde(rename_all = "snake_case")]
 #[derive(Serialize, Deserialize)]
 pub struct QueryResult {
-    // entity: Entity,
-// TODO: sortToken:
+    entity: Entity,
+    // TODO: sortToken:
 }
 
 ///
@@ -117,14 +119,9 @@ mod tests {
         let serialized = serde_json::to_string(&query)?;
         println!("{}", serialized);
 
-        //        let entity = Entity {
-        //            id: 0,
-        //            creation_date: 0,
-        //            modification_date: 0,
-        //            traits: vec![],
-        //        };
+        let entity = Entity::new("1234".to_string());
         let results = QueryResults {
-            results: vec![QueryResult {}],
+            results: vec![QueryResult { entity }],
             total_estimated: 0,
             current_page: QueryPaging {
                 from_token: Some(SortToken("token".to_string())),

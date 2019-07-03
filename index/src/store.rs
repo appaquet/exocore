@@ -51,7 +51,7 @@ where
         let (out_sender, out_receiver) = mpsc::unbounded();
         tokio::spawn(
             out_receiver
-                .forward(transport_handle.get_sink().sink_map_err(|err| ()))
+                .forward(transport_handle.get_sink().sink_map_err(|_err| ()))
                 .map(|_| ()),
         );
         inner.transport_out = Some(out_sender);
@@ -113,7 +113,7 @@ where
 
     fn handle_incoming_message(
         weak_inner: &Weak<RwLock<Inner<CP, PP>>>,
-        in_message: InMessage,
+        _in_message: InMessage,
     ) -> Result<(), Error> {
         // TODO: Parse message in query
         //        Check frame type
@@ -127,10 +127,10 @@ where
         tokio::spawn(
             inner
                 .handle_incoming_query(Query::Empty)
-                .and_then(move |results| {
+                .and_then(move |_results| {
                     let inner = weak_inner.upgrade().unwrap();
                     let inner = inner.read().unwrap();
-                    if let Some(transport) = &inner.transport_out {
+                    if let Some(_transport) = &inner.transport_out {
                         // TODO: let message = OutMessage { to... in_message.source, results ...}
                         //TODO: transport.unbounded_send(message);
                     }
@@ -146,15 +146,15 @@ where
     }
 
     fn handle_data_event(
-        weak_inner: &Weak<RwLock<Inner<CP, PP>>>,
+        _weak_inner: &Weak<RwLock<Inner<CP, PP>>>,
         event: exocore_data::engine::Event,
     ) -> Result<(), Error> {
         // TODO: Take action... Should we-reindex? ...
         match event {
-            exocore_data::engine::Event::ChainBlockNew(offset) => {
+            exocore_data::engine::Event::ChainBlockNew(_offset) => {
                 // TODO: ...
             }
-            exocore_data::engine::Event::PendingOperationNew(op) => {
+            exocore_data::engine::Event::PendingOperationNew(_op) => {
                 // TODO: ...
             }
             _ => {
@@ -198,7 +198,7 @@ where
     CP: exocore_data::chain::ChainStore,
     PP: exocore_data::pending::PendingStore,
 {
-    fn handle_incoming_query(&self, query: Query) -> QueryResolver {
+    fn handle_incoming_query(&self, _query: Query) -> QueryResolver {
         // TODO: Should use some kind of queue instead of running query directly
 
         let (sender, receiver) = futures::oneshot();
@@ -207,7 +207,7 @@ where
         // TODO: indexer.query(...)
 
         // TODO: when query ready
-        sender.send(Ok(QueryResults::empty()));
+        let _ = sender.send(Ok(QueryResults::empty()));
 
         query_resolver
     }
@@ -216,7 +216,7 @@ where
 ///
 ///
 ///
-struct StoreHandle<CP, PP>
+pub struct StoreHandle<CP, PP>
 where
     CP: exocore_data::chain::ChainStore,
     PP: exocore_data::pending::PendingStore,

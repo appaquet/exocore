@@ -3,11 +3,29 @@ use super::schema::Record as SchemaRecord;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+#[derive(Serialize, Deserialize)]
 pub struct Entity {
     pub id: String,
     pub traits: Vec<Trait>,
 }
 
+impl Entity {
+    pub fn new(id: String) -> Entity {
+        Entity {
+            id,
+            traits: Vec::new(),
+        }
+    }
+
+    pub fn with_trait(mut self, trt: Trait) -> Self {
+        self.traits.push(trt);
+        self
+    }
+}
+
+///
+///
+///
 pub trait Record: Sized {
     type SchemaType: schema::Record;
 
@@ -36,6 +54,9 @@ pub trait Record: Sized {
     }
 }
 
+///
+///
+///
 pub struct Trait {
     schema: Arc<schema::Schema>,
     id: schema::TraitId,
@@ -72,15 +93,45 @@ impl Record for Trait {
     fn values(&self) -> &HashMap<schema::FieldId, FieldValue> {
         &self.values
     }
+
     fn values_mut(&mut self) -> &mut HashMap<schema::FieldId, FieldValue> {
         &mut self.values
     }
 }
 
+impl PartialEq for Trait {
+    fn eq(&self, other: &Self) -> bool {
+        unimplemented!()
+    }
+}
+
+impl std::fmt::Debug for Trait {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        unimplemented!()
+    }
+}
+
+///
+///
+///
 pub struct Struct {
     schema: Arc<schema::Schema>,
     id: schema::StructId,
     values: HashMap<schema::FieldId, FieldValue>,
+}
+
+impl Struct {
+    pub fn new(schema: Arc<schema::Schema>, struct_name: &str) -> Struct {
+        let struct_id = schema
+            .struct_by_name(struct_name)
+            .expect("Struct doesn't exist in schema")
+            .id;
+        Struct {
+            schema,
+            id: struct_id,
+            values: HashMap::new(),
+        }
+    }
 }
 
 impl Record for Struct {
@@ -104,21 +155,50 @@ impl Record for Struct {
     }
 }
 
+impl PartialEq for Struct {
+    fn eq(&self, other: &Self) -> bool {
+        unimplemented!()
+    }
+}
+
+impl std::fmt::Debug for Struct {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        unimplemented!()
+    }
+}
+
+///
+///
+///
 #[derive(PartialEq, Debug)]
 pub enum FieldValue {
     String(String),
     Int(i64),
+    Struct(Struct),
+    Map(HashMap<String, FieldValue>),
 }
 
 impl From<&str> for FieldValue {
-    fn from(string: &str) -> FieldValue {
-        FieldValue::String(string.to_string())
+    fn from(v: &str) -> FieldValue {
+        FieldValue::String(v.to_string())
     }
 }
 
 impl From<String> for FieldValue {
-    fn from(string: String) -> FieldValue {
-        FieldValue::String(string)
+    fn from(v: String) -> FieldValue {
+        FieldValue::String(v)
+    }
+}
+
+impl From<Struct> for FieldValue {
+    fn from(v: Struct) -> FieldValue {
+        FieldValue::Struct(v)
+    }
+}
+
+impl From<i64> for FieldValue {
+    fn from(v: i64) -> FieldValue {
+        FieldValue::Int(v)
     }
 }
 

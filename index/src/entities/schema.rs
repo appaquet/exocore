@@ -44,14 +44,14 @@ impl Schema {
             }
 
             for (field_pos, field) in stc.fields.iter_mut().enumerate() {
-                if let Some(other_field) = stc.fields_id.insert(field.id, field_pos) {
+                if let Some(_other_field) = stc.fields_id.insert(field.id, field_pos) {
                     return Err(Error::Schema(format!(
                         "Struct {} already had a field with id {}",
                         stc.name, field.id
                     )));
                 }
 
-                if let Some(other_field) = stc.fields_name.insert(field.name.clone(), field_pos) {
+                if let Some(_other_field) = stc.fields_name.insert(field.name.clone(), field_pos) {
                     return Err(Error::Schema(format!(
                         "Struct {} already had a field with name {}",
                         stc.name, field.name
@@ -76,14 +76,14 @@ impl Schema {
             }
 
             for (field_pos, field) in trt.fields.iter_mut().enumerate() {
-                if let Some(other_field) = trt.fields_id.insert(field.id, field_pos) {
+                if let Some(_other_field) = trt.fields_id.insert(field.id, field_pos) {
                     return Err(Error::Schema(format!(
                         "Trait {} already had a field with id {}",
                         trt.name, field.id
                     )));
                 }
 
-                if let Some(other_field) = trt.fields_name.insert(field.name.clone(), field_pos) {
+                if let Some(_other_field) = trt.fields_name.insert(field.name.clone(), field_pos) {
                     return Err(Error::Schema(format!(
                         "Trait {} already had a field with name {}",
                         trt.name, field.name
