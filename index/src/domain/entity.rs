@@ -1,5 +1,7 @@
-use super::schema;
-use super::schema::Record as SchemaRecord;
+use super::schema::SchemaRecord;
+use crate::domain::schema::{
+    FieldId, Schema, SchemaField, StructId, StructSchema, TraitId, TraitSchema,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -27,17 +29,21 @@ impl Entity {
 ///
 ///
 pub trait Record: Sized {
-    type SchemaType: schema::Record;
+    type SchemaType: SchemaRecord;
 
-    fn schema(&self) -> &Arc<schema::Schema>;
+    fn schema(&self) -> &Arc<Schema>;
 
     fn record_schema(&self) -> &Self::SchemaType;
 
-    fn values(&self) -> &HashMap<schema::FieldId, FieldValue>;
+    fn values(&self) -> &HashMap<FieldId, FieldValue>;
 
-    fn values_mut(&mut self) -> &mut HashMap<schema::FieldId, FieldValue>;
+    fn values_mut(&mut self) -> &mut HashMap<FieldId, FieldValue>;
 
-    fn value_by_id(&self, id: schema::FieldId) -> Option<&FieldValue> {
+    fn value(&self, field: &SchemaField) -> Option<&FieldValue> {
+        self.values().get(&field.id)
+    }
+
+    fn value_by_id(&self, id: FieldId) -> Option<&FieldValue> {
         self.values().get(&id)
     }
 
@@ -58,13 +64,13 @@ pub trait Record: Sized {
 ///
 ///
 pub struct Trait {
-    schema: Arc<schema::Schema>,
-    id: schema::TraitId,
-    values: HashMap<schema::FieldId, FieldValue>,
+    schema: Arc<Schema>,
+    id: TraitId,
+    values: HashMap<FieldId, FieldValue>,
 }
 
 impl Trait {
-    pub fn new(schema: Arc<schema::Schema>, trait_name: &str) -> Trait {
+    pub fn new(schema: Arc<Schema>, trait_name: &str) -> Trait {
         let trait_id = schema
             .trait_by_name(trait_name)
             .expect("Trait doesn't exist in schema")
@@ -78,9 +84,9 @@ impl Trait {
 }
 
 impl Record for Trait {
-    type SchemaType = schema::Trait;
+    type SchemaType = TraitSchema;
 
-    fn schema(&self) -> &Arc<schema::Schema> {
+    fn schema(&self) -> &Arc<Schema> {
         &self.schema
     }
 
@@ -90,11 +96,11 @@ impl Record for Trait {
             .expect("Trait doesn't exist in schema")
     }
 
-    fn values(&self) -> &HashMap<schema::FieldId, FieldValue> {
+    fn values(&self) -> &HashMap<FieldId, FieldValue> {
         &self.values
     }
 
-    fn values_mut(&mut self) -> &mut HashMap<schema::FieldId, FieldValue> {
+    fn values_mut(&mut self) -> &mut HashMap<FieldId, FieldValue> {
         &mut self.values
     }
 }
@@ -115,13 +121,13 @@ impl std::fmt::Debug for Trait {
 ///
 ///
 pub struct Struct {
-    schema: Arc<schema::Schema>,
-    id: schema::StructId,
-    values: HashMap<schema::FieldId, FieldValue>,
+    schema: Arc<Schema>,
+    id: StructId,
+    values: HashMap<FieldId, FieldValue>,
 }
 
 impl Struct {
-    pub fn new(schema: Arc<schema::Schema>, struct_name: &str) -> Struct {
+    pub fn new(schema: Arc<Schema>, struct_name: &str) -> Struct {
         let struct_id = schema
             .struct_by_name(struct_name)
             .expect("Struct doesn't exist in schema")
@@ -135,8 +141,8 @@ impl Struct {
 }
 
 impl Record for Struct {
-    type SchemaType = schema::Struct;
-    fn schema(&self) -> &Arc<schema::Schema> {
+    type SchemaType = StructSchema;
+    fn schema(&self) -> &Arc<Schema> {
         &self.schema
     }
 
@@ -146,11 +152,11 @@ impl Record for Struct {
             .expect("Struct doesn't exist in schema")
     }
 
-    fn values(&self) -> &HashMap<schema::FieldId, FieldValue> {
+    fn values(&self) -> &HashMap<FieldId, FieldValue> {
         &self.values
     }
 
-    fn values_mut(&mut self) -> &mut HashMap<schema::FieldId, FieldValue> {
+    fn values_mut(&mut self) -> &mut HashMap<FieldId, FieldValue> {
         &mut self.values
     }
 }
@@ -208,7 +214,7 @@ mod tests {
 
     #[test]
     fn parse_basic() -> Result<(), failure::Error> {
-        let schema = Arc::new(schema::Schema::parse(
+        let schema = Arc::new(Schema::parse(
             r#"
         name: schema1
         traits:

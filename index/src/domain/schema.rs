@@ -2,6 +2,10 @@ use crate::error::Error;
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+// TODO: Rename schema to Namespace and create schema
+// TODO: Add trait types & their fields
+// TODO: Trait IDs based on multiple fields
+
 pub type TraitId = u16;
 pub type StructId = u16;
 pub type FieldId = u16;
@@ -10,13 +14,13 @@ pub type FieldId = u16;
 #[serde(rename_all = "snake_case")]
 pub struct Schema {
     pub name: String,
-    pub traits: Vec<Trait>,
+    pub traits: Vec<TraitSchema>,
     #[serde(skip)]
     pub traits_id: HashMap<TraitId, usize>,
     #[serde(skip)]
     pub traits_name: HashMap<String, usize>,
     #[serde(default = "Vec::new")]
-    pub structs: Vec<Struct>,
+    pub structs: Vec<StructSchema>,
     #[serde(skip)]
     pub structs_id: HashMap<StructId, usize>,
     #[serde(skip)]
@@ -61,6 +65,11 @@ impl Schema {
         }
 
         for (trt_pos, trt) in schema.traits.iter_mut().enumerate() {
+            let default_fields = TraitSchema::default_fields();
+            for field in default_fields {
+                trt.fields.push(field);
+            }
+
             if let Some(_other_trait) = schema.traits_id.insert(trt.id, trt_pos) {
                 return Err(Error::Schema(format!(
                     "A trait with id {} already exists in schema",
@@ -92,68 +101,90 @@ impl Schema {
             }
         }
 
+        // TODO: add default fields to traits
         // TODO: make sure referenced structs exist
         // TODO: make sure default values are parsable
 
         Ok(schema)
     }
 
-    pub fn trait_by_id(&self, id: TraitId) -> Option<&Trait> {
+    pub fn trait_by_id(&self, id: TraitId) -> Option<&TraitSchema> {
         self.traits_id
             .get(&id)
             .and_then(|pos| self.traits.get(*pos))
     }
 
-    pub fn trait_by_name(&self, name: &str) -> Option<&Trait> {
+    pub fn trait_by_name(&self, name: &str) -> Option<&TraitSchema> {
         self.traits_name
             .get(name)
             .and_then(|pos| self.traits.get(*pos))
     }
 
-    pub fn struct_by_id(&self, id: StructId) -> Option<&Struct> {
+    pub fn struct_by_id(&self, id: StructId) -> Option<&StructSchema> {
         self.structs_id
             .get(&id)
             .and_then(|pos| self.structs.get(*pos))
     }
 
-    pub fn struct_by_name(&self, name: &str) -> Option<&Struct> {
+    pub fn struct_by_name(&self, name: &str) -> Option<&StructSchema> {
         self.structs_name
             .get(name)
             .and_then(|pos| self.structs.get(*pos))
     }
 }
 
-pub trait Record {
+pub trait SchemaRecord {
     fn name(&self) -> &str;
 
-    fn field_by_id(&self, id: FieldId) -> Option<&Field>;
-    fn field_by_name(&self, name: &str) -> Option<&Field>;
+    fn field_by_id(&self, id: FieldId) -> Option<&SchemaField>;
+    fn field_by_name(&self, name: &str) -> Option<&SchemaField>;
 }
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub struct Trait {
+pub struct TraitSchema {
     pub id: u16,
     pub name: String,
-    pub fields: Vec<Field>,
+    pub fields: Vec<SchemaField>,
     #[serde(skip)]
     pub fields_id: HashMap<FieldId, usize>,
     #[serde(skip)]
     pub fields_name: HashMap<String, usize>,
 }
 
-impl Record for Trait {
+impl TraitSchema {
+    fn default_fields() -> Vec<SchemaField> {
+        vec![
+            SchemaField {
+                id: 65400,
+                name: "creation_date".to_owned(),
+                typ: FieldType::Int, // TODO: date
+                indexed: true,
+                optional: false,
+            },
+            SchemaField {
+                id: 65401,
+                name: "modification_date".to_owned(),
+                typ: FieldType::Int, // TODO: date
+                indexed: true,
+                optional: false,
+            },
+        ]
+    }
+}
+
+impl SchemaRecord for TraitSchema {
     fn name(&self) -> &str {
         &self.name
     }
 
-    fn field_by_id(&self, id: FieldId) -> Option<&Field> {
+    fn field_by_id(&self, id: FieldId) -> Option<&SchemaField> {
         self.fields_id
             .get(&id)
             .and_then(|pos| self.fields.get(*pos))
     }
 
-    fn field_by_name(&self, name: &str) -> Option<&Field> {
+    fn field_by_name(&self, name: &str) -> Option<&SchemaField> {
         self.fields_name
             .get(name)
             .and_then(|pos| self.fields.get(*pos))
@@ -162,28 +193,28 @@ impl Record for Trait {
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub struct Struct {
+pub struct StructSchema {
     pub id: u16,
     pub name: String,
-    pub fields: Vec<Field>,
+    pub fields: Vec<SchemaField>,
     #[serde(skip)]
     pub fields_id: HashMap<FieldId, usize>,
     #[serde(skip)]
     pub fields_name: HashMap<String, usize>,
 }
 
-impl Record for Struct {
+impl SchemaRecord for StructSchema {
     fn name(&self) -> &str {
         &self.name
     }
 
-    fn field_by_id(&self, id: FieldId) -> Option<&Field> {
+    fn field_by_id(&self, id: FieldId) -> Option<&SchemaField> {
         self.fields_id
             .get(&id)
             .and_then(|pos| self.fields.get(*pos))
     }
 
-    fn field_by_name(&self, name: &str) -> Option<&Field> {
+    fn field_by_name(&self, name: &str) -> Option<&SchemaField> {
         self.fields_name
             .get(name)
             .and_then(|pos| self.fields.get(*pos))
@@ -192,7 +223,7 @@ impl Record for Struct {
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub struct Field {
+pub struct SchemaField {
     pub id: u16,
     pub name: String,
     #[serde(default = "default_true")]
@@ -203,7 +234,7 @@ pub struct Field {
     pub typ: FieldType,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum FieldType {
     String,
@@ -241,6 +272,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!("schema2", schema_defaults.name);
+
+        let trt = schema_defaults.trait_by_name("trait2").unwrap();
+        assert!(trt.field_by_name("creation_date").is_some());
+        assert!(trt.field_by_name("modification_date").is_some());
 
         println!("{}", serde_yaml::to_string(&schema_defaults).unwrap());
     }

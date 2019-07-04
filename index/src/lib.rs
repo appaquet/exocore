@@ -11,7 +11,7 @@ extern crate log;
 #[macro_use]
 extern crate maplit;
 
-pub mod entities;
+pub mod domain;
 pub mod entity_old;
 pub mod error;
 pub mod index;

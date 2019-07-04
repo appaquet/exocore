@@ -1,5 +1,5 @@
 use super::entity::{FieldValue, Record, Struct, Trait};
-use super::schema::{Record as SchemaRecord, Schema};
+use super::schema::{Schema, SchemaRecord};
 use serde::de::{MapAccess, Visitor};
 use serde::export::Formatter;
 use serde::{ser::SerializeMap, Deserialize, Deserializer, Serialize, Serializer};
@@ -333,6 +333,7 @@ mod tests {
         let schema = create_test_schema();
 
         let value = Trait::new(schema.clone(), "trait1")
+            .with_value_by_name("field1", "hey you")
             .with_value_by_name("field2", Struct::new(schema.clone(), "struct1"));
         let value_ser = serde_json::to_string(&value)?;
         let value_deser = with_schema(&schema, || serde_json::from_str::<Trait>(&value_ser))?;

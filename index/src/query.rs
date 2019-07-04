@@ -1,4 +1,4 @@
-use crate::entities::entity::Entity;
+use crate::domain::entity::Entity;
 
 ///
 ///
