@@ -12,7 +12,6 @@ extern crate log;
 extern crate maplit;
 
 pub mod domain;
-pub mod entity_old;
 pub mod error;
 pub mod index;
 pub mod mutation;

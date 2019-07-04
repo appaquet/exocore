@@ -6,9 +6,9 @@ use std::collections::HashMap;
 // TODO: Add trait types & their fields
 // TODO: Trait IDs based on multiple fields
 
-pub type TraitId = u16;
-pub type StructId = u16;
-pub type FieldId = u16;
+pub type SchemaTraitId = u16;
+pub type SchemaStructId = u16;
+pub type SchemaFieldId = u16;
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -16,13 +16,13 @@ pub struct Schema {
     pub name: String,
     pub traits: Vec<TraitSchema>,
     #[serde(skip)]
-    pub traits_id: HashMap<TraitId, usize>,
+    pub traits_id: HashMap<SchemaTraitId, usize>,
     #[serde(skip)]
     pub traits_name: HashMap<String, usize>,
     #[serde(default = "Vec::new")]
     pub structs: Vec<StructSchema>,
     #[serde(skip)]
-    pub structs_id: HashMap<StructId, usize>,
+    pub structs_id: HashMap<SchemaStructId, usize>,
     #[serde(skip)]
     pub structs_name: HashMap<String, usize>,
 }
@@ -108,7 +108,7 @@ impl Schema {
         Ok(schema)
     }
 
-    pub fn trait_by_id(&self, id: TraitId) -> Option<&TraitSchema> {
+    pub fn trait_by_id(&self, id: SchemaTraitId) -> Option<&TraitSchema> {
         self.traits_id
             .get(&id)
             .and_then(|pos| self.traits.get(*pos))
@@ -120,7 +120,7 @@ impl Schema {
             .and_then(|pos| self.traits.get(*pos))
     }
 
-    pub fn struct_by_id(&self, id: StructId) -> Option<&StructSchema> {
+    pub fn struct_by_id(&self, id: SchemaStructId) -> Option<&StructSchema> {
         self.structs_id
             .get(&id)
             .and_then(|pos| self.structs.get(*pos))
@@ -136,7 +136,7 @@ impl Schema {
 pub trait SchemaRecord {
     fn name(&self) -> &str;
 
-    fn field_by_id(&self, id: FieldId) -> Option<&SchemaField>;
+    fn field_by_id(&self, id: SchemaFieldId) -> Option<&SchemaField>;
     fn field_by_name(&self, name: &str) -> Option<&SchemaField>;
 }
 
@@ -147,24 +147,35 @@ pub struct TraitSchema {
     pub name: String,
     pub fields: Vec<SchemaField>,
     #[serde(skip)]
-    pub fields_id: HashMap<FieldId, usize>,
+    pub fields_id: HashMap<SchemaFieldId, usize>,
     #[serde(skip)]
     pub fields_name: HashMap<String, usize>,
 }
 
 impl TraitSchema {
+    pub const TRAIT_ID_FIELD: &'static str = "_id";
+    pub const CREATION_DATE_FIELD: &'static str = "creation_date";
+    pub const MODIFICATION_DATE_FIELD: &'static str = "modification_date";
+
     fn default_fields() -> Vec<SchemaField> {
         vec![
             SchemaField {
                 id: 65400,
-                name: "creation_date".to_owned(),
-                typ: FieldType::Int, // TODO: date
+                name: Self::TRAIT_ID_FIELD.to_owned(),
+                typ: FieldType::String,
                 indexed: true,
                 optional: false,
             },
             SchemaField {
                 id: 65401,
-                name: "modification_date".to_owned(),
+                name: Self::CREATION_DATE_FIELD.to_owned(),
+                typ: FieldType::Int, // TODO: date
+                indexed: true,
+                optional: false,
+            },
+            SchemaField {
+                id: 65402,
+                name: Self::MODIFICATION_DATE_FIELD.to_owned(),
                 typ: FieldType::Int, // TODO: date
                 indexed: true,
                 optional: false,
@@ -178,7 +189,7 @@ impl SchemaRecord for TraitSchema {
         &self.name
     }
 
-    fn field_by_id(&self, id: FieldId) -> Option<&SchemaField> {
+    fn field_by_id(&self, id: SchemaFieldId) -> Option<&SchemaField> {
         self.fields_id
             .get(&id)
             .and_then(|pos| self.fields.get(*pos))
@@ -198,7 +209,7 @@ pub struct StructSchema {
     pub name: String,
     pub fields: Vec<SchemaField>,
     #[serde(skip)]
-    pub fields_id: HashMap<FieldId, usize>,
+    pub fields_id: HashMap<SchemaFieldId, usize>,
     #[serde(skip)]
     pub fields_name: HashMap<String, usize>,
 }
@@ -208,7 +219,7 @@ impl SchemaRecord for StructSchema {
         &self.name
     }
 
-    fn field_by_id(&self, id: FieldId) -> Option<&SchemaField> {
+    fn field_by_id(&self, id: SchemaFieldId) -> Option<&SchemaField> {
         self.fields_id
             .get(&id)
             .and_then(|pos| self.fields.get(*pos))
@@ -240,7 +251,7 @@ pub enum FieldType {
     String,
     Int,
     Bool,
-    Struct(StructId),
+    Struct(SchemaStructId),
 }
 
 fn default_false() -> bool {
@@ -274,8 +285,13 @@ mod tests {
         assert_eq!("schema2", schema_defaults.name);
 
         let trt = schema_defaults.trait_by_name("trait2").unwrap();
-        assert!(trt.field_by_name("creation_date").is_some());
-        assert!(trt.field_by_name("modification_date").is_some());
+        assert!(trt.field_by_name(TraitSchema::TRAIT_ID_FIELD).is_some());
+        assert!(trt
+            .field_by_name(TraitSchema::CREATION_DATE_FIELD)
+            .is_some());
+        assert!(trt
+            .field_by_name(TraitSchema::MODIFICATION_DATE_FIELD)
+            .is_some());
 
         println!("{}", serde_yaml::to_string(&schema_defaults).unwrap());
     }

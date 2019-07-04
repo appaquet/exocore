@@ -325,6 +325,8 @@ mod tests {
             *value_deser.value_by_name("field1").unwrap()
         );
 
+        // TODO: test equality
+
         Ok(())
     }
 
@@ -341,6 +343,8 @@ mod tests {
             FieldValue::String("hey you".to_string()),
             *value_deser.value_by_name("field1").unwrap()
         );
+
+        // TODO: test equality
 
         Ok(())
     }

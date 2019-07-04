@@ -17,8 +17,8 @@ pub enum Query {
 #[serde(rename_all = "snake_case")]
 #[derive(Serialize, Deserialize)]
 pub struct WithTraitQuery {
-    trait_name: String,
-    trait_query: Option<Box<Query>>,
+    pub trait_name: String,
+    pub trait_query: Option<Box<Query>>,
 }
 
 #[serde(rename_all = "snake_case")]
@@ -30,7 +30,7 @@ pub struct ConjunctionQuery {
 #[serde(rename_all = "snake_case")]
 #[derive(Serialize, Deserialize)]
 pub struct MatchQuery {
-    query: String,
+    pub query: String,
 }
 
 #[serde(rename_all = "snake_case")]
@@ -80,30 +80,6 @@ impl QueryResults {
 pub struct QueryResult {
     entity: Entity,
     // TODO: sortToken:
-}
-
-///
-///
-///
-///
-pub trait OldQuery {
-    fn fields(&self) -> Vec<&str>;
-    fn value(&self) -> &str;
-}
-
-pub struct FieldMatchQuery<'a> {
-    pub field_name: &'a str,
-    pub value: &'a str,
-}
-
-impl<'a> OldQuery for FieldMatchQuery<'a> {
-    fn fields(&self) -> Vec<&str> {
-        vec![self.field_name]
-    }
-
-    fn value(&self) -> &str {
-        self.value
-    }
 }
 
 #[cfg(test)]
