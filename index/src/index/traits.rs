@@ -5,15 +5,16 @@ use crate::query::*;
 use exocore_data::block::BlockOffset;
 use exocore_data::operation::OperationId;
 use std::ops::Deref;
+use std::path::Path;
 use std::result::Result;
 use std::sync::Arc;
 use tantivy::collector::TopDocs;
+use tantivy::directory::MmapDirectory;
 use tantivy::query::{QueryParser, TermQuery};
 use tantivy::schema::{
-    IndexRecordOption, Schema as TantivySchema, SchemaBuilder, INDEXED, STORED, STRING,
-    TEXT,
+    IndexRecordOption, Schema as TantivySchema, SchemaBuilder, INDEXED, STORED, STRING, TEXT,
 };
-use tantivy::{Document, Index as TantivyIndex, IndexReader, IndexWriter, Searcher, Term};
+use tantivy::{Document, Index as TantivyIndex, IndexReader, Searcher, Term};
 
 /* TODO: Queries to support
         summary = true or false
@@ -29,24 +30,39 @@ use tantivy::{Document, Index as TantivyIndex, IndexReader, IndexWriter, Searche
         from page XYZ (nextPage)
 */
 
-pub struct Index {
+///
+/// Index (full-text & fields) for traits in the given schema. Each trait is individually
+/// indexed as a single document.
+///
+pub struct TraitsIndex {
     index: TantivyIndex,
     index_reader: IndexReader,
-    index_writer: IndexWriter,
     schema: Arc<schema::Schema>,
     tantivy_schema: TantivySchema,
 }
 
-impl Index {
-    pub fn for_schema(schema: Arc<schema::Schema>) -> Result<Index, Error> {
+impl TraitsIndex {
+    pub fn new_mmap(schema: Arc<schema::Schema>, directory: &Path) -> Result<TraitsIndex, Error> {
         let tantivy_schema = Self::build_tantivy_schema(schema.as_ref());
-        let index = TantivyIndex::create_from_tempdir(tantivy_schema.clone())?;
+        let directory = MmapDirectory::open(directory)?;
+        let index = TantivyIndex::open_or_create(directory, tantivy_schema.clone())?;
         let index_reader = index.reader()?;
-        let index_writer = index.writer(50_000_000)?;
 
-        Ok(Index {
+        Ok(TraitsIndex {
             index,
-            index_writer,
+            index_reader,
+            schema,
+            tantivy_schema,
+        })
+    }
+
+    pub fn new_in_memory(schema: Arc<schema::Schema>) -> Result<TraitsIndex, Error> {
+        let tantivy_schema = Self::build_tantivy_schema(schema.as_ref());
+        let index = TantivyIndex::create_in_ram(tantivy_schema.clone());
+        let index_reader = index.reader()?;
+
+        Ok(TraitsIndex {
+            index,
             index_reader,
             schema,
             tantivy_schema,
@@ -64,6 +80,7 @@ impl Index {
         let operation_id_field = self.get_tantivy_field("operation_id");
         let text_field = self.get_tantivy_field("text");
 
+        let mut index_writer = self.index.writer(50_000_000)?;
         for stored_trait in stored_traits {
             let mut doc = Document::default();
             let record_schema: &schema::TraitSchema = stored_trait.trt.record_schema();
@@ -94,10 +111,13 @@ impl Index {
                 }
             }
 
-            self.index_writer.add_document(doc);
+            index_writer.add_document(doc);
         }
 
-        let last_ts = self.index_writer.commit()?;
+        let last_ts = index_writer.commit()?;
+
+        // it make takes milliseconds for reader to see changes automatically, so we force it
+        self.index_reader.reload()?;
 
         Ok(last_ts)
     }
@@ -227,7 +247,7 @@ impl Index {
 }
 
 ///
-///
+/// Trait to be indexed that is stored in the data layer (pending or chain)
 ///
 pub struct StoredTrait<'t> {
     pub block_offset: Option<BlockOffset>,
@@ -237,7 +257,7 @@ pub struct StoredTrait<'t> {
 }
 
 ///
-///
+/// Indexed trait returned as a result of a query
 ///
 #[derive(Debug)]
 pub struct TraitResult {
@@ -255,7 +275,7 @@ mod tests {
     #[test]
     fn search_query_matches() -> Result<(), failure::Error> {
         let schema = create_test_schema();
-        let mut indexer = Index::for_schema(schema.clone())?;
+        let mut indexer = TraitsIndex::new_in_memory(schema.clone())?;
 
         let contact_trait = Trait::new(schema.clone(), "contact")
             .with_id("trudeau1".to_string())
@@ -290,7 +310,7 @@ mod tests {
     #[test]
     fn search_query_by_trait_type() -> Result<(), failure::Error> {
         let schema = create_test_schema();
-        let mut indexer = Index::for_schema(schema.clone())?;
+        let mut indexer = TraitsIndex::new_in_memory(schema.clone())?;
 
         let contact_trait = Trait::new(schema.clone(), "contact")
             .with_id("trt1".to_string())

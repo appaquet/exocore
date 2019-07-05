@@ -222,7 +222,7 @@ pub enum Event {
 
     /// An operation that was previously added got deleted, hence will never end up in a block.
     /// This happens if an operation was invalid or found in the chain later on.
-    PendingEntryDelete(OperationId),
+    PendingOperationDelete(OperationId),
 
     /// A new block got added to the chain.
     ChainBlockNew(BlockOffset),

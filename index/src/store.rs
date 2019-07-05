@@ -1,4 +1,5 @@
 use crate::error::Error;
+use crate::index::EntitiesIndex;
 use crate::query::{Query, QueryResults};
 use exocore_transport::{InMessage, OutMessage, TransportHandle};
 use futures::prelude::*;
@@ -8,35 +9,37 @@ use std::sync::{Arc, RwLock, Weak};
 // TODO: Should get stream from engine handle and trigger re-index
 // TODO: Question: should we have a sync store, and then wrap it to make it async ? It would make tests much easier
 
-pub struct Store<CP, PP, T>
+pub struct Store<CS, PS, T>
 where
-    CP: exocore_data::chain::ChainStore,
-    PP: exocore_data::pending::PendingStore,
+    CS: exocore_data::chain::ChainStore,
+    PS: exocore_data::pending::PendingStore,
     T: TransportHandle,
 {
-    inner: Arc<RwLock<Inner<CP, PP>>>,
+    inner: Arc<RwLock<Inner<CS, PS>>>,
     transport_handle: Option<T>,
 }
 
-impl<CP, PP, T> Store<CP, PP, T>
+impl<CS, PS, T> Store<CS, PS, T>
 where
-    CP: exocore_data::chain::ChainStore,
-    PP: exocore_data::pending::PendingStore,
+    CS: exocore_data::chain::ChainStore,
+    PS: exocore_data::pending::PendingStore,
     T: TransportHandle,
 {
     pub fn new(
-        data_handle: exocore_data::engine::EngineHandle<CP, PP>,
+        data_handle: exocore_data::engine::EngineHandle<CS, PS>,
+        index: EntitiesIndex<CS, PS>,
         transport_handle: T,
-    ) -> Store<CP, PP, T> {
+    ) -> Result<Store<CS, PS, T>, Error> {
         let inner = Arc::new(RwLock::new(Inner {
+            index,
             data_handle,
             transport_out: None,
         }));
 
-        Store {
+        Ok(Store {
             inner,
             transport_handle: Some(transport_handle),
-        }
+        })
     }
 
     fn start(&mut self) -> Result<(), Error> {
@@ -45,8 +48,7 @@ where
             .take()
             .expect("Transport handle was already consumer");
 
-        // TODO: Proper error handling
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = self.inner.write()?;
 
         let (out_sender, out_receiver) = mpsc::unbounded();
         tokio::spawn(
@@ -112,7 +114,7 @@ where
     }
 
     fn handle_incoming_message(
-        weak_inner: &Weak<RwLock<Inner<CP, PP>>>,
+        weak_inner: &Weak<RwLock<Inner<CS, PS>>>,
         _in_message: InMessage,
     ) -> Result<(), Error> {
         // TODO: Parse message in query
@@ -146,7 +148,7 @@ where
     }
 
     fn handle_data_event(
-        _weak_inner: &Weak<RwLock<Inner<CP, PP>>>,
+        _weak_inner: &Weak<RwLock<Inner<CS, PS>>>,
         event: exocore_data::engine::Event,
     ) -> Result<(), Error> {
         // TODO: Take action... Should we-reindex? ...
@@ -166,10 +168,10 @@ where
     }
 }
 
-impl<CP, PP, T> Future for Store<CP, PP, T>
+impl<CS, PS, T> Future for Store<CS, PS, T>
 where
-    CP: exocore_data::chain::ChainStore,
-    PP: exocore_data::pending::PendingStore,
+    CS: exocore_data::chain::ChainStore,
+    PS: exocore_data::pending::PendingStore,
     T: TransportHandle,
 {
     type Item = ();
@@ -183,20 +185,20 @@ where
     }
 }
 
-struct Inner<CP, PP>
+struct Inner<CS, PS>
 where
-    CP: exocore_data::chain::ChainStore,
-    PP: exocore_data::pending::PendingStore,
+    CS: exocore_data::chain::ChainStore,
+    PS: exocore_data::pending::PendingStore,
 {
-    //TODO: index: crate::index::Index,
-    data_handle: exocore_data::engine::EngineHandle<CP, PP>,
+    index: EntitiesIndex<CS, PS>,
+    data_handle: exocore_data::engine::EngineHandle<CS, PS>,
     transport_out: Option<mpsc::UnboundedSender<OutMessage>>, // TODO: Make channel bounded
 }
 
-impl<CP, PP> Inner<CP, PP>
+impl<CS, PS> Inner<CS, PS>
 where
-    CP: exocore_data::chain::ChainStore,
-    PP: exocore_data::pending::PendingStore,
+    CS: exocore_data::chain::ChainStore,
+    PS: exocore_data::pending::PendingStore,
 {
     fn handle_incoming_query(&self, _query: Query) -> QueryResolver {
         // TODO: Should use some kind of queue instead of running query directly
@@ -216,12 +218,12 @@ where
 ///
 ///
 ///
-pub struct StoreHandle<CP, PP>
+pub struct StoreHandle<CS, PS>
 where
-    CP: exocore_data::chain::ChainStore,
-    PP: exocore_data::pending::PendingStore,
+    CS: exocore_data::chain::ChainStore,
+    PS: exocore_data::pending::PendingStore,
 {
-    inner: Weak<RwLock<Inner<CP, PP>>>,
+    inner: Weak<RwLock<Inner<CS, PS>>>,
 }
 
 ///
@@ -232,10 +234,10 @@ trait AsyncStore {
     fn query(&self, query: Query) -> Box<dyn Future<Item = QueryResults, Error = Error>>;
 }
 
-impl<CP, PP> AsyncStore for StoreHandle<CP, PP>
+impl<CS, PS> AsyncStore for StoreHandle<CS, PS>
 where
-    CP: exocore_data::chain::ChainStore,
-    PP: exocore_data::pending::PendingStore,
+    CS: exocore_data::chain::ChainStore,
+    PS: exocore_data::pending::PendingStore,
 {
     fn query(&self, query: Query) -> Box<dyn Future<Item = QueryResults, Error = Error>> {
         // TODO: Proper error handling

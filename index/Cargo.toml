@@ -18,3 +18,7 @@ maplit = "1"
 tokio = { version = "0.1", features = ["io"] }
 log = "0.4"
 tantivy = "0.9"
+
+[dev-dependencies]
+tempdir = "0.3"
+exocore-data = { path = "../data", features = ["tests_utils"] }

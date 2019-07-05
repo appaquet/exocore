@@ -980,7 +980,7 @@ mod tests {
 
     #[test]
     fn should_propose_block_on_new_operations() -> Result<(), failure::Error> {
-        let mut cluster = TestCluster::new(1);
+        let mut cluster = EngineTestCluster::new(1);
         cluster.chain_add_genesis_block(0);
         cluster.tick_chain_synchronizer(0)?;
 
@@ -1020,7 +1020,7 @@ mod tests {
 
     #[test]
     fn only_one_node_at_time_should_commit() -> Result<(), failure::Error> {
-        let mut cluster = TestCluster::new(2);
+        let mut cluster = EngineTestCluster::new(2);
         cluster.chain_add_genesis_block(0);
         cluster.chain_add_genesis_block(1);
         cluster.tick_chain_synchronizer(0)?;
@@ -1046,7 +1046,7 @@ mod tests {
 
     #[test]
     fn commit_block_at_interval() -> Result<(), failure::Error> {
-        let mut cluster = TestCluster::new(1);
+        let mut cluster = EngineTestCluster::new(1);
         let commit_interval = cluster.commit_managers[0].config.commit_maximum_interval;
 
         cluster.clocks[0].set_fixed_instant(Instant::now());
@@ -1083,7 +1083,7 @@ mod tests {
 
     #[test]
     fn commit_block_after_maximum_operations() -> Result<(), failure::Error> {
-        let mut cluster = TestCluster::new(1);
+        let mut cluster = EngineTestCluster::new(1);
         cluster.clocks[0].set_fixed_instant(Instant::now());
 
         cluster.chain_add_genesis_block(0);
@@ -1126,7 +1126,7 @@ mod tests {
 
     #[test]
     fn should_sign_valid_proposed_block() -> Result<(), failure::Error> {
-        let mut cluster = TestCluster::new(1);
+        let mut cluster = EngineTestCluster::new(1);
         cluster.chain_add_genesis_block(0);
         cluster.tick_chain_synchronizer(0)?;
 
@@ -1153,7 +1153,7 @@ mod tests {
 
     #[test]
     fn should_refuse_invalid_proposed_block() -> Result<(), failure::Error> {
-        let mut cluster = TestCluster::new(1);
+        let mut cluster = EngineTestCluster::new(1);
         cluster.chain_add_genesis_block(0);
         cluster.tick_chain_synchronizer(0)?;
 
@@ -1184,7 +1184,7 @@ mod tests {
 
     #[test]
     fn test_is_node_commit_turn() -> Result<(), failure::Error> {
-        let cluster = TestCluster::new(2);
+        let cluster = EngineTestCluster::new(2);
         let node1 = cluster.get_node(0);
         let node2 = cluster.get_node(1);
 
@@ -1222,10 +1222,10 @@ mod tests {
 
     #[test]
     fn cleanup_past_committed_operations() -> Result<(), failure::Error> {
-        let mut cluster = TestCluster::new(1);
+        let mut cluster = EngineTestCluster::new(1);
         cluster.clocks[0].set_fixed_instant(Instant::now());
 
-        let assert_not_in_pending = |cluster: &TestCluster, operation_id: u64| {
+        let assert_not_in_pending = |cluster: &EngineTestCluster, operation_id: u64| {
             assert!(&cluster.pending_stores[0]
                 .get_operation(operation_id)
                 .unwrap()
@@ -1287,7 +1287,7 @@ mod tests {
 
     #[test]
     fn dont_cleanup_operations_from_commit_refused_blocks() -> Result<(), failure::Error> {
-        let mut cluster = TestCluster::new(1);
+        let mut cluster = EngineTestCluster::new(1);
         cluster.chain_generate_dummy(0, 10, 1234);
         cluster.tick_chain_synchronizer(0)?;
 
@@ -1358,7 +1358,7 @@ mod tests {
 
     #[test]
     fn cleanup_dangling_operations() -> Result<(), failure::Error> {
-        let mut cluster = TestCluster::new(1);
+        let mut cluster = EngineTestCluster::new(1);
         cluster.clocks[0].set_fixed_instant(Instant::now());
 
         cluster.chain_add_genesis_block(0);
@@ -1404,7 +1404,7 @@ mod tests {
         Ok(())
     }
 
-    fn append_new_operation(cluster: &mut TestCluster, data: &[u8]) -> Result<OperationId, Error> {
+    fn append_new_operation(cluster: &mut EngineTestCluster, data: &[u8]) -> Result<OperationId, Error> {
         let op_id = cluster.consistent_clock(0);
 
         for node in cluster.nodes.iter() {
@@ -1418,7 +1418,7 @@ mod tests {
     }
 
     fn append_block_proposal_from_operations(
-        cluster: &mut TestCluster,
+        cluster: &mut EngineTestCluster,
         op_ids: Vec<OperationId>,
     ) -> Result<OperationId, Error> {
         let node = &cluster.nodes[0];
@@ -1448,7 +1448,7 @@ mod tests {
         Ok(block_operation_id)
     }
 
-    fn get_pending_blocks(cluster: &TestCluster) -> Result<PendingBlocks, Error> {
+    fn get_pending_blocks(cluster: &EngineTestCluster) -> Result<PendingBlocks, Error> {
         PendingBlocks::new(
             &cluster.cells[0],
             &cluster.pending_stores[0],
