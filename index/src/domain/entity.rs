@@ -101,7 +101,7 @@ impl Trait {
         }
     }
 
-    pub fn with_id(mut self, id: TraitId) -> Self {
+    pub fn with_id(self, id: TraitId) -> Self {
         self.with_value_by_name(TraitSchema::TRAIT_ID_FIELD, id)
     }
 }

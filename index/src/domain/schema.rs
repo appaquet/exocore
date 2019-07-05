@@ -163,7 +163,7 @@ impl TraitSchema {
                 id: 65400,
                 name: Self::TRAIT_ID_FIELD.to_owned(),
                 typ: FieldType::String,
-                indexed: true,
+                indexed: false, // special case, it's indexed & stored in another way
                 optional: false,
             },
             SchemaField {

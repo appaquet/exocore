@@ -10,58 +10,81 @@ use std::sync::Arc;
 use tantivy::collector::TopDocs;
 use tantivy::query::{QueryParser, TermQuery};
 use tantivy::schema::{
-    IndexRecordOption, IntOptions, Schema as TantivySchema, SchemaBuilder, INDEXED, STORED, TEXT,
+    IndexRecordOption, Schema as TantivySchema, SchemaBuilder, INDEXED, STORED, STRING,
+    TEXT,
 };
-use tantivy::{Document, Index, IndexWriter, Searcher, Term};
+use tantivy::{Document, Index as TantivyIndex, IndexReader, IndexWriter, Searcher, Term};
 
-pub struct Indexer {
-    writer: IndexWriter,
-    index: Index,
+/* TODO: Queries to support
+        summary = true or false
+        where entity_id = X
+        where entity_id IN (x,y,z)
+        where entity has trait of type X
+        where entity has trait Child refering parent X
+        where entity has trait OldChild refering parent X
+        where entity matches text XYZ
+        where entity with trait of type Postponed and untilDate <= / == / >= someTime
+        all()
+        limit XYZ
+        from page XYZ (nextPage)
+*/
+
+pub struct Index {
+    index: TantivyIndex,
+    index_reader: IndexReader,
+    index_writer: IndexWriter,
     schema: Arc<schema::Schema>,
     tantivy_schema: TantivySchema,
 }
 
-impl Indexer {
-    pub fn for_schema(schema: Arc<schema::Schema>) -> Result<Indexer, Error> {
-        let tantivy_schema = Indexer::build_tantivy_schema(schema.as_ref());
-        let index = Index::create_from_tempdir(tantivy_schema.clone())?;
-        let writer = index.writer(50_000_000)?;
+impl Index {
+    pub fn for_schema(schema: Arc<schema::Schema>) -> Result<Index, Error> {
+        let tantivy_schema = Self::build_tantivy_schema(schema.as_ref());
+        let index = TantivyIndex::create_from_tempdir(tantivy_schema.clone())?;
+        let index_reader = index.reader()?;
+        let index_writer = index.writer(50_000_000)?;
 
-        Ok(Indexer {
-            writer,
+        Ok(Index {
             index,
+            index_writer,
+            index_reader,
             schema,
             tantivy_schema,
         })
     }
 
-    pub fn index_segment<'a, T>(&mut self, traits: T) -> Result<u64, Error>
+    pub fn index_traits<'a, T>(&mut self, stored_traits: T) -> Result<u64, Error>
     where
-        T: Iterator<Item = &'a Trait>,
+        T: Iterator<Item = &'a StoredTrait<'a>>,
     {
         let trait_type_field = self.get_tantivy_field("trait_type");
+        let trait_id_field = self.get_tantivy_field("trait_id");
+        let entity_id_field = self.get_tantivy_field("entity_id");
+        let block_offset_field = self.get_tantivy_field("block_offset");
+        let operation_id_field = self.get_tantivy_field("operation_id");
         let text_field = self.get_tantivy_field("text");
 
-        for trt in traits {
+        for stored_trait in stored_traits {
             let mut doc = Document::default();
-            let record_schema: &schema::TraitSchema = trt.record_schema();
+            let record_schema: &schema::TraitSchema = stored_trait.trt.record_schema();
 
             // TODO: namespace name
             doc.add_u64(trait_type_field, u64::from(record_schema.id));
+            doc.add_text(trait_id_field, &stored_trait.trt.id());
+            doc.add_text(entity_id_field, &stored_trait.entity_id);
+            if let Some(block_offset) = stored_trait.block_offset {
+                doc.add_u64(block_offset_field, block_offset);
+            }
+            if let Some(operation_id) = stored_trait.operation_id {
+                doc.add_u64(operation_id_field, operation_id);
+            }
 
             let indexed_fields = record_schema.fields.iter().filter(|f| f.indexed);
             for field in indexed_fields {
-                // TODO: Should probably not unwrap, but just continue
-                let schema_field = self.tantivy_schema.get_field(&field.name).unwrap();
-
-                if let Some(field_value) = trt.value(field) {
+                if let Some(field_value) = stored_trait.trt.value(field) {
                     match (&field.typ, field_value) {
                         (schema::FieldType::String, FieldValue::String(v)) => {
-                            doc.add_text(schema_field, &v);
                             doc.add_text(text_field, &v);
-                        }
-                        (schema::FieldType::Int, FieldValue::Int(v)) => {
-                            doc.add_i64(schema_field, *v);
                         }
                         _ => panic!(
                             "Type not supported yet: ({:?}, {:?})",
@@ -71,31 +94,31 @@ impl Indexer {
                 }
             }
 
-            self.writer.add_document(doc);
+            self.index_writer.add_document(doc);
         }
 
-        let last_ts = self.writer.commit()?;
+        let last_ts = self.index_writer.commit()?;
 
         Ok(last_ts)
     }
 
-    pub fn search(&self, query: Query) -> Result<Vec<String>, Error> {
-        // TODO: Should not re-create index reader at every search
-        let index_reader = self.index.reader()?;
-        let searcher = index_reader.searcher();
-
+    pub fn search(&self, query: Query) -> Result<Vec<TraitResult>, Error> {
+        let searcher = self.index_reader.searcher();
         let res = match query {
             Query::WithTrait(inner_query) => self.search_with_trait(searcher, inner_query)?,
             Query::Match(inner_query) => self.search_matches(searcher, inner_query)?,
             Query::Empty => vec![],
-            // TODO: Query::Conjunction(inner_query) => vec![],
-            _other => vec![],
+            Query::Conjunction(_inner_query) => unimplemented!(),
         };
 
         Ok(res)
     }
 
-    fn search_with_trait<S>(&self, searcher: S, query: WithTraitQuery) -> Result<Vec<String>, Error>
+    fn search_with_trait<S>(
+        &self,
+        searcher: S,
+        query: WithTraitQuery,
+    ) -> Result<Vec<TraitResult>, Error>
     where
         S: Deref<Target = Searcher>,
     {
@@ -113,7 +136,7 @@ impl Indexer {
         self.execute_tantivy_query(searcher, &query)
     }
 
-    fn search_matches<S>(&self, searcher: S, query: MatchQuery) -> Result<Vec<String>, Error>
+    fn search_matches<S>(&self, searcher: S, query: MatchQuery) -> Result<Vec<TraitResult>, Error>
     where
         S: Deref<Target = Searcher>,
     {
@@ -128,23 +151,36 @@ impl Indexer {
         &self,
         searcher: S,
         query: &dyn tantivy::query::Query,
-    ) -> Result<Vec<String>, Error>
+    ) -> Result<Vec<TraitResult>, Error>
     where
         S: Deref<Target = Searcher>,
     {
         let top_collector = TopDocs::with_limit(10);
-        let results = searcher.search(query, &top_collector)?;
+        let search_results = searcher.search(query, &top_collector)?;
 
-        let mut res = Vec::new();
-        for (score, doc) in results {
-            let r = searcher.doc(doc)?;
-            res.push(format!(
-                "Result for {:?} -> {:?} score {:?}",
-                query, r, score
-            ));
+        let block_offset_field = self.get_tantivy_field("block_offset");
+        let operation_id_field = self.get_tantivy_field("operation_id");
+        let entity_id_field = self.get_tantivy_field("entity_id");
+        let trait_id_field = self.get_tantivy_field("trait_id");
+
+        let mut results = Vec::new();
+        for (score, doc_addr) in search_results {
+            let doc = searcher.doc(doc_addr)?;
+            let block_offset = self.get_tantivy_doc_opt_u64_field(&doc, block_offset_field);
+            let operation_id = self.get_tantivy_doc_opt_u64_field(&doc, operation_id_field);
+            let entity_id = self.get_tantivy_doc_string_field(&doc, entity_id_field);
+            let trait_id = self.get_tantivy_doc_string_field(&doc, trait_id_field);
+            let result = TraitResult {
+                block_offset,
+                operation_id,
+                entity_id,
+                trait_id,
+                score,
+            };
+            results.push(result);
         }
 
-        Ok(res)
+        Ok(results)
     }
 
     fn get_tantivy_field(&self, name: &str) -> tantivy::schema::Field {
@@ -153,43 +189,38 @@ impl Indexer {
             .unwrap_or_else(|| panic!("Couldn't find {} field in Tantivy schema", name))
     }
 
-    fn build_tantivy_schema(schema: &schema::Schema) -> TantivySchema {
+    fn get_tantivy_doc_string_field(
+        &self,
+        doc: &Document,
+        field: tantivy::schema::Field,
+    ) -> String {
+        match doc.get_first(field) {
+            Some(tantivy::schema::Value::Str(v)) => v.to_string(),
+            _ => panic!("Couldn't find field of type string"),
+        }
+    }
+
+    fn get_tantivy_doc_opt_u64_field(
+        &self,
+        doc: &Document,
+        field: tantivy::schema::Field,
+    ) -> Option<u64> {
+        match doc.get_first(field) {
+            Some(tantivy::schema::Value::U64(v)) => Some(*v),
+            _ => None,
+        }
+    }
+
+    fn build_tantivy_schema(_schema: &schema::Schema) -> TantivySchema {
         let mut schema_builder = SchemaBuilder::default();
 
-        schema_builder.add_text_field("type", TEXT | STORED);
-        schema_builder.add_text_field("trait", TEXT | STORED);
-        schema_builder.add_text_field("trait_combined_id", TEXT);
-        schema_builder.add_text_field("trait_entity_id", TEXT | STORED);
-        schema_builder.add_text_field("trait_id", TEXT | STORED);
-
-        // TODO: entity id
-        // TODO: trait id
-
         schema_builder.add_u64_field("trait_type", INDEXED | STORED);
-        schema_builder.add_text_field("text", TEXT);
+        schema_builder.add_text_field("entity_id", STRING | STORED);
+        schema_builder.add_text_field("trait_id", STRING | STORED);
+        schema_builder.add_u64_field("block_offset", INDEXED | STORED);
+        schema_builder.add_u64_field("operation_id", INDEXED | STORED);
 
-        // TODO: This doesn't support evolution of the schema. Tantivy schema is immutable
-        for trt in &schema.traits {
-            for field in &trt.fields {
-                match field.typ {
-                    schema::FieldType::Int if field.indexed => {
-                        let mut options = IntOptions::default();
-                        if field.indexed {
-                            options = options.set_indexed();
-                        }
-                        schema_builder.add_i64_field(&field.name, options);
-                    }
-                    schema::FieldType::String if field.indexed => {
-                        // TODO : Allow different text indexing options
-                        let options = TEXT;
-                        schema_builder.add_text_field(&field.name, options);
-                    }
-                    _ => {
-                        // no need to be indexed
-                    }
-                }
-            }
-        }
+        schema_builder.add_text_field("text", TEXT);
 
         schema_builder.build()
     }
@@ -198,22 +229,23 @@ impl Indexer {
 ///
 ///
 ///
-pub struct StoredTrait {
+pub struct StoredTrait<'t> {
     pub block_offset: Option<BlockOffset>,
     pub operation_id: Option<OperationId>,
     pub entity_id: EntityId,
-    pub trt: Trait,
+    pub trt: &'t Trait,
 }
 
-
 ///
 ///
 ///
+#[derive(Debug)]
 pub struct TraitResult {
     pub block_offset: Option<BlockOffset>,
     pub operation_id: Option<OperationId>,
     pub entity_id: EntityId,
     pub trait_id: TraitId,
+    pub score: f32,
 }
 
 #[cfg(test)]
@@ -223,20 +255,34 @@ mod tests {
     #[test]
     fn search_query_matches() -> Result<(), failure::Error> {
         let schema = create_test_schema();
-        let mut indexer = Indexer::for_schema(schema.clone())?;
+        let mut indexer = Index::for_schema(schema.clone())?;
 
         let contact_trait = Trait::new(schema.clone(), "contact")
+            .with_id("trudeau1".to_string())
             .with_value_by_name("name", "Justin Trudeau")
             .with_value_by_name("email", "justin.trudeau@gov.ca");
-        let traits = vec![contact_trait];
-        let last_ts = indexer.index_segment(traits.iter())?;
+        let contact_stored_trait = StoredTrait {
+            block_offset: Some(1234),
+            operation_id: Some(2345),
+            entity_id: "entity_id1".to_string(),
+            trt: &contact_trait,
+        };
+
+        let traits = vec![contact_stored_trait];
+        let last_ts = indexer.index_traits(traits.iter())?;
         assert!(last_ts > 0);
 
         let query = Query::Match(MatchQuery {
             query: "justin".to_string(),
         });
-        let res = indexer.search(query)?;
-        assert_eq!(res.len(), 1);
+        let results = indexer.search(query)?;
+        assert_eq!(results.len(), 1);
+
+        let result = find_trait_result(&results, "trudeau1").unwrap();
+        assert_eq!(result.block_offset, Some(1234));
+        assert_eq!(result.operation_id, Some(2345));
+        assert_eq!(result.entity_id, "entity_id1");
+        assert_eq!(result.trait_id, "trudeau1");
 
         Ok(())
     }
@@ -244,25 +290,47 @@ mod tests {
     #[test]
     fn search_query_by_trait_type() -> Result<(), failure::Error> {
         let schema = create_test_schema();
-        let mut indexer = Indexer::for_schema(schema.clone())?;
+        let mut indexer = Index::for_schema(schema.clone())?;
 
         let contact_trait = Trait::new(schema.clone(), "contact")
+            .with_id("trt1".to_string())
             .with_value_by_name("name", "Justin Trudeau")
             .with_value_by_name("email", "justin.trudeau@gov.ca");
+        let contact_stored_trait = StoredTrait {
+            block_offset: None,
+            operation_id: None,
+            entity_id: "entity_id1".to_string(),
+            trt: &contact_trait,
+        };
+
         let email_trait = Trait::new(schema.clone(), "email")
+            .with_id("trt2".to_string())
             .with_value_by_name("subject", "Some subject")
             .with_value_by_name("body", "Very important body");
-        let traits = vec![contact_trait, email_trait];
-        indexer.index_segment(traits.iter())?;
+        let email_stored_trait = StoredTrait {
+            block_offset: None,
+            operation_id: None,
+            entity_id: "entity_id2".to_string(),
+            trt: &email_trait,
+        };
+
+        let traits = vec![contact_stored_trait, email_stored_trait];
+        indexer.index_traits(traits.iter())?;
 
         let results = indexer.search(Query::WithTrait(WithTraitQuery {
             trait_name: "email".to_string(),
             trait_query: None,
         }))?;
-
-        println!("{:?}", results);
+        assert!(find_trait_result(&results, "trt2").is_some());
 
         Ok(())
+    }
+
+    fn find_trait_result<'r>(
+        results: &'r Vec<TraitResult>,
+        trait_id: &str,
+    ) -> Option<&'r TraitResult> {
+        results.iter().find(|t| t.trait_id == trait_id)
     }
 
     fn create_test_schema() -> Arc<schema::Schema> {
