@@ -18,6 +18,8 @@ pub enum Error {
     Poisoned,
     #[fail(display = "Other error occurred: {}", _0)]
     Other(String),
+    #[fail(display = "A fatal error occurred: {}", _0)]
+    Fatal(String),
 }
 
 impl From<tantivy::TantivyError> for Error {

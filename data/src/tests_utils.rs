@@ -209,7 +209,18 @@ impl DataTestCluster {
     pub fn pop_received_event(&self, node_idx: usize) -> Option<Event> {
         let events_locked = self.events_received[node_idx].as_ref().unwrap();
         let mut events = events_locked.lock().unwrap();
-        events.pop()
+        if !events.is_empty() {
+            // not performant, but it's for tests
+            Some(events.remove(0))
+        } else {
+            None
+        }
+    }
+
+    pub fn clear_received_events(&self, node_idx: usize) {
+        let events_locked = self.events_received[node_idx].as_ref().unwrap();
+        let mut events = events_locked.lock().unwrap();
+        events.clear();
     }
 
     pub fn get_handle(
@@ -257,6 +268,19 @@ impl DataTestCluster {
                 .get_operation(operation_id)?
                 .filter(|op| op.status.is_committed())
                 .ok_or_else(|| err_msg("Operation not on node"))
+        })
+    }
+
+    pub fn wait_next_block_commit(&self, node_idx: usize) -> Vec<BlockOffset> {
+        expect_result::<_, _, failure::Error>(|| {
+            let events = self.get_received_events(node_idx);
+            let offsets = extract_blocks_events(&events);
+
+            if !offsets.is_empty() {
+                Ok(offsets)
+            } else {
+                Err(failure::err_msg("No block found".to_string()))
+            }
         })
     }
 
@@ -321,17 +345,4 @@ pub fn expect_operations_emitted(cluster: &DataTestCluster, expected_ops: &[u64]
             )))
         }
     });
-}
-
-pub fn wait_next_block_commit(cluster: &DataTestCluster) -> Vec<BlockOffset> {
-    expect_result::<_, _, failure::Error>(|| {
-        let events = cluster.get_received_events(0);
-        let offsets = extract_blocks_events(&events);
-
-        if !offsets.is_empty() {
-            Ok(offsets)
-        } else {
-            Err(failure::err_msg("No block found".to_string()))
-        }
-    })
 }

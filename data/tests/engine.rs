@@ -1,23 +1,13 @@
-use std::path::PathBuf;
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use failure::err_msg;
-use futures::prelude::*;
 use itertools::Itertools;
-use tempdir;
 
 use exocore_common::tests_utils::expect_result;
 
-use exocore_common::cell::FullCell;
-use exocore_data::block::{BlockOffset, BlockOwned};
-use exocore_data::chain::ChainStore;
-use exocore_data::engine::{EngineHandle, EngineOperation, Event};
-use exocore_data::operation::{Operation, OperationId};
+use exocore_data::operation::Operation;
 use exocore_data::tests_utils::*;
 use exocore_data::*;
-use exocore_transport::mock::MockTransport;
 
 // TODO: To be completed in https://github.com/appaquet/exocore/issues/42
 
@@ -48,8 +38,14 @@ fn single_node_full_chain_write_read() -> Result<(), failure::Error> {
 
     // wait for all operations to be emitted on stream
     expect_operations_emitted(&cluster, &[op1, op2]);
-    let block_offsets = wait_next_block_commit(&cluster);
+    let block_offsets = cluster.wait_next_block_commit(0);
     let first_block_offset = block_offsets.first().unwrap();
+
+    // check if we really created a block
+    let (chain_last_offset, chain_last_depth) =
+        cluster.get_handle(0).get_chain_last_block()?.unwrap();
+    assert!(chain_last_offset >= *first_block_offset);
+    assert!(chain_last_depth >= 1);
 
     // get operation from chain
     let entry_operation = cluster
@@ -101,7 +97,7 @@ fn single_node_chain_iteration() -> Result<(), failure::Error> {
     let op2 = cluster
         .get_handle_mut(0)
         .write_entry_operation(b"i love rust 2")?;
-    wait_next_block_commit(&cluster);
+    cluster.wait_next_block_commit(0);
 
     let chain_operations = cluster
         .get_handle(0)
@@ -133,7 +129,7 @@ fn single_node_restart() -> Result<(), failure::Error> {
     expect_operations_emitted(&cluster, &[op1]);
 
     // wait for operations to be committed
-    wait_next_block_commit(&cluster);
+    cluster.wait_next_block_commit(0);
 
     // make sure operation is in chain
     let entry_before = cluster.get_handle(0).get_operation(op1)?.unwrap();

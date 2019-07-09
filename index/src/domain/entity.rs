@@ -7,7 +7,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 pub type EntityId = String;
+pub type EntityIdRef = str;
 pub type TraitId = String;
+pub type TraitIdRef = str;
 
 #[derive(Serialize, Deserialize)]
 pub struct Entity {
@@ -136,7 +138,8 @@ impl PartialEq for Trait {
 
 impl std::fmt::Debug for Trait {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        unimplemented!()
+        let mut str_fmt = f.debug_struct("Trait");
+        str_fmt.finish()
     }
 }
 

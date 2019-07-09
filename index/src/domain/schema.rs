@@ -263,8 +263,9 @@ fn default_true() -> bool {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
+    use std::sync::Arc;
 
     #[test]
     fn parse_basic() {
@@ -294,5 +295,39 @@ mod tests {
             .is_some());
 
         println!("{}", serde_yaml::to_string(&schema_defaults).unwrap());
+    }
+
+    pub fn create_test_schema() -> Arc<Schema> {
+        Arc::new(
+            Schema::parse(
+                r#"
+        name: myschema
+        traits:
+            - id: 0
+              name: contact
+              fields:
+                - id: 0
+                  name: name
+                  type: string
+                  indexed: true
+                - id: 1
+                  name: email
+                  type: string
+                  indexed: true
+            - id: 1
+              name: email
+              fields:
+                - id: 0
+                  name: subject
+                  type: string
+                  indexed: true
+                - id: 1
+                  name: body
+                  type: string
+                  indexed: true
+        "#,
+            )
+            .unwrap(),
+        )
     }
 }

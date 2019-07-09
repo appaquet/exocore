@@ -422,7 +422,6 @@ impl<PS: PendingStore> PendingSynchronizer<PS> {
             match (op.commit_status, from_block_depth) {
                 (_, None) => true,
                 (CommitStatus::Unknown, _) => true,
-                (CommitStatus::NotCommitted, _) => true,
                 (CommitStatus::Committed(_offset, op_depth), Some(from_depth)) => {
                     op_depth >= from_depth
                 }
@@ -1156,7 +1155,7 @@ mod tests {
         assert_eq!(3, res.len());
 
         // should return not committed
-        store.update_operation_commit_status(100, CommitStatus::NotCommitted)?;
+        store.update_operation_commit_status(100, CommitStatus::Unknown)?;
         let res = pending_store
             .operations_iter_from_depth(&store, .., Some(2))?
             .collect_vec();

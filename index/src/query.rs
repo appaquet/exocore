@@ -14,6 +14,21 @@ pub enum Query {
     Empty,
 }
 
+impl Query {
+    pub fn match_text<S: Into<String>>(query: S) -> Query {
+        Query::Match(MatchQuery {
+            query: query.into(),
+        })
+    }
+
+    pub fn with_trait<S: Into<String>>(trait_name: S) -> Query {
+        Query::WithTrait(WithTraitQuery {
+            trait_name: trait_name.into(),
+            trait_query: None,
+        })
+    }
+}
+
 #[serde(rename_all = "snake_case")]
 #[derive(Serialize, Deserialize)]
 pub struct WithTraitQuery {
@@ -24,7 +39,7 @@ pub struct WithTraitQuery {
 #[serde(rename_all = "snake_case")]
 #[derive(Serialize, Deserialize)]
 pub struct ConjunctionQuery {
-    queries: Vec<Query>,
+    pub queries: Vec<Query>,
 }
 
 #[serde(rename_all = "snake_case")]
@@ -40,9 +55,9 @@ pub struct SortToken(pub String);
 #[serde(rename_all = "snake_case")]
 #[derive(Serialize, Deserialize)]
 pub struct QueryPaging {
-    from_token: Option<SortToken>,
-    to_token: Option<SortToken>,
-    count: u32,
+    pub from_token: Option<SortToken>,
+    pub to_token: Option<SortToken>,
+    pub count: u32,
 }
 impl QueryPaging {
     fn empty() -> QueryPaging {
@@ -57,10 +72,10 @@ impl QueryPaging {
 #[serde(rename_all = "snake_case")]
 #[derive(Serialize, Deserialize)]
 pub struct QueryResults {
-    results: Vec<QueryResult>,
-    total_estimated: u32,
-    current_page: QueryPaging,
-    next_page: Option<QueryPaging>,
+    pub results: Vec<QueryResult>,
+    pub total_estimated: u32,
+    pub current_page: QueryPaging,
+    pub next_page: Option<QueryPaging>,
     // TODO: currentPage, nextPage, queryToken
 }
 
@@ -78,8 +93,16 @@ impl QueryResults {
 #[serde(rename_all = "snake_case")]
 #[derive(Serialize, Deserialize)]
 pub struct QueryResult {
-    entity: Entity,
+    pub entity: Entity,
+    pub source: QueryResultSource,
     // TODO: sortToken:
+}
+
+#[serde(rename_all = "snake_case")]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub enum QueryResultSource {
+    Pending,
+    Chain,
 }
 
 #[cfg(test)]
@@ -97,7 +120,10 @@ mod tests {
 
         let entity = Entity::new("1234".to_string());
         let results = QueryResults {
-            results: vec![QueryResult { entity }],
+            results: vec![QueryResult {
+                entity,
+                source: QueryResultSource::Pending,
+            }],
             total_estimated: 0,
             current_page: QueryPaging {
                 from_token: Some(SortToken("token".to_string())),

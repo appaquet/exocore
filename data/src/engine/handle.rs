@@ -1,5 +1,5 @@
 use super::{Error, Inner};
-use crate::block::{Block, BlockOffset, BlockRef};
+use crate::block::{Block, BlockDepth, BlockOffset, BlockRef};
 use crate::operation::{OperationBuilder, OperationId};
 use crate::pending;
 use crate::pending::CommitStatus;
@@ -109,6 +109,35 @@ where
         from_offset: Option<BlockOffset>,
     ) -> ChainOperationsIterator<CS, PS> {
         ChainOperationsIterator::new(self.inner.clone(), from_offset)
+    }
+
+    pub fn get_chain_last_block(&self) -> Result<Option<(BlockOffset, BlockDepth)>, Error> {
+        let inner = self.inner.upgrade().ok_or(Error::InnerUpgrade)?;
+        let unlocked_inner = inner.read()?;
+        let last_block = unlocked_inner.chain_store.get_last_block()?;
+
+        if let Some(last_block) = last_block {
+            let depth = last_block.get_depth()?;
+            Ok(Some((last_block.offset, depth)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn get_chain_block_info(
+        &self,
+        offset: BlockOffset,
+    ) -> Result<Option<(BlockOffset, BlockDepth)>, Error> {
+        let inner = self.inner.upgrade().ok_or(Error::InnerUpgrade)?;
+        let unlocked_inner = inner.read()?;
+        let block = unlocked_inner.chain_store.get_block(offset).ok();
+
+        if let Some(block) = block {
+            let depth = block.get_depth()?;
+            Ok(Some((block.offset, depth)))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn get_pending_operation(
@@ -244,8 +273,8 @@ pub struct EngineOperation {
 impl EngineOperation {
     fn from_pending_operation(operation: pending::StoredOperation) -> EngineOperation {
         let status = match operation.commit_status {
-            pending::CommitStatus::Committed(offset, _depth) => {
-                EngineOperationStatus::Committed(offset)
+            pending::CommitStatus::Committed(offset, depth) => {
+                EngineOperationStatus::Committed(offset, depth)
             }
             _ => EngineOperationStatus::Pending,
         };
@@ -262,9 +291,10 @@ impl EngineOperation {
         operation_id: OperationId,
     ) -> Result<Option<EngineOperation>, Error> {
         if let Some(operation) = block.get_operation(operation_id)? {
+            let depth = block.get_depth()?;
             return Ok(Some(EngineOperation {
                 operation_id,
-                status: EngineOperationStatus::Committed(block.offset),
+                status: EngineOperationStatus::Committed(block.offset, depth),
                 operation_frame: Arc::new(operation.to_owned()),
             }));
         }
@@ -281,14 +311,14 @@ impl crate::operation::Operation for EngineOperation {
 
 #[derive(Debug, PartialEq)]
 pub enum EngineOperationStatus {
-    Committed(BlockOffset),
+    Committed(BlockOffset, BlockDepth),
     Pending,
 }
 
 impl EngineOperationStatus {
     pub fn is_committed(&self) -> bool {
         match self {
-            EngineOperationStatus::Committed(_offset) => true,
+            EngineOperationStatus::Committed(_offset, _depth) => true,
             _ => false,
         }
     }
@@ -330,13 +360,15 @@ where
         // since a block may not contain operations (ex: genesis), we need to loop until we find one
         while self.current_operations.is_empty() {
             let block = inner.chain_store.get_block(self.next_offset)?;
+            let depth = block.get_depth()?;
+
             for operation in block.operations_iter()? {
                 let operation_reader = operation.get_reader()?;
                 let operation_id = operation_reader.get_operation_id();
 
                 self.current_operations.push(EngineOperation {
                     operation_id,
-                    status: EngineOperationStatus::Committed(block.offset),
+                    status: EngineOperationStatus::Committed(block.offset, depth),
                     operation_frame: Arc::new(operation.to_owned()),
                 });
             }

@@ -289,7 +289,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
 
     #[test]
     fn serialize_deserialize_primitive_field_value() -> Result<(), failure::Error> {
