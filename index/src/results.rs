@@ -2,7 +2,7 @@ use crate::domain::entity::Entity;
 use crate::query::QueryPaging;
 
 #[serde(rename_all = "snake_case")]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct EntitiesResults {
     pub results: Vec<EntityResult>,
     pub total_estimated: u32,
@@ -23,7 +23,7 @@ impl EntitiesResults {
 }
 
 #[serde(rename_all = "snake_case")]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct EntityResult {
     pub entity: Entity,
     pub source: EntityResultSource,
@@ -31,7 +31,7 @@ pub struct EntityResult {
 }
 
 #[serde(rename_all = "snake_case")]
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Copy)]
 pub enum EntityResultSource {
     Pending,
     Chain,

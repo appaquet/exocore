@@ -11,7 +11,7 @@ pub type EntityIdRef = str;
 pub type TraitId = String;
 pub type TraitIdRef = str;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Entity {
     pub id: EntityId,
     pub traits: Vec<Trait>,
@@ -138,7 +138,15 @@ impl PartialEq for Trait {
 
 impl std::fmt::Debug for Trait {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        let mut str_fmt = f.debug_struct("Trait");
+        let record_schema = self.record_schema();
+        let mut str_fmt = f.debug_struct(&record_schema.name);
+        for (field_id, value) in &self.values {
+            let field = record_schema
+                .field_by_id(*field_id)
+                .map(|f| f.name.to_string())
+                .unwrap_or(format!("_{}", field_id));
+            str_fmt.field(&field, value);
+        }
         str_fmt.finish()
     }
 }
@@ -195,7 +203,16 @@ impl PartialEq for Struct {
 
 impl std::fmt::Debug for Struct {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        unimplemented!()
+        let record_schema = self.record_schema();
+        let mut str_fmt = f.debug_struct(&record_schema.name);
+        for (field_id, value) in &self.values {
+            let field = record_schema
+                .field_by_id(*field_id)
+                .map(|f| f.name.to_string())
+                .unwrap_or(format!("_{}", field_id));
+            str_fmt.field(&field, value);
+        }
+        str_fmt.finish()
     }
 }
 

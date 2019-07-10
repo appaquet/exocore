@@ -51,11 +51,11 @@ pub struct MatchQuery {
 }
 
 #[serde(rename_all = "snake_case")]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct SortToken(pub String);
 
 #[serde(rename_all = "snake_case")]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct QueryPaging {
     pub from_token: Option<SortToken>,
     pub to_token: Option<SortToken>,
