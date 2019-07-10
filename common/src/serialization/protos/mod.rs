@@ -14,7 +14,6 @@
 pub mod common_capnp;
 pub mod data_chain_capnp;
 pub mod data_transport_capnp;
-pub mod index_domain_capnp;
 
 use capnp;
 

@@ -3,7 +3,7 @@ set -e
 CUR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 export GENERATE_PROTOS=1
-#cargo clean
+cargo clean
 cargo build -p exocore-common
 
 for proto_path in `ls $CUR_DIR/../target/debug/build/exocore-common-*/out/proto/*_capnp.rs`; do

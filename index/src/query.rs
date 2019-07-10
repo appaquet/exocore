@@ -7,9 +7,6 @@ pub enum Query {
     Conjunction(ConjunctionQuery),
     Match(MatchQuery),
     IdEqual(EntityId),
-
-    // TODO: just for tests for now
-    Empty,
 }
 
 impl Query {

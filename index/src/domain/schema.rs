@@ -2,10 +2,6 @@ use crate::error::Error;
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-// TODO: Rename schema to Namespace and create schema
-// TODO: Add trait types & their fields
-// TODO: Trait IDs based on multiple fields
-
 pub type SchemaTraitId = u16;
 pub type SchemaStructId = u16;
 pub type SchemaFieldId = u16;
@@ -100,10 +96,6 @@ impl Schema {
                 }
             }
         }
-
-        // TODO: add default fields to traits
-        // TODO: make sure referenced structs exist
-        // TODO: make sure default values are parsable
 
         Ok(schema)
     }

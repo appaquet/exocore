@@ -39,6 +39,12 @@ impl Default for TraitsIndexConfig {
 /// Index (full-text & fields) for traits in the given schema. Each trait is individually
 /// indexed as a single document.
 ///
+/// This index is used to index both the chain, and the pending store. The chain index
+/// is stored on disk, while the pending is stored in-memory. Deletion in each index
+/// is handled differently. On the disk persisted, we delete using Tantivy document deletion,
+/// while the pending-store uses a tombstone approach. This is needed since the pending store
+/// "applies" mutation that may not be definitive onto the chain.
+///
 pub struct TraitsIndex {
     index: TantivyIndex,
     index_reader: IndexReader,
@@ -48,6 +54,7 @@ pub struct TraitsIndex {
 }
 
 impl TraitsIndex {
+    /// Creates or opens a disk persisted traits index
     pub fn open_or_create_mmap(
         config: TraitsIndexConfig,
         schema: Arc<schema::Schema>,
@@ -72,6 +79,7 @@ impl TraitsIndex {
         })
     }
 
+    /// Creates or opens a in-memory traits index
     pub fn create_in_memory(
         config: TraitsIndexConfig,
         schema: Arc<schema::Schema>,
@@ -94,10 +102,13 @@ impl TraitsIndex {
         })
     }
 
+    /// Apply a single trait mutation. A costly commit & refresh is done at each mutation,
+    /// so `apply_mutations` should be used for multiple mutations.
     pub fn apply_mutation(&mut self, mutation: IndexMutation) -> Result<(), Error> {
         self.apply_mutations(Some(mutation).into_iter())
     }
 
+    /// Apply an iterator of mutations, with a single atomic commit at the end of the iteration.
     pub fn apply_mutations<T>(&mut self, mutations: T) -> Result<(), Error>
     where
         T: Iterator<Item = IndexMutation>,
@@ -134,10 +145,8 @@ impl TraitsIndex {
 
         if nb_mutations > 0 {
             debug!("Applied {} mutations, now committing", nb_mutations);
-
-            // it make takes milliseconds for reader to see committed changes, so we force reload
             index_writer.commit()?;
-
+            // it may take milliseconds for reader to see committed changes, so we force reload
             self.index_reader.reload()?;
         } else {
             debug!("Applied 0 mutations, not committing");
@@ -146,6 +155,8 @@ impl TraitsIndex {
         Ok(())
     }
 
+    /// Return the highest block offset found in the index.
+    /// This is used to know from which point we need to re-index.
     pub fn highest_indexed_block(&self) -> Result<Option<BlockOffset>, Error> {
         let searcher = self.index_reader.searcher();
 
@@ -158,6 +169,8 @@ impl TraitsIndex {
             .map(|(block_offset, _doc_addr)| *block_offset))
     }
 
+    /// Execute a query on the index and return the matching traits' information.
+    /// The actual data of the traits is stored in the chain.
     pub fn search(&self, query: &Query, limit: usize) -> Result<Vec<TraitResult>, Error> {
         let searcher = self.index_reader.searcher();
         let res = match query {
@@ -166,13 +179,13 @@ impl TraitsIndex {
             }
             Query::Match(inner_query) => self.search_matches(searcher, inner_query, limit)?,
             Query::IdEqual(entity_id) => self.search_entity_id(searcher, &entity_id, limit)?,
-            Query::Empty => vec![],
             Query::Conjunction(_inner_query) => unimplemented!(),
         };
 
         Ok(res)
     }
 
+    /// Converts a put mutation to Tantivy document
     fn put_mutation_to_document(&self, mutation: &PutTraitMutation) -> Document {
         let record_schema: &schema::TraitSchema = mutation.trt.record_schema();
 
@@ -208,6 +221,7 @@ impl TraitsIndex {
         doc
     }
 
+    /// Converts a tombstone mutation to Tantivy document
     fn tombstone_mutation_to_document(&self, mutation: &PutTraitTombstone) -> Document {
         let mut doc = Document::default();
 
@@ -228,6 +242,7 @@ impl TraitsIndex {
         doc
     }
 
+    /// Execute a search by trait type query
     fn search_with_trait<S>(
         &self,
         searcher: S,
@@ -250,6 +265,7 @@ impl TraitsIndex {
         self.execute_tantivy_query(searcher, &query, limit)
     }
 
+    /// Execute a search by text query
     fn search_matches<S>(
         &self,
         searcher: S,
@@ -264,6 +280,7 @@ impl TraitsIndex {
         self.execute_tantivy_query(searcher, &query, limit)
     }
 
+    /// Execute a search by entity id query
     fn search_entity_id<S>(
         &self,
         searcher: S,
@@ -278,6 +295,7 @@ impl TraitsIndex {
         self.execute_tantivy_query(searcher, &query, limit)
     }
 
+    /// Execute query on Tantivy index and build trait result
     fn execute_tantivy_query<S>(
         &self,
         searcher: S,
@@ -316,6 +334,7 @@ impl TraitsIndex {
         Ok(results)
     }
 
+    /// Extracts optional string value from Tantivy document
     fn get_doc_string_value(&self, doc: &Document, field: Field) -> String {
         match doc.get_first(field) {
             Some(tantivy::schema::Value::Str(v)) => v.to_string(),
@@ -323,6 +342,7 @@ impl TraitsIndex {
         }
     }
 
+    /// Extracts optional u46 value from Tantivy document
     fn get_doc_opt_u64_value(&self, doc: &Document, field: Field) -> Option<u64> {
         match doc.get_first(field) {
             Some(tantivy::schema::Value::U64(v)) => Some(*v),
@@ -330,6 +350,7 @@ impl TraitsIndex {
         }
     }
 
+    /// Extracts u46 value from Tantivy document
     fn get_doc_u64_value(&self, doc: &Document, field: Field) -> u64 {
         match doc.get_first(field) {
             Some(tantivy::schema::Value::U64(v)) => *v,
@@ -337,6 +358,7 @@ impl TraitsIndex {
         }
     }
 
+    /// Builds Tantivy schema based on the domain schema
     fn build_tantivy_schema(_schema: &schema::Schema) -> (TantivySchema, Fields) {
         let mut schema_builder = SchemaBuilder::default();
         schema_builder.add_u64_field("trait_type", INDEXED);
@@ -624,7 +646,7 @@ mod tests {
     }
 
     fn find_trait_result<'r>(
-        results: &'r Vec<TraitResult>,
+        results: &'r [TraitResult],
         trait_id: &str,
     ) -> Option<&'r TraitResult> {
         results.iter().find(|t| t.trait_id == trait_id)

@@ -1,3 +1,6 @@
+///
+/// Index related error
+///
 #[derive(Debug, Fail)]
 pub enum Error {
     #[fail(display = "Error parsing schema: {}", _0)]

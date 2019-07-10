@@ -18,10 +18,8 @@ pub fn setup_logging() {
     // see https://docs.rs/log4rs/*/log4rs/
     let config = Config::builder()
         .appender(Appender::builder().build("stdout", Box::new(stdout)))
-        .logger(Logger::builder().build("tokio_reactor", LevelFilter::Warn))
-        .logger(Logger::builder().build("yamux", LevelFilter::Warn))
+        .logger(Logger::builder().build("tokio_reactor", LevelFilter::Info))
         .logger(Logger::builder().build("tantivy", LevelFilter::Info))
-        .logger(Logger::builder().build("exocore_data", LevelFilter::Info))
         .build(Root::builder().appender("stdout").build(LevelFilter::Debug))
         .unwrap();
 

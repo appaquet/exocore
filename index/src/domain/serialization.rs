@@ -324,7 +324,7 @@ mod tests {
             *value_deser.value_by_name("field1").unwrap()
         );
 
-        // TODO: test equality
+        assert_eq!(value, value_deser);
 
         Ok(())
     }
@@ -343,7 +343,7 @@ mod tests {
             *value_deser.value_by_name("field1").unwrap()
         );
 
-        // TODO: test equality
+        assert_eq!(value, value_deser);
 
         Ok(())
     }

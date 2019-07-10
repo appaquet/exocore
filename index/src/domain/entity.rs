@@ -11,6 +11,14 @@ pub type EntityIdRef = str;
 pub type TraitId = String;
 pub type TraitIdRef = str;
 
+///
+/// An entity is an object on which traits can be added to shape what it represents.
+///   Ex: an email is an entity on which we added a trait "Email"
+///       a note could be added to an email by adding a "Note" trait also
+///
+/// Traits can also represent relationship.
+///   Ex: a "Child" trait can be used to add an entity into a collection
+///
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Entity {
     pub id: EntityId,
@@ -32,42 +40,7 @@ impl Entity {
 }
 
 ///
-///
-///
-pub trait Record: Sized {
-    type SchemaType: SchemaRecord;
-
-    fn schema(&self) -> &Arc<Schema>;
-
-    fn record_schema(&self) -> &Self::SchemaType;
-
-    fn values(&self) -> &HashMap<SchemaFieldId, FieldValue>;
-
-    fn values_mut(&mut self) -> &mut HashMap<SchemaFieldId, FieldValue>;
-
-    fn value(&self, field: &SchemaField) -> Option<&FieldValue> {
-        self.values().get(&field.id)
-    }
-
-    fn value_by_id(&self, id: SchemaFieldId) -> Option<&FieldValue> {
-        self.values().get(&id)
-    }
-
-    fn value_by_name(&self, field_name: &str) -> Option<&FieldValue> {
-        let field = self.record_schema().field_by_name(field_name)?;
-        self.values().get(&field.id)
-    }
-
-    fn with_value_by_name<V: Into<FieldValue>>(mut self, field_name: &str, value: V) -> Self {
-        if let Some(field_id) = self.record_schema().field_by_name(field_name).map(|f| f.id) {
-            self.values_mut().insert(field_id, value.into());
-        }
-        self
-    }
-}
-
-///
-///
+/// Trait that can be added to an entity, shaping its representation.
 ///
 pub struct Trait {
     schema: Arc<Schema>,
@@ -89,7 +62,7 @@ impl Trait {
     }
 
     pub fn build(self) -> Result<Self, Error> {
-        // TODO: maybe generate id
+        // TODO: Add Trait ID generation logic
         Ok(self)
     }
 
@@ -130,21 +103,69 @@ impl Record for Trait {
     }
 }
 
-impl PartialEq for Trait {
-    fn eq(&self, other: &Self) -> bool {
-        unimplemented!()
+impl std::fmt::Debug for Trait {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        self.debug_fmt(f)
     }
 }
 
-impl std::fmt::Debug for Trait {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+impl PartialEq for Trait {
+    fn eq(&self, other: &Self) -> bool {
+        if self.schema.name != other.schema.name {
+            return false;
+        }
+
+        if self.schema_id != other.schema_id {
+            return false;
+        }
+
+        self.values == other.values
+    }
+}
+
+///
+/// Common (Rust) trait between `Struct` and `Trait`, since both are a collection of fields.
+///
+pub trait Record: Sized {
+    type SchemaType: SchemaRecord;
+
+    fn schema(&self) -> &Arc<Schema>;
+
+    fn record_schema(&self) -> &Self::SchemaType;
+
+    fn values(&self) -> &HashMap<SchemaFieldId, FieldValue>;
+
+    fn values_mut(&mut self) -> &mut HashMap<SchemaFieldId, FieldValue>;
+
+    fn value(&self, field: &SchemaField) -> Option<&FieldValue> {
+        self.values().get(&field.id)
+    }
+
+    fn value_by_id(&self, id: SchemaFieldId) -> Option<&FieldValue> {
+        self.values().get(&id)
+    }
+
+    fn value_by_name(&self, field_name: &str) -> Option<&FieldValue> {
+        let field = self.record_schema().field_by_name(field_name)?;
+        self.values().get(&field.id)
+    }
+
+    fn with_value_by_name<V: Into<FieldValue>>(mut self, field_name: &str, value: V) -> Self {
+        if let Some(field_id) = self.record_schema().field_by_name(field_name).map(|f| f.id) {
+            self.values_mut().insert(field_id, value.into());
+        }
+        self
+    }
+
+    fn debug_fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         let record_schema = self.record_schema();
-        let mut str_fmt = f.debug_struct(&record_schema.name);
-        for (field_id, value) in &self.values {
+        let name = record_schema.name();
+        let mut str_fmt = f.debug_struct(name);
+        for (field_id, value) in self.values() {
             let field = record_schema
                 .field_by_id(*field_id)
                 .map(|f| f.name.to_string())
-                .unwrap_or(format!("_{}", field_id));
+                .unwrap_or_else(|| format!("_{}", field_id));
             str_fmt.field(&field, value);
         }
         str_fmt.finish()
@@ -152,11 +173,11 @@ impl std::fmt::Debug for Trait {
 }
 
 ///
-///
+/// Structure with field-value pairs that can be used as a value of any field in a `Record`
 ///
 pub struct Struct {
     schema: Arc<Schema>,
-    id: SchemaStructId,
+    schema_id: SchemaStructId,
     values: HashMap<SchemaFieldId, FieldValue>,
 }
 
@@ -168,7 +189,7 @@ impl Struct {
             .id;
         Struct {
             schema,
-            id: struct_id,
+            schema_id: struct_id,
             values: HashMap::new(),
         }
     }
@@ -182,7 +203,7 @@ impl Record for Struct {
 
     fn record_schema(&self) -> &Self::SchemaType {
         self.schema
-            .struct_by_id(self.id)
+            .struct_by_id(self.schema_id)
             .expect("Struct doesn't exist in schema")
     }
 
@@ -195,29 +216,28 @@ impl Record for Struct {
     }
 }
 
-impl PartialEq for Struct {
-    fn eq(&self, other: &Self) -> bool {
-        unimplemented!()
-    }
-}
-
 impl std::fmt::Debug for Struct {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        let record_schema = self.record_schema();
-        let mut str_fmt = f.debug_struct(&record_schema.name);
-        for (field_id, value) in &self.values {
-            let field = record_schema
-                .field_by_id(*field_id)
-                .map(|f| f.name.to_string())
-                .unwrap_or(format!("_{}", field_id));
-            str_fmt.field(&field, value);
+        self.debug_fmt(f)
+    }
+}
+
+impl PartialEq for Struct {
+    fn eq(&self, other: &Self) -> bool {
+        if self.schema.name != other.schema.name {
+            return false;
         }
-        str_fmt.finish()
+
+        if self.schema_id != other.schema_id {
+            return false;
+        }
+
+        self.values == other.values
     }
 }
 
 ///
-///
+/// Value of a field of a record
 ///
 #[derive(PartialEq, Debug)]
 pub enum FieldValue {
