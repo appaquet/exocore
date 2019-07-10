@@ -1,11 +1,10 @@
-use super::traits::TraitsIndex;
+use super::traits::{
+    IndexMutation, PutTraitMutation, PutTraitTombstone, TraitResult, TraitsIndex, TraitsIndexConfig,
+};
 use crate::domain::entity::{Entity, EntityId, EntityIdRef};
 use crate::domain::schema;
 use crate::domain::schema::Schema;
 use crate::error::Error;
-use crate::index::traits::{
-    IndexMutation, PutTraitMutation, PutTraitTombstone, TraitResult, TraitsIndexConfig,
-};
 use crate::mutation::Mutation;
 use crate::query::*;
 use crate::results::{EntitiesResults, EntityResult, EntityResultSource};
@@ -119,12 +118,12 @@ where
         Ok(op_id)
     }
 
-    /// Handle an event coming from the data layer. Those events allow keeping the index
+    /// Handle an event coming from the data layer. These events allow keeping the index
     /// consistent with the data layer, up to the consistency guarantees that the layer offers.
     ///
     /// Since the events stream is buffered, we may receive a discontinuity if the data layer
-    /// couldn't send us an event. In that case, we re-index the pending index, since we can't
-    /// guarantee anything.
+    /// couldn't send us an event. In that case, we re-index the pending index since we can't
+    /// guarantee that we didn't lose an event.
     pub fn handle_engine_event(
         &mut self,
         data_handle: &EngineHandle<CS, PS>,
@@ -168,7 +167,8 @@ where
                     } else {
                         // if we are here, we indexed a block from the chain that isn't valid anymore
                         // since we are deleting traits that got deleted from the actual index, there is no
-                        // way to rollback to the diverged offset, and will require a re-index
+                        // way to rollback to the diverged offset, and will require a re-index.
+                        // this can be prevented by tweaking the `EntitiesIndexConfig`.`chain_index_min_depth` value
                         return Err(Error::Fatal(
                             format!("Chain has diverged at an offset={}, which is before last indexed block at offset {}",
                                                         diverged_block_offset,last_indexed_offset
@@ -190,7 +190,7 @@ where
         data_handle: &EngineHandle<CS, PS>,
         query: &Query,
     ) -> Result<EntitiesResults, Error> {
-        // TODO: Implement paging, sorting & limit
+        // TODO: Implement paging, counting, sorting & limit
 
         let chain_results = self
             .chain_index
@@ -347,8 +347,7 @@ where
     }
 
     /// Reindexes the pending store completely, along the last few blocks of the chain
-    /// (see `EntitiesIndexConfig`.`chain_index_min_depth`) that are not considered definitive
-    /// yet.
+    /// (see `EntitiesIndexConfig`.`chain_index_min_depth`) that are not considered definitive yet.
     fn reindex_pending(&mut self, data_handle: &EngineHandle<CS, PS>) -> Result<(), Error> {
         info!("Clearing & reindexing pending index");
 
@@ -361,7 +360,7 @@ where
             if let Some((last_indexed_offset, _last_indexed_depth)) =
                 self.last_chain_indexed_block(data_handle)?
             {
-                // filter pending to not include operations that are now in the chain
+                // filter pending to exclude operations that are now in the chain index
                 let pending_iter =
                     pending_iter.filter(move |op| op.status == EngineOperationStatus::Pending);
 
@@ -417,7 +416,7 @@ where
     /// Check if we need to index any new block in the chain.
     /// Blocks don't get indexed as soon as they appear in the chain so that we don't
     /// need to revert them from the chain index since their wouldn't be "easy" way to revert
-    /// them from the chain index (tantivy don't support deletion revert).
+    /// them from the chain index (Tantivy don't support deletion revert).
     ///
     /// The latest blocks that aren't considered definitive are kept in the pending store, and
     /// deletion are actually implemented using tombstone in the pending store. If a trait gets
@@ -467,6 +466,7 @@ where
                 }
             })
             .map(|(offset, _depth, op, mutation)| {
+                // for every mutation we index in the chain index, we delete it from the pending index
                 pending_index_mutations.push(IndexMutation::DeleteOperation(op.operation_id));
 
                 match mutation {

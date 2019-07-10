@@ -286,7 +286,7 @@ pub mod tests {
             .field_by_name(TraitSchema::MODIFICATION_DATE_FIELD)
             .is_some());
 
-        println!("{}", serde_yaml::to_string(&schema_defaults).unwrap());
+        assert!(serde_yaml::to_string(&schema_defaults).is_ok());
     }
 
     pub fn create_test_schema() -> Arc<Schema> {

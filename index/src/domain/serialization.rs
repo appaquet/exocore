@@ -323,7 +323,6 @@ mod tests {
             FieldValue::Int(1234),
             *value_deser.value_by_name("field1").unwrap()
         );
-
         assert_eq!(value, value_deser);
 
         Ok(())
@@ -342,7 +341,6 @@ mod tests {
             FieldValue::String("hey you".to_string()),
             *value_deser.value_by_name("field1").unwrap()
         );
-
         assert_eq!(value, value_deser);
 
         Ok(())

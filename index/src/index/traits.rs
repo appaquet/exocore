@@ -319,7 +319,6 @@ impl TraitsIndex {
                 .get_doc_opt_u64_value(&doc, self.fields.tombstone)
                 .map_or(false, |v| v == 1);
 
-            println!("Result {}", operation_id);
             let result = TraitResult {
                 block_offset,
                 operation_id,

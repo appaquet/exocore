@@ -1068,7 +1068,7 @@ mod tests {
         cluster.chain_add_genesis_block(0);
         cluster.tick_chain_synchronizer(0)?;
 
-        // first block should be committed right away since there is not previous
+        // first block should be committed right away since there is no previous
         cluster.clocks[0].add_fixed_instant_duration(Duration::from_millis(10));
         append_new_operation(&mut cluster, b"hello world")?;
         cluster.tick_commit_manager(0)?;
