@@ -6,6 +6,7 @@ use crate::error::Error;
 use crate::index::traits::{IndexMutation, PutTraitMutation, TraitsIndexConfig};
 use crate::mutation::Mutation;
 use crate::query::*;
+use crate::results::{EntitiesResults, EntityResult, EntityResultSource};
 use exocore_data::block::{BlockDepth, BlockOffset};
 use exocore_data::engine::{EngineOperation, Event};
 use exocore_data::operation::{Operation, OperationId};
@@ -95,62 +96,14 @@ where
         })
     }
 
-    pub fn search(
-        &self,
-        data_handle: &EngineHandle<CS, PS>,
-        query: &Query,
-    ) -> Result<QueryResults, Error> {
-        // TODO: fetch all traits for each entity
-        // TODO: check if we have any deletion
-
-        let chain_results = self
-            .chain_index
-            .search(query)?
-            .into_iter()
-            .map(|res| (res, QueryResultSource::Chain));
-        let pending_results = self
-            .pending_index
-            .search(query)?
-            .into_iter()
-            .map(|res| (res, QueryResultSource::Pending));
-        debug!(
-            "Found {} from chain, {} from pending",
-            chain_results.len(),
-            pending_results.len()
-        );
-
-        // TODO: need to properly merge, and use thombstone
-        // TODO: need to exclude all pending that were committed, but didn't get delete yet
-        let results = chain_results
-            .into_iter()
-            .chain(pending_results.into_iter())
-            .map(|(trait_res, source)| QueryResult {
-                entity: Entity::new(trait_res.entity_id),
-                source,
-            })
-            .collect::<Vec<_>>();
-        let total_estimated = results.len() as u32;
-
-        Ok(QueryResults {
-            results,
-            next_page: None,
-            current_page: QueryPaging {
-                count: 0,
-                from_token: None,
-                to_token: None,
-            },
-            total_estimated,
-        })
-    }
-
     pub fn write_mutation(
         &mut self,
         data_handle: &EngineHandle<CS, PS>,
         mutation: Mutation,
-    ) -> Result<(), Error> {
+    ) -> Result<OperationId, Error> {
         let json_mutation = mutation.to_json(self.schema.clone())?;
-        data_handle.write_entry_operation(json_mutation.as_bytes())?;
-        Ok(())
+        let op_id = data_handle.write_entry_operation(json_mutation.as_bytes())?;
+        Ok(op_id)
     }
 
     pub fn handle_engine_event(
@@ -172,10 +125,6 @@ where
             }
             Event::PendingOperationNew(op_id) => {
                 self.handle_pending_operation_new(data_handle, op_id)?;
-            }
-            Event::PendingOperationDelete(op_id) => {
-                self.pending_index
-                    .apply_mutation(IndexMutation::DeleteOperation(op_id))?;
             }
             Event::ChainBlockNew(block_offset) => {
                 debug!(
@@ -209,13 +158,62 @@ where
                         )));
                     }
                 } else {
-                    warn!("Chain index is empty, we re-index the chain");
+                    warn!("Diverged with an empty chain index. Re-indexing...");
                     self.reindex_chain(data_handle)?;
                 }
             }
         }
 
         Ok(())
+    }
+
+    pub fn search(
+        &self,
+        data_handle: &EngineHandle<CS, PS>,
+        query: &Query,
+    ) -> Result<EntitiesResults, Error> {
+        // TODO: fetch all traits for each entity
+        // TODO: check if we have any deletion
+        // TODO: limit
+
+        let chain_results = self
+            .chain_index
+            .search(query, 50)?
+            .into_iter()
+            .map(|res| (res, EntityResultSource::Chain));
+        let pending_results = self
+            .pending_index
+            .search(query, 50)?
+            .into_iter()
+            .map(|res| (res, EntityResultSource::Pending));
+        debug!(
+            "Found {} from chain, {} from pending",
+            chain_results.len(),
+            pending_results.len()
+        );
+
+        // TODO: need to properly merge, and use thombstone
+        // TODO: need to exclude all pending that were committed, but didn't get delete yet
+        let results = chain_results
+            .into_iter()
+            .chain(pending_results.into_iter())
+            .map(|(trait_res, source)| EntityResult {
+                entity: Entity::new(trait_res.entity_id),
+                source,
+            })
+            .collect::<Vec<_>>();
+        let total_estimated = results.len() as u32;
+
+        Ok(EntitiesResults {
+            results,
+            next_page: None,
+            current_page: QueryPaging {
+                count: 0,
+                from_token: None,
+                to_token: None,
+            },
+            total_estimated,
+        })
     }
 
     fn reindex_pending(&mut self, data_handle: &EngineHandle<CS, PS>) -> Result<(), Error> {
@@ -430,8 +428,8 @@ mod tests {
         insert_traits_mutation(schema.clone(), &mut cluster, &mut index, 0..=9)?;
         handle_engine_events(&mut cluster, &mut index)?;
         let res = index.search(cluster.get_handle(0), &Query::with_trait("contact"))?;
-        let pending_res = count_results_source(&res, QueryResultSource::Pending);
-        let chain_res = count_results_source(&res, QueryResultSource::Chain);
+        let pending_res = count_results_source(&res, EntityResultSource::Pending);
+        let chain_res = count_results_source(&res, EntityResultSource::Chain);
         assert_eq!(pending_res, 10);
         assert_eq!(chain_res, 0);
 
@@ -439,8 +437,8 @@ mod tests {
         insert_traits_mutation(schema.clone(), &mut cluster, &mut index, 10..=19)?;
         handle_engine_events(&mut cluster, &mut index)?;
         let res = index.search(cluster.get_handle(0), &Query::with_trait("contact"))?;
-        let pending_res = count_results_source(&res, QueryResultSource::Pending);
-        let chain_res = count_results_source(&res, QueryResultSource::Chain);
+        let pending_res = count_results_source(&res, EntityResultSource::Pending);
+        let chain_res = count_results_source(&res, EntityResultSource::Chain);
         assert_eq!(pending_res, 10);
         assert_eq!(chain_res, 10);
 
@@ -509,14 +507,45 @@ mod tests {
     }
 
     #[test]
-    fn pending_operation_delete() -> Result<(), failure::Error> {
-        // TODO:
-        Ok(())
-    }
+    fn chain_divergence() -> Result<(), failure::Error> {
+        let schema = create_test_schema();
+        let mut cluster = create_test_cluster()?;
 
-    #[test]
-    fn chain_diversion() -> Result<(), failure::Error> {
-        // TODO:
+        let config = EntitiesIndexConfig {
+            chain_index_min_depth: 0, // index as soon as new block appear
+            ..create_test_config()
+        };
+        let temp = tempdir::TempDir::new("entities_index")?;
+
+        let mut index = EntitiesIndex::open_or_create(temp.path(), config, schema.clone())?;
+
+        // create 3 blocks worth of traits
+        insert_traits_mutation(schema.clone(), &mut cluster, &mut index, 0..=4)?;
+        cluster.wait_next_block_commit(0);
+        insert_traits_mutation(schema.clone(), &mut cluster, &mut index, 5..=9)?;
+        cluster.wait_next_block_commit(0);
+        insert_traits_mutation(schema.clone(), &mut cluster, &mut index, 10..=14)?;
+        cluster.wait_next_block_commit(0);
+        cluster.clear_received_events(0);
+
+        // divergence without anything in index will trigger re-indexation
+        index.handle_engine_event(cluster.get_handle(0), Event::ChainDiverged(0))?;
+        let res = index.search(cluster.get_handle(0), &Query::with_trait("contact"))?;
+        assert_eq!(res.results.len(), 15);
+
+        // divergence at an offset not indexed yet will just re-index pending
+        let (chain_last_offset, _) = cluster.get_handle(0).get_chain_last_block()?.unwrap();
+        index.handle_engine_event(
+            cluster.get_handle(0),
+            Event::ChainDiverged(chain_last_offset),
+        )?;
+        let res = index.search(cluster.get_handle(0), &Query::with_trait("contact"))?;
+        assert_eq!(res.results.len(), 15);
+
+        // divergence at an offset indexed in chain index will fail
+        let res = index.handle_engine_event(cluster.get_handle(0), Event::ChainDiverged(0));
+        assert!(res.is_err());
+
         Ok(())
     }
 
@@ -530,18 +559,6 @@ mod tests {
     fn all_traits_delete_mutation() -> Result<(), failure::Error> {
         // TODO: thombstone test
         // TODO: entity should not be returned anymore
-        Ok(())
-    }
-
-    #[test]
-    fn query_paging() -> Result<(), failure::Error> {
-        // TODO:
-        Ok(())
-    }
-
-    #[test]
-    fn query_sorting() -> Result<(), failure::Error> {
-        // TODO:
         Ok(())
     }
 
@@ -606,7 +623,7 @@ mod tests {
         Ok(())
     }
 
-    fn count_results_source(results: &QueryResults, source: QueryResultSource) -> usize {
+    fn count_results_source(results: &EntitiesResults, source: EntityResultSource) -> usize {
         results
             .results
             .iter()

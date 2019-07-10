@@ -1,4 +1,4 @@
-use crate::domain::entity::{EntityId, FieldValue, Record, Trait, TraitId};
+use crate::domain::entity::{EntityId, EntityIdRef, FieldValue, Record, Trait, TraitId};
 use crate::domain::schema;
 use crate::error::Error;
 use crate::query::*;
@@ -12,26 +12,13 @@ use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
 use tantivy::query::{AllQuery, QueryParser, TermQuery};
 use tantivy::schema::{
-    IndexRecordOption, Schema as TantivySchema, SchemaBuilder, FAST, INDEXED, STORED, STRING, TEXT,
+    Field, IndexRecordOption, Schema as TantivySchema, SchemaBuilder, FAST, INDEXED, STORED,
+    STRING, TEXT,
 };
 use tantivy::{Document, Index as TantivyIndex, IndexReader, IndexWriter, Searcher, Term};
 
-/* TODO: Queries to support
-        summary = true or false
-        where entity_id = X
-        where entity_id IN (x,y,z)
-        where entity has trait of type X
-        where entity has trait Child refering parent X
-        where entity has trait OldChild refering parent X
-        where entity matches text XYZ
-        where entity with trait of type Postponed and untilDate <= / == / >= someTime
-        all()
-        limit XYZ
-        from page XYZ (nextPage)
-*/
-
 ///
-///
+/// Traits index configuration
 ///
 #[derive(Clone, Copy, Debug)]
 pub struct TraitsIndexConfig {
@@ -57,7 +44,7 @@ pub struct TraitsIndex {
     index_reader: IndexReader,
     index_writer: Mutex<IndexWriter>,
     schema: Arc<schema::Schema>,
-    tantivy_schema: TantivySchema,
+    fields: Fields,
 }
 
 impl TraitsIndex {
@@ -66,7 +53,7 @@ impl TraitsIndex {
         schema: Arc<schema::Schema>,
         directory: &Path,
     ) -> Result<TraitsIndex, Error> {
-        let tantivy_schema = Self::build_tantivy_schema(schema.as_ref());
+        let (tantivy_schema, fields) = Self::build_tantivy_schema(schema.as_ref());
         let directory = MmapDirectory::open(directory)?;
         let index = TantivyIndex::open_or_create(directory, tantivy_schema.clone())?;
         let index_reader = index.reader()?;
@@ -81,7 +68,7 @@ impl TraitsIndex {
             index_reader,
             index_writer: Mutex::new(index_writer),
             schema,
-            tantivy_schema,
+            fields,
         })
     }
 
@@ -89,7 +76,7 @@ impl TraitsIndex {
         config: TraitsIndexConfig,
         schema: Arc<schema::Schema>,
     ) -> Result<TraitsIndex, Error> {
-        let tantivy_schema = Self::build_tantivy_schema(schema.as_ref());
+        let (tantivy_schema, fields) = Self::build_tantivy_schema(schema.as_ref());
         let index = TantivyIndex::create_in_ram(tantivy_schema.clone());
         let index_reader = index.reader()?;
         let index_writer = if let Some(nb_threads) = config.indexer_num_threads {
@@ -103,7 +90,7 @@ impl TraitsIndex {
             index_reader,
             index_writer: Mutex::new(index_writer),
             schema,
-            tantivy_schema,
+            fields,
         })
     }
 
@@ -115,31 +102,32 @@ impl TraitsIndex {
     where
         T: Iterator<Item = IndexMutation>,
     {
-        let mut index_writer = self.index_writer.lock().unwrap();
+        let mut index_writer = self.index_writer.lock()?;
 
         debug!("Starting applying mutations to index...");
-        let entity_trait_id_field = self.get_tantivy_field("entity_trait_id");
-        let operation_id_field = self.get_tantivy_field("operation_id");
         let mut nb_mutations = 0;
         for mutation in mutations {
             nb_mutations += 1;
 
             match mutation {
                 IndexMutation::PutTrait(new_trait) => {
-                    println!("Adding op {}", new_trait.operation_id);
-                    let doc = self.trait_to_tantivy_document(&new_trait);
+                    let doc = self.put_mutation_to_document(&new_trait);
+                    index_writer.add_document(doc);
+                }
+                IndexMutation::PutTraitTombstone(trait_tombstone) => {
+                    let doc = self.tombstone_mutation_to_document(&trait_tombstone);
                     index_writer.add_document(doc);
                 }
                 IndexMutation::DeleteTrait(entity_id, trait_id) => {
                     let entity_trait_id = format!("{}_{}", entity_id, trait_id);
                     index_writer.delete_term(Term::from_field_text(
-                        entity_trait_id_field,
+                        self.fields.entity_trait_id,
                         &entity_trait_id,
                     ));
                 }
                 IndexMutation::DeleteOperation(operation_id) => {
                     index_writer
-                        .delete_term(Term::from_field_u64(operation_id_field, operation_id));
+                        .delete_term(Term::from_field_u64(self.fields.operation_id, operation_id));
                 }
             }
         }
@@ -158,39 +146,56 @@ impl TraitsIndex {
         Ok(())
     }
 
-    fn trait_to_tantivy_document(&self, trait_mutation: &PutTraitMutation) -> Document {
-        // TODO: extract those fields once
-        let trait_type_field = self.get_tantivy_field("trait_type");
-        let trait_id_field = self.get_tantivy_field("trait_id");
-        let entity_id_field = self.get_tantivy_field("entity_id");
-        let entity_trait_id_field = self.get_tantivy_field("entity_trait_id");
-        let block_offset_field = self.get_tantivy_field("block_offset");
-        let operation_id_field = self.get_tantivy_field("operation_id");
-        let text_field = self.get_tantivy_field("text");
+    pub fn highest_indexed_block(&self) -> Result<Option<BlockOffset>, Error> {
+        let searcher = self.index_reader.searcher();
 
-        // TODO: namespace name
-        let record_schema: &schema::TraitSchema = trait_mutation.trt.record_schema();
+        let query = AllQuery;
+        let top_collector = TopDocs::with_limit(1).order_by_field::<u64>(self.fields.block_offset);
+        let search_results = searcher.search(&query, &top_collector)?;
+
+        Ok(search_results
+            .first()
+            .map(|(block_offset, _doc_addr)| *block_offset))
+    }
+
+    pub fn search(&self, query: &Query, limit: usize) -> Result<Vec<TraitResult>, Error> {
+        let searcher = self.index_reader.searcher();
+        let res = match query {
+            Query::WithTrait(inner_query) => {
+                self.search_with_trait(searcher, inner_query, limit)?
+            }
+            Query::Match(inner_query) => self.search_matches(searcher, inner_query, limit)?,
+            Query::IdEqual(entity_id) => self.search_entity_id(searcher, &entity_id, limit)?,
+            Query::Empty => vec![],
+            Query::Conjunction(_inner_query) => unimplemented!(),
+        };
+
+        Ok(res)
+    }
+
+    fn put_mutation_to_document(&self, mutation: &PutTraitMutation) -> Document {
+        let record_schema: &schema::TraitSchema = mutation.trt.record_schema();
 
         let mut doc = Document::default();
-        doc.add_u64(trait_type_field, u64::from(record_schema.id));
-        doc.add_text(trait_id_field, &trait_mutation.trt.id());
-        doc.add_text(entity_id_field, &trait_mutation.entity_id);
+        doc.add_u64(self.fields.trait_type, u64::from(record_schema.id));
+        doc.add_text(self.fields.trait_id, &mutation.trt.id());
+        doc.add_text(self.fields.entity_id, &mutation.entity_id);
         doc.add_text(
-            entity_trait_id_field,
-            &format!("{}_{}", trait_mutation.entity_id, trait_mutation.trt.id()),
+            self.fields.entity_trait_id,
+            &format!("{}_{}", mutation.entity_id, mutation.trt.id()),
         );
-        doc.add_u64(operation_id_field, trait_mutation.operation_id);
+        doc.add_u64(self.fields.operation_id, mutation.operation_id);
 
-        if let Some(block_offset) = trait_mutation.block_offset {
-            doc.add_u64(block_offset_field, block_offset);
+        if let Some(block_offset) = mutation.block_offset {
+            doc.add_u64(self.fields.block_offset, block_offset);
         }
 
-        let indexed_fields = record_schema.fields.iter().filter(|f| f.indexed);
-        for field in indexed_fields {
-            if let Some(field_value) = trait_mutation.trt.value(field) {
+        let indexeds = record_schema.fields.iter().filter(|f| f.indexed);
+        for field in indexeds {
+            if let Some(field_value) = mutation.trt.value(field) {
                 match (&field.typ, field_value) {
                     (schema::FieldType::String, FieldValue::String(v)) => {
-                        doc.add_text(text_field, &v);
+                        doc.add_text(self.fields.text, &v);
                     }
                     _ => panic!(
                         "Type not supported yet: ({:?}, {:?})",
@@ -203,36 +208,31 @@ impl TraitsIndex {
         doc
     }
 
-    pub fn highest_indexed_block(&self) -> Result<Option<BlockOffset>, Error> {
-        let searcher = self.index_reader.searcher();
+    fn tombstone_mutation_to_document(&self, mutation: &PutTraitTombstone) -> Document {
+        let mut doc = Document::default();
 
-        let block_offset_field = self.get_tantivy_field("block_offset");
+        doc.add_text(self.fields.trait_id, &mutation.trait_id);
+        doc.add_text(self.fields.entity_id, &mutation.entity_id);
+        doc.add_text(
+            self.fields.entity_trait_id,
+            &format!("{}_{}", mutation.entity_id, mutation.trait_id),
+        );
+        doc.add_u64(self.fields.operation_id, mutation.operation_id);
 
-        let query = AllQuery;
-        let top_collector = TopDocs::with_limit(1).order_by_field::<u64>(block_offset_field);
-        let search_results = searcher.search(&query, &top_collector)?;
+        if let Some(block_offset) = mutation.block_offset {
+            doc.add_u64(self.fields.block_offset, block_offset);
+        }
 
-        Ok(search_results
-            .first()
-            .map(|(block_offset, _doc_addr)| *block_offset))
-    }
+        doc.add_u64(self.fields.tombstone, 1);
 
-    pub fn search(&self, query: &Query) -> Result<Vec<TraitResult>, Error> {
-        let searcher = self.index_reader.searcher();
-        let res = match query {
-            Query::WithTrait(inner_query) => self.search_with_trait(searcher, inner_query)?,
-            Query::Match(inner_query) => self.search_matches(searcher, inner_query)?,
-            Query::Empty => vec![],
-            Query::Conjunction(_inner_query) => unimplemented!(),
-        };
-
-        Ok(res)
+        doc
     }
 
     fn search_with_trait<S>(
         &self,
         searcher: S,
         query: &WithTraitQuery,
+        limit: usize,
     ) -> Result<Vec<TraitResult>, Error>
     where
         S: Deref<Target = Searcher>,
@@ -244,54 +244,70 @@ impl TraitsIndex {
             return Ok(vec![]);
         };
 
-        let trait_type_field = self.get_tantivy_field("trait_type");
-        let term = Term::from_field_u64(trait_type_field, u64::from(trait_schema.id));
+        let term = Term::from_field_u64(self.fields.trait_type, u64::from(trait_schema.id));
         let query = TermQuery::new(term, IndexRecordOption::Basic);
 
-        self.execute_tantivy_query(searcher, &query)
+        self.execute_tantivy_query(searcher, &query, limit)
     }
 
-    fn search_matches<S>(&self, searcher: S, query: &MatchQuery) -> Result<Vec<TraitResult>, Error>
+    fn search_matches<S>(
+        &self,
+        searcher: S,
+        query: &MatchQuery,
+        limit: usize,
+    ) -> Result<Vec<TraitResult>, Error>
     where
         S: Deref<Target = Searcher>,
     {
-        let text_field = self.get_tantivy_field("text");
-        let query_parser = QueryParser::for_index(&self.index, vec![text_field]);
+        let query_parser = QueryParser::for_index(&self.index, vec![self.fields.text]);
         let query = query_parser.parse_query(&query.query)?;
+        self.execute_tantivy_query(searcher, &query, limit)
+    }
 
-        self.execute_tantivy_query(searcher, &query)
+    fn search_entity_id<S>(
+        &self,
+        searcher: S,
+        entity_id: &EntityIdRef,
+        limit: usize,
+    ) -> Result<Vec<TraitResult>, Error>
+    where
+        S: Deref<Target = Searcher>,
+    {
+        let term = Term::from_field_text(self.fields.entity_id, entity_id);
+        let query = TermQuery::new(term, IndexRecordOption::Basic);
+        self.execute_tantivy_query(searcher, &query, limit)
     }
 
     fn execute_tantivy_query<S>(
         &self,
         searcher: S,
         query: &dyn tantivy::query::Query,
+        limit: usize,
     ) -> Result<Vec<TraitResult>, Error>
     where
         S: Deref<Target = Searcher>,
     {
-        // TODO: count should come from query
-        let top_collector = TopDocs::with_limit(50);
+        let top_collector = TopDocs::with_limit(limit);
         let search_results = searcher.search(query, &top_collector)?;
-
-        let block_offset_field = self.get_tantivy_field("block_offset");
-        let operation_id_field = self.get_tantivy_field("operation_id");
-        let entity_id_field = self.get_tantivy_field("entity_id");
-        let trait_id_field = self.get_tantivy_field("trait_id");
 
         let mut results = Vec::new();
         for (score, doc_addr) in search_results {
             let doc = searcher.doc(doc_addr)?;
-            let block_offset = self.get_tantivy_doc_opt_u64_field(&doc, block_offset_field);
-            let operation_id = self.get_tantivy_doc_u64_field(&doc, operation_id_field);
-            let entity_id = self.get_tantivy_doc_string_field(&doc, entity_id_field);
-            let trait_id = self.get_tantivy_doc_string_field(&doc, trait_id_field);
+            let block_offset = self.get_doc_opt_u64_value(&doc, self.fields.block_offset);
+            let operation_id = self.get_doc_u64_value(&doc, self.fields.operation_id);
+            let entity_id = self.get_doc_string_value(&doc, self.fields.entity_id);
+            let trait_id = self.get_doc_string_value(&doc, self.fields.trait_id);
+            let tombstone = self
+                .get_doc_opt_u64_value(&doc, self.fields.tombstone)
+                .map_or(false, |v| v == 1);
+
             println!("Result {}", operation_id);
             let result = TraitResult {
                 block_offset,
                 operation_id,
                 entity_id,
                 trait_id,
+                tombstone,
                 score,
             };
             results.push(result);
@@ -300,63 +316,84 @@ impl TraitsIndex {
         Ok(results)
     }
 
-    fn get_tantivy_field(&self, name: &str) -> tantivy::schema::Field {
-        self.tantivy_schema
-            .get_field(name)
-            .unwrap_or_else(|| panic!("Couldn't find {} field in Tantivy schema", name))
-    }
-
-    fn get_tantivy_doc_string_field(
-        &self,
-        doc: &Document,
-        field: tantivy::schema::Field,
-    ) -> String {
+    fn get_doc_string_value(&self, doc: &Document, field: Field) -> String {
         match doc.get_first(field) {
             Some(tantivy::schema::Value::Str(v)) => v.to_string(),
             _ => panic!("Couldn't find field of type string"),
         }
     }
 
-    fn get_tantivy_doc_opt_u64_field(
-        &self,
-        doc: &Document,
-        field: tantivy::schema::Field,
-    ) -> Option<u64> {
+    fn get_doc_opt_u64_value(&self, doc: &Document, field: Field) -> Option<u64> {
         match doc.get_first(field) {
             Some(tantivy::schema::Value::U64(v)) => Some(*v),
             _ => None,
         }
     }
 
-    fn get_tantivy_doc_u64_field(&self, doc: &Document, field: tantivy::schema::Field) -> u64 {
+    fn get_doc_u64_value(&self, doc: &Document, field: Field) -> u64 {
         match doc.get_first(field) {
             Some(tantivy::schema::Value::U64(v)) => *v,
             _ => panic!("Couldn't find field of type u64"),
         }
     }
 
-    fn build_tantivy_schema(_schema: &schema::Schema) -> TantivySchema {
+    fn build_tantivy_schema(_schema: &schema::Schema) -> (TantivySchema, Fields) {
         let mut schema_builder = SchemaBuilder::default();
-
-        schema_builder.add_u64_field("trait_type", INDEXED | STORED);
+        schema_builder.add_u64_field("trait_type", INDEXED);
         schema_builder.add_text_field("entity_id", STRING | STORED);
         schema_builder.add_text_field("trait_id", STRING | STORED);
         schema_builder.add_text_field("entity_trait_id", STRING);
-        schema_builder.add_u64_field("block_offset", INDEXED | STORED | FAST);
+        schema_builder.add_u64_field("block_offset", STORED | FAST);
         schema_builder.add_u64_field("operation_id", INDEXED | STORED);
-
+        schema_builder.add_u64_field("tombstone", STORED);
         schema_builder.add_text_field("text", TEXT);
+        let schema = schema_builder.build();
 
-        schema_builder.build()
+        let fields = Fields {
+            trait_type: schema.get_field("trait_type").unwrap(),
+            entity_id: schema.get_field("entity_id").unwrap(),
+            trait_id: schema.get_field("trait_id").unwrap(),
+            entity_trait_id: schema.get_field("entity_trait_id").unwrap(),
+            block_offset: schema.get_field("block_offset").unwrap(),
+            operation_id: schema.get_field("operation_id").unwrap(),
+            tombstone: schema.get_field("tombstone").unwrap(),
+            text: schema.get_field("text").unwrap(),
+        };
+
+        (schema, fields)
     }
+}
+
+///
+/// Tantivy fields used by traits index
+///
+struct Fields {
+    trait_type: Field,
+    entity_id: Field,
+    trait_id: Field,
+    entity_trait_id: Field,
+    block_offset: Field,
+    operation_id: Field,
+    tombstone: Field,
+    text: Field,
 }
 
 ///
 /// Mutation to applied to the index
 ///
 pub enum IndexMutation {
+    /// New version of a trait at a new position in chain or pending
     PutTrait(PutTraitMutation),
+
+    /// Mark a trait has being delete without deleting it. This only used in pending index to notify
+    /// the entities index that the trait was deleted (but it may be reverted, hence the
+    /// tombstone)
+    PutTraitTombstone(PutTraitTombstone),
+
+    /// Delete a trait by its entity id and trait id from index
     DeleteTrait(EntityId, TraitId),
+
+    /// Delete a trait by its operation id
     DeleteOperation(OperationId),
 }
 
@@ -367,15 +404,23 @@ pub struct PutTraitMutation {
     pub trt: Trait,
 }
 
+pub struct PutTraitTombstone {
+    pub block_offset: Option<BlockOffset>,
+    pub operation_id: OperationId,
+    pub entity_id: EntityId,
+    pub trait_id: TraitId,
+}
+
 ///
 /// Indexed trait returned as a result of a query
 ///
 #[derive(Debug)]
 pub struct TraitResult {
-    pub block_offset: Option<BlockOffset>,
     pub operation_id: OperationId,
+    pub block_offset: Option<BlockOffset>,
     pub entity_id: EntityId,
     pub trait_id: TraitId,
+    pub tombstone: bool,
     pub score: f32,
 }
 
@@ -402,10 +447,8 @@ mod tests {
 
         indexer.apply_mutation(contact_mutation)?;
 
-        let query = Query::Match(MatchQuery {
-            query: "justin".to_string(),
-        });
-        let results = indexer.search(&query)?;
+        let query = Query::match_text("justin");
+        let results = indexer.search(&query, 10)?;
         assert_eq!(results.len(), 1);
 
         let result = find_trait_result(&results, "trudeau1").unwrap();
@@ -445,10 +488,8 @@ mod tests {
 
         index.apply_mutations(vec![contact_mutation, email_mutation].into_iter())?;
 
-        let results = index.search(&Query::WithTrait(WithTraitQuery {
-            trait_name: "email".to_string(),
-            trait_query: None,
-        }))?;
+        let query = Query::with_trait("email");
+        let results = index.search(&query, 10)?;
         assert!(find_trait_result(&results, "trt2").is_some());
 
         Ok(())
@@ -506,20 +547,15 @@ mod tests {
         });
         index.apply_mutation(contact_mutation)?;
 
-        let query = Query::Match(MatchQuery {
-            query: "justin".to_string(),
-        });
-        assert_eq!(index.search(&query)?.len(), 1);
+        let query = Query::match_text("justin");
+        assert_eq!(index.search(&query, 10)?.len(), 1);
 
         index.apply_mutation(IndexMutation::DeleteTrait(
             "entity_id1".to_string(),
             "trudeau1".to_string(),
         ))?;
 
-        let query = Query::Match(MatchQuery {
-            query: "justin".to_string(),
-        });
-        assert_eq!(index.search(&query)?.len(), 0);
+        assert_eq!(index.search(&query, 10)?.len(), 0);
 
         Ok(())
     }
@@ -541,24 +577,48 @@ mod tests {
         });
         index.apply_mutation(contact_mutation)?;
 
-        let query = Query::Match(MatchQuery {
-            query: "justin".to_string(),
-        });
-        assert_eq!(index.search(&query)?.len(), 1);
+        let query = Query::match_text("justin");
+        assert_eq!(index.search(&query, 10)?.len(), 1);
 
         index.apply_mutation(IndexMutation::DeleteOperation(1234))?;
 
-        let query = Query::Match(MatchQuery {
-            query: "justin".to_string(),
-        });
-        assert_eq!(index.search(&query)?.len(), 0);
+        assert_eq!(index.search(&query, 10)?.len(), 0);
 
         Ok(())
     }
 
     #[test]
-    fn total_matching_count() -> Result<(), failure::Error> {
-        // TODO:
+    fn put_trait_tombstone() -> Result<(), failure::Error> {
+        let schema = create_test_schema();
+        let config = TraitsIndexConfig::default();
+        let mut index = TraitsIndex::create_in_memory(config, schema.clone())?;
+
+        let contact_mutation = IndexMutation::PutTraitTombstone(PutTraitTombstone {
+            block_offset: None,
+            operation_id: 1234,
+            entity_id: "entity_id1".to_string(),
+            trait_id: "trudeau1".to_string(),
+        });
+        index.apply_mutation(contact_mutation)?;
+
+        let contact_mutation = IndexMutation::PutTrait(PutTraitMutation {
+            block_offset: None,
+            operation_id: 2345,
+            entity_id: "entity_id2".to_string(),
+            trt: Trait::new(schema.clone(), "contact")
+                .with_id("trudeau2".to_string())
+                .with_value_by_name("name", "Justin Trudeau")
+                .with_value_by_name("email", "justin.trudeau@gov.ca"),
+        });
+        index.apply_mutation(contact_mutation)?;
+
+        let query = Query::with_entity_id("entity_id1");
+        let res = index.search(&query, 10)?;
+        assert!(res.first().unwrap().tombstone);
+
+        let query = Query::with_entity_id("entity_id2");
+        let res = index.search(&query, 10)?;
+        assert!(!res.first().unwrap().tombstone);
 
         Ok(())
     }

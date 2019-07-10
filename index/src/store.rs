@@ -1,6 +1,7 @@
 use crate::error::Error;
 use crate::index::EntitiesIndex;
-use crate::query::{Query, QueryResults};
+use crate::query::{Query};
+use crate::results::EntitiesResults;
 use exocore_transport::{InMessage, OutMessage, TransportHandle};
 use futures::prelude::*;
 use futures::sync::{mpsc, oneshot};
@@ -209,7 +210,7 @@ where
         // TODO: indexer.query(...)
 
         // TODO: when query ready
-        let _ = sender.send(Ok(QueryResults::empty()));
+        let _ = sender.send(Ok(EntitiesResults::empty()));
 
         query_resolver
     }
@@ -231,7 +232,7 @@ where
 ///
 ///
 trait AsyncStore {
-    fn query(&self, query: Query) -> Box<dyn Future<Item = QueryResults, Error = Error>>;
+    fn query(&self, query: Query) -> Box<dyn Future<Item = EntitiesResults, Error = Error>>;
 }
 
 impl<CS, PS> AsyncStore for StoreHandle<CS, PS>
@@ -239,7 +240,7 @@ where
     CS: exocore_data::chain::ChainStore,
     PS: exocore_data::pending::PendingStore,
 {
-    fn query(&self, query: Query) -> Box<dyn Future<Item = QueryResults, Error = Error>> {
+    fn query(&self, query: Query) -> Box<dyn Future<Item = EntitiesResults, Error = Error>> {
         // TODO: Proper error handling
         let inner = self.inner.upgrade().unwrap();
         let inner = inner.read().unwrap();
@@ -252,11 +253,11 @@ where
 ///
 ///
 struct QueryResolver {
-    receiver: oneshot::Receiver<Result<QueryResults, Error>>,
+    receiver: oneshot::Receiver<Result<EntitiesResults, Error>>,
 }
 
 impl Future for QueryResolver {
-    type Item = QueryResults;
+    type Item = EntitiesResults;
     type Error = Error;
 
     fn poll(&mut self) -> Result<Async<Self::Item>, Self::Error> {
