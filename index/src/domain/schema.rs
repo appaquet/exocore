@@ -6,6 +6,8 @@ pub type SchemaTraitId = u16;
 pub type SchemaStructId = u16;
 pub type SchemaFieldId = u16;
 
+// TODO: To be completed in https://github.com/appaquet/exocore/issues/104
+
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct Schema {

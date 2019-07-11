@@ -190,7 +190,7 @@ where
         data_handle: &EngineHandle<CS, PS>,
         query: &Query,
     ) -> Result<EntitiesResults, Error> {
-        // TODO: Implement paging, counting, sorting & limit
+        // TODO: Implement paging, counting, sorting & limit https://github.com/appaquet/exocore/issues/105
 
         let chain_results = self
             .chain_index
@@ -249,12 +249,12 @@ where
             results,
             next_page: None,
             current_page: QueryPaging {
-                // TODO:
+                // TODO: https://github.com/appaquet/exocore/issues/105
                 count: 0,
                 from_token: None,
                 to_token: None,
             },
-            total_estimated: combined_results.len() as u32, // TODO:
+            total_estimated: combined_results.len() as u32, // TODO: https://github.com/appaquet/exocore/issues/105
         })
     }
 

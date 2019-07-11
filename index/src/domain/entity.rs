@@ -11,6 +11,8 @@ pub type EntityIdRef = str;
 pub type TraitId = String;
 pub type TraitIdRef = str;
 
+// TODO: To be completed in https://github.com/appaquet/exocore/issues/104
+
 ///
 /// An entity is an object on which traits can be added to shape what it represents.
 ///   Ex: an email is an entity on which we added a trait "Email"
