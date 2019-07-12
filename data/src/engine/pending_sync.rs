@@ -6,10 +6,8 @@ use itertools::{EitherOrBoth, Itertools};
 use crate::operation::OperationId;
 use exocore_common::crypto::hash::{Digest, MultihashDigest, Sha3_256};
 use exocore_common::node::{Node, NodeId};
-use exocore_common::serialization::protos::data_chain_capnp::pending_operation_header;
-use exocore_common::serialization::protos::data_transport_capnp::{
-    pending_sync_range, pending_sync_request,
-};
+use exocore_common::protos::data_chain_capnp::pending_operation_header;
+use exocore_common::protos::data_transport_capnp::{pending_sync_range, pending_sync_request};
 
 use crate::block::BlockDepth;
 use crate::engine::{request_tracker, Event};
@@ -776,9 +774,7 @@ pub enum PendingSyncError {
 mod tests {
     use std::sync::Arc;
 
-    use exocore_common::serialization::protos::data_chain_capnp::{
-        pending_operation, pending_operation_header,
-    };
+    use exocore_common::protos::data_chain_capnp::{pending_operation, pending_operation_header};
 
     use crate::engine::testing::create_dummy_new_entry_op;
     use crate::engine::testing::*;

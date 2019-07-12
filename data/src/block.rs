@@ -1,4 +1,5 @@
 use crate::operation::OperationId;
+use exocore_common::capnp;
 use exocore_common::cell::{Cell, FullCell};
 use exocore_common::crypto::hash::{Digest, Multihash, MultihashDigest, Sha3_256};
 use exocore_common::crypto::signature::Signature;
@@ -10,7 +11,6 @@ use exocore_common::framing::{
     PaddedFrame, PaddedFrameBuilder, SizedFrame, SizedFrameBuilder, TypedCapnpFrame,
 };
 use exocore_common::node::NodeId;
-use exocore_common::serialization::capnp;
 use std::borrow::Borrow;
 
 pub type BlockOffset = u64;

@@ -5,7 +5,7 @@ use crate::pending;
 use crate::pending::CommitStatus;
 use crate::{chain, operation};
 use exocore_common;
-use exocore_common::serialization::protos::data_chain_capnp::pending_operation;
+use exocore_common::protos::data_chain_capnp::pending_operation;
 use exocore_common::utils::completion_notifier::{CompletionError, CompletionListener};
 use futures::prelude::*;
 use futures::sync::mpsc;

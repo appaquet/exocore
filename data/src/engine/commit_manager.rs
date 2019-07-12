@@ -6,7 +6,7 @@ use itertools::Itertools;
 use crate::operation::{GroupId, OperationId};
 use exocore_common::crypto::signature::Signature;
 use exocore_common::node::NodeId;
-use exocore_common::serialization::protos::data_chain_capnp::pending_operation;
+use exocore_common::protos::data_chain_capnp::pending_operation;
 use exocore_common::time::{duration_to_consistent_u64, Clock};
 
 use crate::block::{

@@ -7,10 +7,10 @@ use exocore_common;
 use exocore_common::cell::{Cell, CellNodes};
 use exocore_common::framing::{CapnpFrameBuilder, FrameReader, TypedCapnpFrame};
 use exocore_common::node::NodeId;
-use exocore_common::serialization::protos::data_transport_capnp::{
+use exocore_common::protos::data_transport_capnp::{
     chain_sync_request, chain_sync_response, envelope, pending_sync_request,
 };
-use exocore_common::serialization::protos::MessageType;
+use exocore_common::protos::MessageType;
 use exocore_common::time::Clock;
 use exocore_common::utils::completion_notifier::{
     CompletionError, CompletionListener, CompletionNotifier,

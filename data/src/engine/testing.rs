@@ -1,7 +1,7 @@
 use tempdir::TempDir;
 
 use exocore_common::node::{LocalNode, Node, NodeId};
-use exocore_common::serialization::protos::data_chain_capnp::block;
+use exocore_common::protos::data_chain_capnp::block;
 
 use crate::block::{
     Block, BlockDepth, BlockOffset, BlockOperations, BlockOwned, BlockSignatures,
