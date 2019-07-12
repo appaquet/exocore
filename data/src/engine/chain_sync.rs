@@ -634,7 +634,7 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
                 .as_ref()
                 .map_or(0, BlockHeader::next_offset);
             if block.offset() == next_local_offset {
-                sync_context.push_event(Event::ChainBlockNew(block.offset()));
+                sync_context.push_event(Event::NewChainBlock(block.offset()));
                 store.write_block(&block)?;
                 let new_block_header = BlockHeader::from_stored_block(block)?;
                 last_local_block = Some(new_block_header);

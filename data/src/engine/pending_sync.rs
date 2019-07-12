@@ -6,7 +6,7 @@ use itertools::{EitherOrBoth, Itertools};
 use crate::operation::OperationId;
 use exocore_common::crypto::hash::{Digest, MultihashDigest, Sha3_256};
 use exocore_common::node::{Node, NodeId};
-use exocore_common::protos::data_chain_capnp::pending_operation_header;
+use exocore_common::protos::data_chain_capnp::chain_operation_header;
 use exocore_common::protos::data_transport_capnp::{pending_sync_range, pending_sync_request};
 
 use crate::block::BlockHeight;
@@ -87,7 +87,7 @@ impl<PS: PendingStore> PendingSynchronizer<PS> {
     ) -> Result<(), Error> {
         let operation_id = operation.get_id()?;
         store.put_operation(operation)?;
-        sync_context.push_event(Event::PendingOperationNew(operation_id));
+        sync_context.push_event(Event::NewPendingOperation(operation_id));
 
         // create a sync request for which we send full detail for new op, but none for other ops
         let nodes = self.cell.nodes();
@@ -204,7 +204,7 @@ impl<PS: PendingStore> PendingSynchronizer<PS> {
                     let new_operation = NewOperation::from_frame(operation_frame);
                     let existed = store.put_operation(new_operation)?;
                     if !existed {
-                        sync_context.push_event(Event::PendingOperationNew(operation_id));
+                        sync_context.push_event(Event::NewPendingOperation(operation_id));
                     }
                 }
             }
@@ -352,7 +352,7 @@ impl<PS: PendingStore> PendingSynchronizer<PS> {
     ) -> Result<(), Error>
     where
         LI: Iterator<Item = StoredOperation> + 'b,
-        RI: Iterator<Item = pending_operation_header::Reader<'a>> + 'a,
+        RI: Iterator<Item = chain_operation_header::Reader<'a>> + 'a,
     {
         let merged_iter = remote_iter.merge_join_by(local_iter, |remote_op, local_op| {
             remote_op.get_operation_id().cmp(&local_op.operation_id)
@@ -774,7 +774,7 @@ pub enum PendingSyncError {
 mod tests {
     use std::sync::Arc;
 
-    use exocore_common::protos::data_chain_capnp::{pending_operation, pending_operation_header};
+    use exocore_common::protos::data_chain_capnp::{chain_operation, chain_operation_header};
 
     use crate::engine::testing::create_dummy_new_entry_op;
     use crate::engine::testing::*;
@@ -1238,7 +1238,7 @@ mod tests {
         assert_eq!(frame0_reader.has_operations_headers(), true);
 
         let operations = frame0_reader.get_operations_headers()?;
-        let operation0_header: pending_operation_header::Reader = operations.get(0);
+        let operation0_header: chain_operation_header::Reader = operations.get(0);
         assert_eq!(operation0_header.get_group_id(), 2);
 
         Ok(())
@@ -1258,7 +1258,7 @@ mod tests {
         let operation0_data = operations.get(0)?;
         let operation0_frame = crate::operation::read_operation_frame(operation0_data)?;
 
-        let operation0_reader: pending_operation::Reader = operation0_frame.get_reader()?;
+        let operation0_reader: chain_operation::Reader = operation0_frame.get_reader()?;
         let operation0_inner_reader = operation0_reader.get_operation();
         assert!(operation0_inner_reader.has_entry());
 

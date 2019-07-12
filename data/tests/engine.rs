@@ -155,7 +155,7 @@ fn two_nodes_full_replication() -> Result<(), failure::Error> {
 
     cluster.engines_config[0]
         .commit_manager_config
-        .commit_maximum_pending_count = 1;
+        .commit_maximum_pending_store_count = 1;
 
     cluster.start_engine(0);
     cluster.start_engine(1);

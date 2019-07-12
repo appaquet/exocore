@@ -29,7 +29,7 @@ pub type SignaturesFrame<I> = TypedCapnpFrame<PaddedFrame<SizedFrame<I>>, block_
 ///
 /// A block consists of 3 parts:
 ///  * Block header
-///  * Operations' bytes (capnp serialized `pending_operation` frames)
+///  * Operations' bytes (capnp serialized `chain_operation` frames)
 ///  * Block signatures
 ///
 /// The block header and operations' data are the same on all nodes. Since a node writes a block

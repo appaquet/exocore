@@ -6,7 +6,7 @@ use itertools::Itertools;
 use crate::operation::{GroupId, OperationId};
 use exocore_common::crypto::signature::Signature;
 use exocore_common::node::NodeId;
-use exocore_common::protos::data_chain_capnp::pending_operation;
+use exocore_common::protos::data_chain_capnp::chain_operation;
 use exocore_common::time::{duration_to_consistent_u64, Clock};
 
 use crate::block::{
@@ -209,7 +209,7 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
         let signature_operation = signature_frame_builder.sign_and_build(&local_node)?;
 
         let signature_reader = signature_operation.get_operation_reader()?;
-        let pending_signature = PendingBlockSignature::from_pending_operation(signature_reader)?;
+        let pending_signature = PendingBlockSignature::from_operation(signature_reader)?;
         debug!("Signing block {}", next_block.group_id);
         next_block.add_my_signature(pending_signature);
 
@@ -244,7 +244,7 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
         let refusal_operation = refusal_builder.sign_and_build(&local_node)?;
 
         let refusal_reader = refusal_operation.get_operation_reader()?;
-        let pending_refusal = PendingBlockRefusal::from_pending_operation(refusal_reader)?;
+        let pending_refusal = PendingBlockRefusal::from_operation(refusal_reader)?;
 
         next_block.add_my_refusal(pending_refusal);
 
@@ -280,7 +280,7 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
                 .checked_sub(pending_blocks.operations_blocks.len())
                 .unwrap_or(0);
 
-            if approx_non_committed_operations >= self.config.commit_maximum_pending_count {
+            if approx_non_committed_operations >= self.config.commit_maximum_pending_store_count {
                 return Ok(true);
             } else {
                 let previous_block = chain_store
@@ -445,7 +445,7 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
                 CommitStatus::Committed(block_offset, block_height),
             )?;
         }
-        sync_context.push_event(Event::ChainBlockNew(next_block.proposal.offset));
+        sync_context.push_event(Event::NewChainBlock(next_block.proposal.offset));
 
         Ok(())
     }
@@ -602,9 +602,9 @@ pub struct CommitManagerConfig {
     /// How deep a block need to be before we cleanup its operations from pending store
     pub operations_cleanup_after_block_depth: BlockHeight,
 
-    /// After how many new pending operations do we force a commit, even if we aren't
+    /// After how many new operations in pending store do we force a commit, even if we aren't
     /// past the commit interval
-    pub commit_maximum_pending_count: usize,
+    pub commit_maximum_pending_store_count: usize,
 
     /// Interval at which commits are made, unless we hit `commit_maximum_pending_count`
     pub commit_maximum_interval: Duration,
@@ -614,7 +614,7 @@ impl Default for CommitManagerConfig {
     fn default() -> Self {
         CommitManagerConfig {
             operations_cleanup_after_block_depth: 6,
-            commit_maximum_pending_count: 50,
+            commit_maximum_pending_store_count: 50,
             commit_maximum_interval: Duration::from_secs(5),
         }
     }
@@ -680,7 +680,7 @@ impl PendingBlocks {
                 let operation_reader = operation.frame.get_reader()?;
 
                 match operation_reader.get_operation().which()? {
-                    pending_operation::operation::Which::BlockPropose(reader) => {
+                    chain_operation::operation::Which::BlockPropose(reader) => {
                         let block_frame = crate::block::read_block_frame(reader?.get_block()?)?;
                         let block_reader = block_frame.get_reader()?;
                         for operation_header in block_reader.get_operations_header()? {
@@ -692,17 +692,13 @@ impl PendingBlocks {
                             operation,
                         })
                     }
-                    pending_operation::operation::Which::BlockSign(_reader) => {
-                        signatures.push(PendingBlockSignature::from_pending_operation(
-                            operation_reader,
-                        )?);
+                    chain_operation::operation::Which::BlockSign(_reader) => {
+                        signatures.push(PendingBlockSignature::from_operation(operation_reader)?);
                     }
-                    pending_operation::operation::Which::BlockRefuse(_reader) => {
-                        refusals.push(PendingBlockRefusal::from_pending_operation(
-                            operation_reader,
-                        )?);
+                    chain_operation::operation::Which::BlockRefuse(_reader) => {
+                        refusals.push(PendingBlockRefusal::from_operation(operation_reader)?);
                     }
-                    pending_operation::operation::Which::Entry(_) => {
+                    chain_operation::operation::Which::Entry(_) => {
                         warn!("Found a non-block related operation in block group, which shouldn't be possible (group_id={})", group_id);
                     }
                 };
@@ -899,7 +895,7 @@ impl PendingBlockProposal {
         let operation_reader = self.operation.frame.get_reader()?;
         let inner_operation = operation_reader.get_operation();
         match inner_operation.which()? {
-            pending_operation::operation::Which::BlockPropose(block_prop) => {
+            chain_operation::operation::Which::BlockPropose(block_prop) => {
                 Ok(crate::block::read_block_frame(block_prop?.get_block()?)?)
             }
             _ => Err(Error::Other(
@@ -918,12 +914,12 @@ struct PendingBlockRefusal {
 }
 
 impl PendingBlockRefusal {
-    fn from_pending_operation(
-        operation_reader: pending_operation::Reader,
+    fn from_operation(
+        operation_reader: chain_operation::Reader,
     ) -> Result<PendingBlockRefusal, Error> {
         let inner_operation = operation_reader.get_operation();
         match inner_operation.which()? {
-            pending_operation::operation::Which::BlockRefuse(_sig) => {
+            chain_operation::operation::Which::BlockRefuse(_sig) => {
                 let node_id_str = operation_reader.get_node_id()?;
                 let node_id = NodeId::from_str(node_id_str).map_err(|_| {
                     Error::Other(format!("Couldn't convert to NodeID: {}", node_id_str))
@@ -947,12 +943,12 @@ struct PendingBlockSignature {
 }
 
 impl PendingBlockSignature {
-    fn from_pending_operation(
-        operation_reader: pending_operation::Reader,
+    fn from_operation(
+        operation_reader: chain_operation::Reader,
     ) -> Result<PendingBlockSignature, Error> {
         let inner_operation = operation_reader.get_operation();
         match inner_operation.which()? {
-            pending_operation::operation::Which::BlockSign(sig) => {
+            chain_operation::operation::Which::BlockSign(sig) => {
                 let op_signature_reader = sig?;
                 let signature_reader = op_signature_reader.get_signature()?;
 
@@ -1125,7 +1121,7 @@ mod tests {
         cluster.clocks[0].add_fixed_instant_duration(Duration::from_millis(10));
         let max_ops = cluster.commit_managers[0]
             .config
-            .commit_maximum_pending_count;
+            .commit_maximum_pending_store_count;
         for _i in 0..=max_ops {
             append_new_operation(&mut cluster, b"hello world")?;
         }

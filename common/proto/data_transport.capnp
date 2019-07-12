@@ -29,8 +29,8 @@ struct PendingSyncRange {
     operationsHash     @4: Data;
     operationsCount    @5: UInt32;
 
-    operations         @6: List(Data); # Frames of Chain.PendingOperation
-    operationsHeaders  @7: List(Chain.PendingOperationHeader);
+    operations         @6: List(Data); # Frames of Chain.ChainOperation
+    operationsHeaders  @7: List(Chain.ChainOperationHeader);
 }
 
 #

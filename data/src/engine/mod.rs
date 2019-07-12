@@ -415,7 +415,7 @@ where
     CS: chain::ChainStore,
     PS: pending::PendingStore,
 {
-    fn handle_add_pending_operation(&mut self, operation: NewOperation) -> Result<(), Error> {
+    fn handle_new_operation(&mut self, operation: NewOperation) -> Result<(), Error> {
         let mut sync_context = SyncContext::new(self.sync_state);
         self.pending_synchronizer.handle_new_operation(
             &mut sync_context,
@@ -424,7 +424,7 @@ where
         )?;
         self.sync_state = sync_context.sync_state;
 
-        // to prevent sending pending operations that may have already been committed, we don't propagate
+        // to prevent sending operations that may have already been committed, we don't propagate
         // pending store changes unless the chain is synchronized
         if self.chain_is_synchronized() {
             self.send_messages_from_sync_context(&mut sync_context)?;
@@ -440,7 +440,7 @@ where
         message: &InMessage,
         request: TypedCapnpFrame<R, pending_sync_request::Owned>,
     ) -> Result<(), Error> {
-        // to prevent sending pending operations that may have already been committed, we don't accept
+        // to prevent sending operations that may have already been committed, we don't accept
         // any pending sync requests until the chain is synchronized
         if !self.chain_is_synchronized() {
             return Ok(());
@@ -507,7 +507,7 @@ where
         self.chain_synchronizer
             .tick(&mut sync_context, &self.chain_store)?;
 
-        // to prevent synchronizing pending operations that may have added to the chain, we should only
+        // to prevent synchronizing operations that may have added to the chain, we should only
         // start doing commit management & pending synchronization once the chain is synchronized
         if self.chain_is_synchronized() {
             // commit manager should always be ticked before pending synchronizer so that it may
