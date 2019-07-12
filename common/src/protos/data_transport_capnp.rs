@@ -353,7 +353,7 @@ pub mod pending_sync_request {
             !self.reader.get_pointer_field(0).is_null()
         }
         #[inline]
-        pub fn get_from_block_depth(self) -> u64 {
+        pub fn get_from_block_height(self) -> u64 {
             self.reader.get_data_field::<u64>(0)
         }
     }
@@ -470,11 +470,11 @@ pub mod pending_sync_request {
             !self.builder.get_pointer_field(0).is_null()
         }
         #[inline]
-        pub fn get_from_block_depth(self) -> u64 {
+        pub fn get_from_block_height(self) -> u64 {
             self.builder.get_data_field::<u64>(0)
         }
         #[inline]
-        pub fn set_from_block_depth(&mut self, value: u64) {
+        pub fn set_from_block_height(&mut self, value: u64) {
             self.builder.set_data_field::<u64>(0, value);
         }
     }

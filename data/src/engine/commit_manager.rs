@@ -10,7 +10,7 @@ use exocore_common::protos::data_chain_capnp::pending_operation;
 use exocore_common::time::{duration_to_consistent_u64, Clock};
 
 use crate::block::{
-    Block, BlockDepth, BlockOffset, BlockOperations, BlockOwned, BlockSignature, BlockSignatures,
+    Block, BlockHeight, BlockOffset, BlockOperations, BlockOwned, BlockSignature, BlockSignatures,
 };
 use crate::chain;
 use crate::engine::{pending_sync, Event, SyncContext};
@@ -29,7 +29,7 @@ use std::time::Duration;
 /// block proposal, signing/refusing them or proposing new blocks.
 ///
 /// It also manages cleanup of the pending store, by deleting old operations that were committed to the chain and that are
-/// in block with sufficient depth.
+/// in block with sufficient height.
 ///
 pub(super) struct CommitManager<PS: pending::PendingStore, CS: chain::ChainStore> {
     config: CommitManagerConfig,
@@ -391,7 +391,7 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
         let block_reader = block_frame.get_reader()?;
 
         let block_offset = next_block.proposal.offset;
-        let block_height = block_reader.get_depth();
+        let block_height = block_reader.get_height();
 
         // fetch block's operations from the pending store
         let block_operations =
@@ -489,7 +489,7 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
         let last_stored_block = chain_store
             .get_last_block()?
             .ok_or(Error::UninitializedChain)?;
-        let last_stored_block_depth = last_stored_block.get_depth()?;
+        let last_stored_block_height = last_stored_block.get_height()?;
 
         // cleanup all blocks and their operations that are committed or refused with enough depth
         for (group_id, block) in &pending_blocks.blocks {
@@ -500,11 +500,11 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
                 let block_reader = block_frame.get_reader()?;
 
                 let block_offset = block_reader.get_offset();
-                let block_depth = block_reader.get_depth();
+                let block_height = block_reader.get_height();
 
-                let depth_diff = last_stored_block_depth - block_depth;
-                if depth_diff >= self.config.operations_cleanup_after_block_depth {
-                    debug!("Block at offset={} depth={} can be cleaned up (last_stored_block_depth={})", block_offset, block_depth, last_stored_block_depth);
+                let height_diff = last_stored_block_height - block_height;
+                if height_diff >= self.config.operations_cleanup_after_block_depth {
+                    debug!("Block at offset={} height={} can be cleaned up (last_stored_block_height={})", block_offset, block_height, last_stored_block_height);
 
                     // delete the block & related operations (sigs, refusals, etc.)
                     pending_store.delete_operation(*group_id)?;
@@ -518,7 +518,7 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
 
                     // update the sync state so that the `PendingSynchronizer` knows what was last block to get cleaned
                     sync_context.sync_state.pending_last_cleanup_block =
-                        Some((block_offset, block_depth));
+                        Some((block_offset, block_height));
                 }
             }
         }
@@ -542,9 +542,9 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
                     if let Some(block) =
                         chain_store.get_block_by_operation_id(operation.operation_id)?
                     {
-                        let block_depth = block.get_depth()?;
-                        let depth_diff = last_stored_block_depth - block_depth;
-                        if depth_diff >= self.config.operations_cleanup_after_block_depth {
+                        let block_height = block.get_height()?;
+                        let block_depth = last_stored_block_height - block_height;
+                        if block_depth >= self.config.operations_cleanup_after_block_depth {
                             operations_to_delete.push(operation.operation_id);
                         }
                     }
@@ -599,7 +599,8 @@ fn is_node_commit_turn(
 ///
 #[derive(Copy, Clone, Debug)]
 pub struct CommitManagerConfig {
-    pub operations_cleanup_after_block_depth: BlockDepth,
+    /// How deep a block need to be before we cleanup its operations from pending store
+    pub operations_cleanup_after_block_depth: BlockHeight,
 
     /// After how many new pending operations do we force a commit, even if we aren't
     /// past the commit interval
@@ -1165,7 +1166,7 @@ mod tests {
                 .get_operation(op_id)?
                 .unwrap()
                 .commit_status,
-            CommitStatus::Committed(block.offset(), block.get_depth()?)
+            CommitStatus::Committed(block.offset(), block.get_height()?)
         );
 
         Ok(())
@@ -1318,9 +1319,9 @@ mod tests {
         assert_not_in_pending(&cluster, block_group_id);
 
         // check that SyncState was updated correctly
-        let (cleanup_offset, cleanup_depth) =
+        let (cleanup_offset, cleanup_height) =
             cluster.sync_states[0].pending_last_cleanup_block.unwrap();
-        assert_eq!(cleanup_depth, block.get_depth()?);
+        assert_eq!(cleanup_height, block.get_height()?);
         assert_eq!(cleanup_offset, block.offset());
 
         // check if individual operations are still in pending

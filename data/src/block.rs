@@ -14,7 +14,7 @@ use exocore_common::node::NodeId;
 use std::borrow::Borrow;
 
 pub type BlockOffset = u64;
-pub type BlockDepth = u64;
+pub type BlockHeight = u64;
 pub type BlockOperationsSize = u32;
 pub type BlockSignaturesSize = u16;
 
@@ -92,9 +92,9 @@ pub trait Block {
         }
     }
 
-    fn get_depth(&self) -> Result<BlockDepth, Error> {
+    fn get_height(&self) -> Result<BlockHeight, Error> {
         let reader = self.block().get_reader()?;
-        Ok(reader.get_depth())
+        Ok(reader.get_height())
     }
 
     fn get_proposed_operation_id(&self) -> Result<OperationId, Error> {
@@ -285,12 +285,12 @@ impl BlockOwned {
         let previous_hash = previous_block.block().inner().inner().multihash_bytes();
 
         let offset = previous_block.next_offset();
-        let depth = previous_block_reader.get_depth();
+        let height = previous_block_reader.get_height();
 
         Self::new_with_prev_info(
             cell,
             offset,
-            depth,
+            height,
             previous_offset,
             previous_hash,
             proposed_operation_id,
@@ -301,7 +301,7 @@ impl BlockOwned {
     pub fn new_with_prev_info(
         cell: &Cell,
         offset: BlockOffset,
-        depth: BlockDepth,
+        height: BlockHeight,
         previous_offset: BlockOffset,
         previous_hash: &[u8],
         proposed_operation_id: u64,
@@ -314,7 +314,7 @@ impl BlockOwned {
         let mut block_frame_builder = CapnpFrameBuilder::<block::Owned>::new();
         let mut block_msg_builder = block_frame_builder.get_builder();
         block_msg_builder.set_offset(offset);
-        block_msg_builder.set_depth(depth + 1);
+        block_msg_builder.set_height(height + 1);
         block_msg_builder.set_previous_offset(previous_offset);
         block_msg_builder.set_previous_hash(previous_hash);
         block_msg_builder.set_proposed_operation_id(proposed_operation_id);

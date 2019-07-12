@@ -1623,7 +1623,7 @@ pub mod block {
             self.reader.get_data_field::<u64>(0)
         }
         #[inline]
-        pub fn get_depth(self) -> u64 {
+        pub fn get_height(self) -> u64 {
             self.reader.get_data_field::<u64>(1)
         }
         #[inline]
@@ -1769,11 +1769,11 @@ pub mod block {
             self.builder.set_data_field::<u64>(0, value);
         }
         #[inline]
-        pub fn get_depth(self) -> u64 {
+        pub fn get_height(self) -> u64 {
             self.builder.get_data_field::<u64>(1)
         }
         #[inline]
-        pub fn set_depth(&mut self, value: u64) {
+        pub fn set_height(&mut self, value: u64) {
             self.builder.set_data_field::<u64>(1, value);
         }
         #[inline]
@@ -1996,7 +1996,7 @@ pub mod block_header {
             self.reader.get_data_field::<u64>(0)
         }
         #[inline]
-        pub fn get_depth(self) -> u64 {
+        pub fn get_height(self) -> u64 {
             self.reader.get_data_field::<u64>(1)
         }
         #[inline]
@@ -2129,11 +2129,11 @@ pub mod block_header {
             self.builder.set_data_field::<u64>(0, value);
         }
         #[inline]
-        pub fn get_depth(self) -> u64 {
+        pub fn get_height(self) -> u64 {
             self.builder.get_data_field::<u64>(1)
         }
         #[inline]
-        pub fn set_depth(&mut self, value: u64) {
+        pub fn set_height(&mut self, value: u64) {
             self.builder.set_data_field::<u64>(1, value);
         }
         #[inline]

@@ -256,7 +256,7 @@ mod tests {
 
         let mut frame_builder = CapnpFrameBuilder::<block::Owned>::new();
         let mut builder = frame_builder.get_builder();
-        builder.set_depth(1234);
+        builder.set_height(1234);
 
         let frame = TypedCapnpFrame::<_, block::Owned>::new(frame_builder.as_bytes())?;
         test_sync(frame);
@@ -268,18 +268,18 @@ mod tests {
     fn can_build_and_read() -> Result<(), failure::Error> {
         let mut frame_builder = CapnpFrameBuilder::<block::Owned>::new();
         let mut builder = frame_builder.get_builder();
-        builder.set_depth(1234);
+        builder.set_height(1234);
 
         assert_builder_equals(&frame_builder)?;
         let frame_bytes = frame_builder.as_bytes();
 
         let capnp_frame = TypedCapnpFrame::<_, block::Owned>::new(frame_bytes)?;
         let reader = capnp_frame.get_reader()?;
-        assert_eq!(1234, reader.get_depth());
+        assert_eq!(1234, reader.get_height());
 
         let capnp_frame_owned = capnp_frame.to_owned();
         let reader = capnp_frame_owned.get_reader()?;
-        assert_eq!(1234, reader.get_depth());
+        assert_eq!(1234, reader.get_height());
 
         Ok(())
     }
@@ -288,11 +288,11 @@ mod tests {
     fn can_build_to_owned() -> Result<(), failure::Error> {
         let mut frame_builder = CapnpFrameBuilder::<block::Owned>::new();
         let mut builder = frame_builder.get_builder();
-        builder.set_depth(1234);
+        builder.set_height(1234);
 
         let capnp_frame = frame_builder.as_owned_frame();
         let reader = capnp_frame.get_reader()?;
-        assert_eq!(1234, reader.get_depth());
+        assert_eq!(1234, reader.get_height());
 
         Ok(())
     }

@@ -4,7 +4,7 @@ use exocore_common::node::{LocalNode, Node, NodeId};
 use exocore_common::protos::data_chain_capnp::block;
 
 use crate::block::{
-    Block, BlockDepth, BlockOffset, BlockOperations, BlockOwned, BlockSignatures,
+    Block, BlockHeight, BlockOffset, BlockOperations, BlockOwned, BlockSignatures,
     BlockSignaturesSize, SignaturesFrame,
 };
 use crate::chain::directory::{DirectoryChainStore, DirectoryChainStoreConfig as DirectoryConfig};
@@ -148,25 +148,25 @@ impl EngineTestCluster {
     }
 
     pub fn chain_append_dummy(&mut self, node_idx: usize, count: usize, seed: u64) {
-        let (next_offset, next_depth) =
+        let (next_offset, next_height) =
             self.chains[node_idx]
                 .get_last_block()
                 .unwrap()
                 .map_or((0, 0), |block| {
                     let block_reader = block.block().get_reader().unwrap();
-                    let block_depth = block_reader.get_depth();
+                    let block_height = block_reader.get_height();
 
-                    (block.next_offset(), block_depth + 1)
+                    (block.next_offset(), block_height + 1)
                 });
 
-        self.chain_generate_dummy_from_offset(node_idx, next_offset, next_depth, count, seed);
+        self.chain_generate_dummy_from_offset(node_idx, next_offset, next_height, count, seed);
     }
 
     pub fn chain_generate_dummy_from_offset(
         &mut self,
         node_idx: usize,
         from_offset: BlockOffset,
-        from_depth: BlockDepth,
+        from_height: BlockHeight,
         count: usize,
         seed: u64,
     ) {
@@ -190,7 +190,7 @@ impl EngineTestCluster {
 
             let block_frame = create_dummy_block(
                 next_offset,
-                from_depth + i as u64,
+                from_height + i as u64,
                 operations_data.len() as u32,
                 signatures_size,
                 prev_block_msg,
@@ -306,7 +306,7 @@ impl EngineTestCluster {
 
 pub fn create_dummy_block<I: FrameReader>(
     offset: u64,
-    depth: u64,
+    height: u64,
     operations_size: u32,
     signatures_size: u16,
     previous_block: Option<crate::block::BlockFrame<I>>,
@@ -317,7 +317,7 @@ pub fn create_dummy_block<I: FrameReader>(
     {
         let mut block_builder: block::Builder = msg_builder.get_builder();
         block_builder.set_offset(offset);
-        block_builder.set_depth(depth);
+        block_builder.set_height(height);
         block_builder.set_operations_size(operations_size);
         block_builder.set_signatures_size(signatures_size);
         block_builder.set_proposed_node_id(&format!("seed={}", seed));

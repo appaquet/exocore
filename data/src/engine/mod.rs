@@ -1,4 +1,4 @@
-use crate::block::{BlockDepth, BlockOffset};
+use crate::block::{BlockHeight, BlockOffset};
 use crate::chain;
 use crate::operation;
 use crate::operation::NewOperation;
@@ -721,7 +721,7 @@ struct SyncState {
     /// is now only available from the chain. This is used by the `PendingSynchronizer` to
     /// know which operations it should not include anymore in its requests.
     ///
-    pending_last_cleanup_block: Option<(BlockOffset, BlockDepth)>,
+    pending_last_cleanup_block: Option<(BlockOffset, BlockHeight)>,
 }
 
 impl Default for SyncState {

@@ -58,12 +58,12 @@ pub fn check_chain(
     for block in chain_store.blocks_iter(0)? {
         if let Err(err) = block.validate() {
             let block_reader = block.block().get_reader();
-            let block_depth = block_reader.map(block::Reader::get_depth).ok();
+            let block_height = block_reader.map(block::Reader::get_height).ok();
 
             error!(
-                "Block at offset={} depth={:?} is invalid: {}",
+                "Block at offset={} height={:?} is invalid: {}",
                 block.offset(),
-                block_depth,
+                block_height,
                 err
             );
             return Ok(());

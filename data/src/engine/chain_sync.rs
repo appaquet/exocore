@@ -9,7 +9,7 @@ use exocore_common::protos::data_transport_capnp::{
 };
 use exocore_common::time::Clock;
 
-use crate::block::{Block, BlockDepth, BlockOffset, BlockRef, BlockSignaturesSize};
+use crate::block::{Block, BlockHeight, BlockOffset, BlockRef, BlockSignaturesSize};
 use crate::chain;
 use crate::chain::ChainStore;
 use crate::engine::request_tracker::RequestTracker;
@@ -94,7 +94,7 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
         if self.status == Status::Synchronized && !self.im_leader() {
             if let Some(leader_node_id) = self.leader.clone() {
                 let leader_node_info = self.get_or_create_node_info_mut(&leader_node_id);
-                let common_block_delta = leader_node_info.common_blocks_depth_delta().unwrap_or(0);
+                let common_block_delta = leader_node_info.common_blocks_height_delta().unwrap_or(0);
                 let sync_status = leader_node_info.status();
 
                 let lost_leadership = if sync_status != NodeStatus::Synchronized {
@@ -103,8 +103,8 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
                         leader_node_id
                     );
                     true
-                } else if common_block_delta > self.config.max_leader_common_block_difference {
-                    info!("Node {} lost leadership status because of common block depth delta is too high (depth {} > depth {})", leader_node_id, common_block_delta, self.config.max_leader_common_block_difference);
+                } else if common_block_delta > self.config.max_leader_common_block_height_delta {
+                    info!("Node {} lost leadership status because of common block height delta is too high (height {} > height {})", leader_node_id, common_block_delta, self.config.max_leader_common_block_height_delta);
                     true
                 } else {
                     false
@@ -518,22 +518,22 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
         let headers_reader = response_reader.get_headers()?;
         let mut has_new_common_block = false;
         let mut first_non_common_block: Option<BlockOffset> = None;
-        let mut last_header_depth = None;
+        let mut last_header_height = None;
         let mut all_contiguous = true;
 
         for header in headers_reader.iter() {
             let header_reader: block_header::Reader = header;
             let offset = header_reader.get_offset();
-            let depth = header_reader.get_depth();
+            let height = header_reader.get_height();
 
             // check if headers are contiguous blocks, which would mean we can take for granted that no block
             // are missing between the first and last given header
-            if let Some(last_header_depth) = last_header_depth {
-                if depth != last_header_depth + 1 {
+            if let Some(last_header_height) = last_header_height {
+                if height != last_header_height + 1 {
                     all_contiguous = false;
                 }
             }
-            last_header_depth = Some(depth);
+            last_header_height = Some(height);
 
             // if we haven't encountered a block we didn't have in common, we keep checking if we have
             // the block locally, and update the last_common_block
@@ -715,7 +715,7 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
                 if let Some(last_known_block) = &info.last_known_block {
                     let sync_status = info.status();
                     if sync_status == NodeStatus::Synchronized {
-                        Some((info, last_known_block.depth))
+                        Some((info, last_known_block.height))
                     } else {
                         None
                     }
@@ -723,12 +723,12 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
                     None
                 }
             })
-            .max_by(|(_node_a, depth_a), (_node_b, depth_b)| depth_a.cmp(depth_b));
+            .max_by(|(_node_a, height_a), (_node_b, height_b)| height_a.cmp(height_b));
 
         let last_local_block = store.get_last_block()?;
         self.leader = match (maybe_leader, &last_local_block) {
-            (Some((_node_info, node_depth)), Some(last_local_block))
-                if last_local_block.get_depth()? > node_depth =>
+            (Some((_node_info, node_height)), Some(last_local_block))
+                if last_local_block.get_height()? > node_height =>
             {
                 // there are other nodes, but i have the longest chain
                 Some(local_node_id.clone())
@@ -769,10 +769,10 @@ pub struct ChainSyncConfig {
     /// This should be lower than transport maximum packet size
     pub blocks_max_send_size: usize,
 
-    /// Maximum depth in blocks that we can tolerate between our common ancestor block
+    /// Maximum height in blocks that we can tolerate between our common ancestor block
     /// and its latest block. If it gets higher than this value, this means that we may
     /// have diverged and we need to re-synchronize.
-    pub max_leader_common_block_difference: BlockDepth,
+    pub max_leader_common_block_height_delta: BlockHeight,
 }
 
 impl Default for ChainSyncConfig {
@@ -784,7 +784,7 @@ impl Default for ChainSyncConfig {
             headers_sync_end_count: 5,
             headers_sync_sampled_count: 10,
             blocks_max_send_size: 50 * 1024,
-            max_leader_common_block_difference: 5,
+            max_leader_common_block_height_delta: 5,
         }
     }
 }
@@ -848,11 +848,12 @@ impl NodeSyncInfo {
     }
 
     ///
-    /// Returns delta in depth between the last known block of the node and the last common block
+    /// Returns delta in block height between the last known block of the node and the last common block
     /// that we have.
-    fn common_blocks_depth_delta(&self) -> Option<BlockDepth> {
+    ///
+    fn common_blocks_height_delta(&self) -> Option<BlockHeight> {
         match (&self.last_common_block, &self.last_known_block) {
-            (Some(common), Some(known)) => Some(known.depth - common.depth),
+            (Some(common), Some(known)) => Some(known.height - common.height),
             _ => None,
         }
     }
@@ -874,11 +875,11 @@ impl NodeSyncInfo {
                     "Expected a common block to be in stored since it had previously been",
                 ))
             })?;
-            let last_local_depth = last_local_block.get_depth()?;
+            let last_local_height = last_local_block.get_height()?;
 
             // if we have a block after common, and that the remote has one too, we are divergent
-            Ok(last_local_depth > last_common_block.depth
-                && last_known_block.depth > last_common_block.depth)
+            Ok(last_local_height > last_common_block.height
+                && last_known_block.height > last_common_block.height)
         } else {
             // if we don't have any common block and we have at least one block in local chain,
             // and that remote node is not empty, we have diverged from it
@@ -900,7 +901,7 @@ enum NodeStatus {
 #[derive(Debug)]
 struct BlockHeader {
     offset: BlockOffset,
-    depth: BlockDepth,
+    height: BlockHeight,
     hash: Vec<u8>,
     previous_offset: BlockOffset,
     previous_hash: Vec<u8>,
@@ -917,7 +918,7 @@ impl BlockHeader {
 
         Ok(BlockHeader {
             offset: stored_block.offset(),
-            depth: block_reader.get_depth(),
+            height: block_reader.get_height(),
             hash: block_signature.to_vec(),
             previous_offset: block_reader.get_previous_offset(),
             previous_hash: block_reader.get_previous_hash()?.to_vec(),
@@ -933,7 +934,7 @@ impl BlockHeader {
     ) -> Result<BlockHeader, Error> {
         Ok(BlockHeader {
             offset: block_header_reader.get_offset(),
-            depth: block_header_reader.get_depth(),
+            height: block_header_reader.get_height(),
             hash: block_header_reader.get_block_hash()?.to_vec(),
             previous_offset: block_header_reader.get_previous_offset(),
             previous_hash: block_header_reader.get_previous_hash()?.to_vec(),
@@ -953,7 +954,7 @@ impl BlockHeader {
 
     fn copy_into_builder(&self, builder: &mut block_header::Builder) {
         builder.set_offset(self.offset);
-        builder.set_depth(self.depth);
+        builder.set_height(self.height);
         builder.set_block_hash(&self.hash);
         builder.set_previous_offset(self.previous_offset);
         builder.set_previous_hash(&self.previous_hash);
@@ -1024,7 +1025,7 @@ fn chain_sample_block_headers<CS: chain::ChainStore>(
     })?;
 
     let last_block_reader: block::Reader = last_block.block.get_reader()?;
-    let last_block_depth = last_block_reader.get_depth();
+    let last_block_height = last_block_reader.get_height();
 
     let mut blocks_iter = store
         .blocks_iter(from_offset)
@@ -1035,9 +1036,9 @@ fn chain_sample_block_headers<CS: chain::ChainStore>(
         ChainSyncError::Other("Expected a first block since ranges were not empty".to_string())
     })?;
     let first_block_reader: block::Reader = first_block.block.get_reader()?;
-    let first_block_depth = first_block_reader.get_depth();
+    let first_block_height = first_block_reader.get_height();
 
-    let range_blocks_count = last_block_depth - first_block_depth;
+    let range_blocks_count = last_block_height - first_block_height;
     let range_blocks_skip = (range_blocks_count / sampled_count).max(1);
 
     // from which block do we include all headers so that we always include last `end_count` blocks
@@ -1161,19 +1162,19 @@ mod tests {
 
         let headers = chain_sample_block_headers(&cluster.chains[0], 0, None, 2, 2, 10)?;
         assert_eq!(
-            headers.iter().map(|b| b.depth).collect::<Vec<_>>(),
+            headers.iter().map(|b| b.height).collect::<Vec<_>>(),
             vec![0, 1, 9, 18, 27, 36, 45, 54, 63, 72, 81, 90, 98, 99]
         );
 
         let headers = chain_sample_block_headers(&cluster.chains[0], 0, None, 0, 0, 1)?;
         assert_eq!(
-            headers.iter().map(|b| b.depth).collect::<Vec<_>>(),
+            headers.iter().map(|b| b.height).collect::<Vec<_>>(),
             vec![0, 99]
         );
 
         let headers = chain_sample_block_headers(&cluster.chains[0], offsets[10], None, 5, 5, 10)?;
         assert_eq!(
-            headers.iter().map(|b| b.depth).collect::<Vec<_>>(),
+            headers.iter().map(|b| b.height).collect::<Vec<_>>(),
             vec![10, 11, 12, 13, 14, 18, 26, 34, 42, 50, 58, 66, 74, 82, 90, 95, 96, 97, 98, 99]
         );
 
@@ -1186,7 +1187,7 @@ mod tests {
             5,
         )?;
         assert_eq!(
-            headers.iter().map(|b| b.depth).collect::<Vec<_>>(),
+            headers.iter().map(|b| b.height).collect::<Vec<_>>(),
             vec![10, 11, 18, 26, 34, 42, 49, 50]
         );
 
@@ -1206,11 +1207,14 @@ mod tests {
             assert_eq!(NodeStatus::Synchronized, node1_node2_info.status(),);
             assert_eq!(
                 None,
-                node1_node2_info.last_common_block.as_ref().map(|b| b.depth),
+                node1_node2_info
+                    .last_common_block
+                    .as_ref()
+                    .map(|b| b.height),
             );
             assert_eq!(
                 Some(99),
-                node1_node2_info.last_known_block.as_ref().map(|b| b.depth),
+                node1_node2_info.last_known_block.as_ref().map(|b| b.height),
             );
         }
 
@@ -1242,11 +1246,14 @@ mod tests {
             let node1_node2_info = &cluster.chains_synchronizer[0].nodes_info[node1.id()];
             assert_eq!(node1_node2_info.status(), NodeStatus::Synchronized);
             assert_eq!(
-                node1_node2_info.last_common_block.as_ref().map(|b| b.depth),
+                node1_node2_info
+                    .last_common_block
+                    .as_ref()
+                    .map(|b| b.height),
                 None
             );
             assert_eq!(
-                node1_node2_info.last_known_block.as_ref().map(|b| b.depth),
+                node1_node2_info.last_known_block.as_ref().map(|b| b.height),
                 None
             );
         }
@@ -1272,11 +1279,14 @@ mod tests {
             let node1_node2_info = &cluster.chains_synchronizer[0].nodes_info[node1.id()];
             assert_eq!(node1_node2_info.status(), NodeStatus::Synchronized);
             assert_eq!(
-                node1_node2_info.last_common_block.as_ref().map(|b| b.depth),
+                node1_node2_info
+                    .last_common_block
+                    .as_ref()
+                    .map(|b| b.height),
                 Some(49)
             );
             assert_eq!(
-                node1_node2_info.last_known_block.as_ref().map(|b| b.depth),
+                node1_node2_info.last_known_block.as_ref().map(|b| b.height),
                 Some(49)
             );
         }
@@ -1301,11 +1311,14 @@ mod tests {
             let node1_node2_info = &cluster.chains_synchronizer[0].nodes_info[node1.id()];
             assert_eq!(node1_node2_info.status(), NodeStatus::Synchronized);
             assert_eq!(
-                node1_node2_info.last_common_block.as_ref().map(|b| b.depth),
+                node1_node2_info
+                    .last_common_block
+                    .as_ref()
+                    .map(|b| b.height),
                 Some(49)
             );
             assert_eq!(
-                node1_node2_info.last_known_block.as_ref().map(|b| b.depth),
+                node1_node2_info.last_known_block.as_ref().map(|b| b.height),
                 Some(99)
             );
         }
@@ -1335,11 +1348,14 @@ mod tests {
             let node1_node2_info = &cluster.chains_synchronizer[0].nodes_info[node1.id()];
             assert_eq!(node1_node2_info.status(), NodeStatus::Synchronized);
             assert_eq!(
-                node1_node2_info.last_common_block.as_ref().map(|b| b.depth),
+                node1_node2_info
+                    .last_common_block
+                    .as_ref()
+                    .map(|b| b.height),
                 None,
             );
             assert_eq!(
-                node1_node2_info.last_known_block.as_ref().map(|b| b.depth),
+                node1_node2_info.last_known_block.as_ref().map(|b| b.height),
                 Some(99),
             );
         }
@@ -1432,11 +1448,14 @@ mod tests {
             let node1_node2_info = &cluster.chains_synchronizer[0].nodes_info[node1.id()];
             assert_eq!(node1_node2_info.status(), NodeStatus::Synchronized);
             assert_eq!(
-                node1_node2_info.last_common_block.as_ref().map(|b| b.depth),
+                node1_node2_info
+                    .last_common_block
+                    .as_ref()
+                    .map(|b| b.height),
                 Some(49),
             );
             assert_eq!(
-                node1_node2_info.last_known_block.as_ref().map(|b| b.depth),
+                node1_node2_info.last_known_block.as_ref().map(|b| b.height),
                 Some(99),
             );
         }

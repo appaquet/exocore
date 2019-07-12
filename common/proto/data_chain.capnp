@@ -43,7 +43,7 @@ struct OperationBlockRefuse {
 #
 struct Block {
     offset                 @0: UInt64;
-    depth                  @1: UInt64;
+    height                 @1: UInt64;
     previousOffset         @2: UInt64;
     previousHash           @3: Data;
     proposedOperationId    @4: UInt64;
@@ -59,7 +59,7 @@ struct Block {
 # Used by transport for chain synchronization
 struct BlockHeader {
     offset                 @0: UInt64;
-    depth                  @1: UInt64;
+    height                 @1: UInt64;
     previousOffset         @2: UInt64;
     previousHash           @3: Data;
     proposedOperationId    @4: UInt64;
