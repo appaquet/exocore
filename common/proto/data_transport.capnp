@@ -53,5 +53,5 @@ struct ChainSyncResponse {
     toOffset           @1: UInt64;
 
     headers            @2: List(Chain.BlockPartialHeader);
-    blocks             @3: List(Data); # Block + entries data + signatures
+    blocks             @3: List(Data); # BlockHeader + entries data + signatures
 }

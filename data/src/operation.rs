@@ -2,13 +2,13 @@ use crate::block::Block;
 use exocore_common::capnp;
 use exocore_common::crypto::hash::Sha3_256;
 use exocore_common::crypto::signature::Signature;
-use exocore_common::data_chain_capnp::chain_operation;
 use exocore_common::framing::{
     CapnpFrameBuilder, FrameBuilder, FrameReader, MultihashFrame, MultihashFrameBuilder,
     SizedFrame, SizedFrameBuilder, TypedCapnpFrame,
 };
 use exocore_common::node::{LocalNode, NodeId};
 use exocore_common::protos::data_chain_capnp::block_signature;
+use exocore_common::protos::data_chain_capnp::chain_operation;
 
 pub type GroupId = u64;
 pub type OperationId = u64;
@@ -113,7 +113,7 @@ impl OperationBuilder {
         group_id: OperationId,
         operation_id: OperationId,
         node_id: &NodeId,
-        _block: &crate::block::BlockFrame<I>,
+        _header: &crate::block::BlockHeaderFrame<I>,
     ) -> Result<OperationBuilder, Error> {
         let mut frame_builder = CapnpFrameBuilder::new();
 

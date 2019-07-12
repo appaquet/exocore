@@ -1440,7 +1440,10 @@ mod tests {
             }
 
             if range.has_operations_frames() {
-                debug!("    Frames={}", range.get_operations_frames().unwrap().len());
+                debug!(
+                    "    Frames={}",
+                    range.get_operations_frames().unwrap().len()
+                );
             } else {
                 debug!("    Frames=None");
             }

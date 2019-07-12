@@ -12,7 +12,7 @@ extern crate tempdir;
 
 pub extern crate capnp;
 pub mod protos;
-pub use self::protos::*;
+pub(crate) use self::protos::*; // generated protos expect protos to be at root of crate
 
 pub mod cell;
 pub mod crypto;

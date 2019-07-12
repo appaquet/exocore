@@ -5,7 +5,7 @@
 // DO NOT EDIT.
 // source: proto/data_chain.capnp
 
-pub mod block {
+pub mod block_header {
     #[derive(Copy, Clone)]
     pub struct Owned;
     impl<'a> ::capnp::traits::Owned<'a> for Owned {
@@ -374,7 +374,7 @@ pub mod block {
             data: 5,
             pointers: 4,
         };
-        pub const TYPE_ID: u64 = 0x8229_c7b6_b47f_62b0;
+        pub const TYPE_ID: u64 = 0xc58d_6c6b_8803_2108;
     }
 }
 

@@ -1,5 +1,5 @@
-use exocore_common::data_transport_capnp::envelope;
 use exocore_common::node::Node;
+use exocore_common::protos::data_transport_capnp::envelope;
 use exocore_common::protos::MessageType;
 
 use crate::{Error, TransportLayer};

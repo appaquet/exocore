@@ -174,8 +174,8 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
         // validate hash of operations of block
         let block_operations = Self::get_block_operations(block, pending_store)?.map(|op| op.frame);
         let operations_hash = BlockOperations::hash_operations(block_operations)?;
-        let block_reader = block_frame.get_reader()?;
-        if operations_hash.as_bytes() != block_reader.get_operations_hash()? {
+        let block_header_reader = block_frame.get_reader()?;
+        if operations_hash.as_bytes() != block_header_reader.get_operations_hash()? {
             debug!(
                 "Block entries hash didn't match our local hash for block id={} offset={}",
                 block.group_id, block.proposal.offset
@@ -388,10 +388,10 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
         chain_store: &mut CS,
     ) -> Result<(), Error> {
         let block_frame = next_block.proposal.get_block()?;
-        let block_reader = block_frame.get_reader()?;
+        let block_header_reader = block_frame.get_reader()?;
 
         let block_offset = next_block.proposal.offset;
-        let block_height = block_reader.get_height();
+        let block_height = block_header_reader.get_height();
 
         // fetch block's operations from the pending store
         let block_operations =
@@ -400,7 +400,7 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
         // make sure that the hash of operations is same as defined by the block
         // this should never happen since we wouldn't have signed the block if hash didn't match
         let block_operations = BlockOperations::from_operations(block_operations)?;
-        if block_operations.multihash_bytes() != block_reader.get_operations_hash()? {
+        if block_operations.multihash_bytes() != block_header_reader.get_operations_hash()? {
             return Err(Error::Fatal(
                 "Block hash for local entries didn't match block hash, but was previously signed"
                     .to_string(),
@@ -423,7 +423,8 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
             })
             .collect::<Vec<_>>();
         let block_signatures = BlockSignatures::new_from_signatures(signatures);
-        let signatures_frame = block_signatures.to_frame_for_existing_block(&block_reader)?;
+        let signatures_frame =
+            block_signatures.to_frame_for_existing_block(&block_header_reader)?;
 
         // finally build the frame
         let block = BlockOwned::new(
@@ -497,10 +498,10 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
                 || block.status == BlockStatus::PastRefused
             {
                 let block_frame = block.proposal.get_block()?;
-                let block_reader = block_frame.get_reader()?;
+                let block_header_reader = block_frame.get_reader()?;
 
-                let block_offset = block_reader.get_offset();
-                let block_height = block_reader.get_height();
+                let block_offset = block_header_reader.get_offset();
+                let block_height = block_header_reader.get_height();
 
                 let height_diff = last_stored_block_height - block_height;
                 if height_diff >= self.config.operations_cleanup_after_block_depth {
@@ -681,14 +682,14 @@ impl PendingBlocks {
 
                 match operation_reader.get_operation().which()? {
                     chain_operation::operation::Which::BlockPropose(reader) => {
-                        let block_frame = crate::block::read_block_frame(reader?.get_block()?)?;
-                        let block_reader = block_frame.get_reader()?;
-                        for operation_header in block_reader.get_operations_header()? {
+                        let block_frame = crate::block::read_header_frame(reader?.get_block()?)?;
+                        let block_header_reader = block_frame.get_reader()?;
+                        for operation_header in block_header_reader.get_operations_header()? {
                             operations.push(operation_header.get_operation_id());
                         }
 
                         proposal = Some(PendingBlockProposal {
-                            offset: block_reader.get_offset(),
+                            offset: block_header_reader.get_offset(),
                             operation,
                         })
                     }
@@ -891,12 +892,12 @@ struct PendingBlockProposal {
 }
 
 impl PendingBlockProposal {
-    fn get_block(&self) -> Result<crate::block::BlockFrame<&[u8]>, Error> {
+    fn get_block(&self) -> Result<crate::block::BlockHeaderFrame<&[u8]>, Error> {
         let operation_reader = self.operation.frame.get_reader()?;
         let inner_operation = operation_reader.get_operation();
         match inner_operation.which()? {
             chain_operation::operation::Which::BlockPropose(block_prop) => {
-                Ok(crate::block::read_block_frame(block_prop?.get_block()?)?)
+                Ok(crate::block::read_header_frame(block_prop?.get_block()?)?)
             }
             _ => Err(Error::Other(
                 "Expected block sign pending op to create block signature, but got something else"
@@ -1220,8 +1221,11 @@ mod tests {
         // should commit the good block, and ignore refused one
         cluster.tick_commit_manager(0)?;
         let last_block = cluster.chains[0].get_last_block()?.unwrap();
-        let last_block_reader = last_block.block.get_reader()?;
-        assert_eq!(last_block_reader.get_proposed_operation_id(), block_id_good);
+        let last_block_header_reader = last_block.header.get_reader()?;
+        assert_eq!(
+            last_block_header_reader.get_proposed_operation_id(),
+            block_id_good
+        );
 
         Ok(())
     }
@@ -1310,7 +1314,7 @@ mod tests {
         let block: crate::block::BlockRef = cluster.chains[0]
             .get_block_by_operation_id(first_op_id)?
             .unwrap();
-        let block_frame = block.block.get_reader()?;
+        let block_frame = block.header.get_reader()?;
         let block_group_id = block_frame.get_proposed_operation_id();
         assert_not_in_pending(&cluster, block_group_id);
 

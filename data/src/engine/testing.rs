@@ -1,7 +1,7 @@
 use tempdir::TempDir;
 
 use exocore_common::node::{LocalNode, Node, NodeId};
-use exocore_common::protos::data_chain_capnp::block;
+use exocore_common::protos::data_chain_capnp::block_header;
 
 use crate::block::{
     Block, BlockHeight, BlockOffset, BlockOperations, BlockOwned, BlockSignatures,
@@ -153,8 +153,8 @@ impl EngineTestCluster {
                 .get_last_block()
                 .unwrap()
                 .map_or((0, 0), |block| {
-                    let block_reader = block.block().get_reader().unwrap();
-                    let block_height = block_reader.get_height();
+                    let block_header_reader = block.header().get_reader().unwrap();
+                    let block_height = block_header_reader.get_height();
 
                     (block.next_offset(), block_height + 1)
                 });
@@ -183,7 +183,7 @@ impl EngineTestCluster {
                 None
             };
 
-            let prev_block_msg = previous_block.map(|b| b.block);
+            let prev_block_msg = previous_block.map(|b| b.header);
             let operations_data = vec![0u8; 123];
             let signatures = create_dummy_block_sigs(operations_data.len() as u32);
             let signatures_size = signatures.whole_data_size() as BlockSignaturesSize;
@@ -309,13 +309,13 @@ pub fn create_dummy_block<I: FrameReader>(
     height: u64,
     operations_size: u32,
     signatures_size: u16,
-    previous_block: Option<crate::block::BlockFrame<I>>,
+    previous_block: Option<crate::block::BlockHeaderFrame<I>>,
     seed: u64,
-) -> crate::block::BlockFrame<Vec<u8>> {
-    let mut msg_builder = CapnpFrameBuilder::<block::Owned>::new();
+) -> crate::block::BlockHeaderFrame<Vec<u8>> {
+    let mut msg_builder = CapnpFrameBuilder::<block_header::Owned>::new();
 
     {
-        let mut block_builder: block::Builder = msg_builder.get_builder();
+        let mut block_builder: block_header::Builder = msg_builder.get_builder();
         block_builder.set_offset(offset);
         block_builder.set_height(height);
         block_builder.set_operations_size(operations_size);
@@ -323,15 +323,16 @@ pub fn create_dummy_block<I: FrameReader>(
         block_builder.set_proposed_node_id(&format!("seed={}", seed));
 
         if let Some(previous_block) = previous_block {
-            let previous_block_reader: block::Reader = previous_block.get_reader().unwrap();
-            block_builder.set_previous_offset(previous_block_reader.get_offset());
+            let previous_block_header_reader: block_header::Reader =
+                previous_block.get_reader().unwrap();
+            block_builder.set_previous_offset(previous_block_header_reader.get_offset());
             block_builder.set_previous_hash(previous_block.inner().inner().multihash_bytes());
         }
     }
 
     let hash_frame = MultihashFrameBuilder::<Sha3_256, _>::new(msg_builder);
     let block_frame_data = SizedFrameBuilder::new(hash_frame);
-    crate::block::read_block_frame(block_frame_data.as_bytes()).unwrap()
+    crate::block::read_header_frame(block_frame_data.as_bytes()).unwrap()
 }
 
 pub fn create_dummy_block_sigs(operations_size: u32) -> SignaturesFrame<Vec<u8>> {

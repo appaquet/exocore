@@ -3,7 +3,7 @@
 #
 # Chain
 #
-struct Block {
+struct BlockHeader {
     offset                 @0: UInt64;
     height                 @1: UInt64;
     previousOffset         @2: UInt64;

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use capnp::traits::ToU16;
 use exocore_common::capnp;
 use exocore_common::node::{Node, NodeId};
-use exocore_common::protos::data_chain_capnp::{block, block_partial_header};
+use exocore_common::protos::data_chain_capnp::{block_header, block_partial_header};
 use exocore_common::protos::data_transport_capnp::{
     chain_sync_request, chain_sync_request::RequestedDetails, chain_sync_response,
 };
@@ -539,7 +539,8 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
             // the block locally, and update the last_common_block
             if first_non_common_block.is_none() {
                 if let Ok(local_block) = store.get_block(offset) {
-                    let local_block_signature = local_block.block.inner().inner().multihash_bytes();
+                    let local_block_signature =
+                        local_block.header.inner().inner().multihash_bytes();
                     if header_reader.get_block_hash()? == local_block_signature {
                         let is_latest_common_offset = from_node_info
                             .last_common_block
@@ -917,19 +918,19 @@ struct BlockPartialHeader {
 
 impl BlockPartialHeader {
     fn from_stored_block<B: Block>(stored_block: B) -> Result<BlockPartialHeader, Error> {
-        let block_reader: block::Reader = stored_block.block().get_reader()?;
-        let block_signature = stored_block.block().inner().inner().multihash_bytes();
+        let block_header_reader: block_header::Reader = stored_block.header().get_reader()?;
+        let block_signature = stored_block.header().inner().inner().multihash_bytes();
 
         Ok(BlockPartialHeader {
             offset: stored_block.offset(),
-            height: block_reader.get_height(),
+            height: block_header_reader.get_height(),
             hash: block_signature.to_vec(),
-            previous_offset: block_reader.get_previous_offset(),
-            previous_hash: block_reader.get_previous_hash()?.to_vec(),
+            previous_offset: block_header_reader.get_previous_offset(),
+            previous_hash: block_header_reader.get_previous_hash()?.to_vec(),
 
-            block_size: stored_block.block().whole_data_size() as u32,
-            operations_size: block_reader.get_operations_size(),
-            signatures_size: block_reader.get_signatures_size(),
+            block_size: stored_block.header().whole_data_size() as u32,
+            operations_size: block_header_reader.get_operations_size(),
+            signatures_size: block_header_reader.get_signatures_size(),
         })
     }
 
@@ -1028,8 +1029,8 @@ fn chain_sample_block_partial_headers<CS: chain::ChainStore>(
         ChainSyncError::Other("Expected a last block since ranges were not empty".to_string())
     })?;
 
-    let last_block_reader: block::Reader = last_block.block.get_reader()?;
-    let last_block_height = last_block_reader.get_height();
+    let last_block_header_reader: block_header::Reader = last_block.header.get_reader()?;
+    let last_block_height = last_block_header_reader.get_height();
 
     let mut blocks_iter = store
         .blocks_iter(from_offset)
@@ -1039,8 +1040,8 @@ fn chain_sample_block_partial_headers<CS: chain::ChainStore>(
     let first_block = blocks_iter.peek().ok_or_else(|| {
         ChainSyncError::Other("Expected a first block since ranges were not empty".to_string())
     })?;
-    let first_block_reader: block::Reader = first_block.block.get_reader()?;
-    let first_block_height = first_block_reader.get_height();
+    let first_block_header_reader: block_header::Reader = first_block.header.get_reader()?;
+    let first_block_height = first_block_header_reader.get_height();
 
     let range_blocks_count = last_block_height - first_block_height;
     let range_blocks_skip = (range_blocks_count / sampled_count).max(1);
@@ -1723,8 +1724,8 @@ mod tests {
             .expect("Node 2 didn't have any data");
         assert_eq!(node1_last_block.offset, node2_last_block.offset);
         assert_eq!(
-            node1_last_block.block.whole_data(),
-            node2_last_block.block.whole_data()
+            node1_last_block.header.whole_data(),
+            node2_last_block.header.whole_data()
         );
         assert_eq!(
             node1_last_block.signatures.whole_data(),
