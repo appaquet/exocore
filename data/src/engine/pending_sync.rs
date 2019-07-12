@@ -191,8 +191,8 @@ impl<PS: PendingStore> PendingSynchronizer<PS> {
 
             // first, we store operations for which we have data directly in the payload
             let mut included_operations = HashSet::<OperationId>::new();
-            if sync_range_reader.has_operations() {
-                for operation_frame_res in sync_range_reader.get_operations()?.iter() {
+            if sync_range_reader.has_operations_frames() {
+                for operation_frame_res in sync_range_reader.get_operations_frames()?.iter() {
                     let operation_frame_data = operation_frame_res?;
                     let operation_frame =
                         crate::operation::read_operation_frame(operation_frame_data)?.to_owned();
@@ -237,7 +237,7 @@ impl<PS: PendingStore> PendingSynchronizer<PS> {
                     out_ranges.push_operation(operation, OperationDetails::Full);
                 }
             } else if !sync_range_reader.has_operations_headers()
-                && !sync_range_reader.has_operations()
+                && !sync_range_reader.has_operations_frames()
             {
                 // remote has only sent us hash, we reply with headers
                 for operation in operations_iter {
@@ -739,7 +739,7 @@ impl SyncRangeBuilder {
         if !self.operations.is_empty() {
             let mut operations_builder = range_msg_builder
                 .reborrow()
-                .init_operations(self.operations.len() as u32);
+                .init_operations_frames(self.operations.len() as u32);
             for (i, operation) in self.operations.iter().enumerate() {
                 operations_builder.set(i as u32, operation.frame.whole_data());
             }
@@ -1213,13 +1213,13 @@ mod tests {
         let frame0 = frames_builder[0].as_owned_frame();
         let frame0_reader: pending_sync_range::Reader = frame0.get_reader()?;
         let frame0_hash = frame0_reader.reborrow().get_operations_hash().unwrap();
-        assert_eq!(frame0_reader.has_operations(), false);
+        assert_eq!(frame0_reader.has_operations_frames(), false);
         assert_eq!(frame0_reader.has_operations_headers(), false);
 
         let frame1 = frames_builder[1].as_owned_frame();
         let frame1_reader: pending_sync_range::Reader = frame1.get_reader()?;
         let frame1_hash = frame1_reader.reborrow().get_operations_hash()?;
-        assert_eq!(frame1_reader.has_operations(), false);
+        assert_eq!(frame1_reader.has_operations_frames(), false);
         assert_eq!(frame1_reader.has_operations_headers(), false);
 
         assert_ne!(frame0_hash, frame1_hash);
@@ -1234,7 +1234,7 @@ mod tests {
 
         let frame0 = frames_builder[0].as_owned_frame();
         let frame0_reader: pending_sync_range::Reader = frame0.get_reader()?;
-        assert_eq!(frame0_reader.has_operations(), false);
+        assert_eq!(frame0_reader.has_operations_frames(), false);
         assert_eq!(frame0_reader.has_operations_headers(), true);
 
         let operations = frame0_reader.get_operations_headers()?;
@@ -1251,10 +1251,10 @@ mod tests {
 
         let frame0 = frames_builder[0].as_owned_frame();
         let frame0_reader: pending_sync_range::Reader = frame0.get_reader()?;
-        assert_eq!(frame0_reader.has_operations(), true);
+        assert_eq!(frame0_reader.has_operations_frames(), true);
         assert_eq!(frame0_reader.has_operations_headers(), false);
 
-        let operations = frame0_reader.get_operations()?;
+        let operations = frame0_reader.get_operations_frames()?;
         let operation0_data = operations.get(0)?;
         let operation0_frame = crate::operation::read_operation_frame(operation0_data)?;
 
@@ -1439,10 +1439,10 @@ mod tests {
                 debug!("    Headers=None");
             }
 
-            if range.has_operations() {
-                debug!("    Operations={}", range.get_operations().unwrap().len());
+            if range.has_operations_frames() {
+                debug!("    Frames={}", range.get_operations_frames().unwrap().len());
             } else {
-                debug!("    Operations=None");
+                debug!("    Frames=None");
             }
         }
     }

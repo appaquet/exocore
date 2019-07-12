@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use capnp::traits::ToU16;
 use exocore_common::capnp;
 use exocore_common::node::{Node, NodeId};
-use exocore_common::protos::data_chain_capnp::{block, block_header};
+use exocore_common::protos::data_chain_capnp::{block, block_partial_header};
 use exocore_common::protos::data_transport_capnp::{
     chain_sync_request, chain_sync_request::RequestedDetails, chain_sync_response,
 };
@@ -205,7 +205,7 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
                 None
             };
 
-            let headers = chain_sample_block_headers(
+            let headers = chain_sample_block_partial_headers(
                 store,
                 from_offset,
                 to_offset_opt,
@@ -431,7 +431,7 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
     fn create_sync_response_for_headers(
         from_offset: BlockOffset,
         to_offset: BlockOffset,
-        headers: Vec<BlockHeader>,
+        headers: Vec<BlockPartialHeader>,
     ) -> Result<CapnpFrameBuilder<chain_sync_response::Owned>, Error> {
         let mut frame_builder = CapnpFrameBuilder::new();
         let mut response_builder: chain_sync_response::Builder = frame_builder.get_builder();
@@ -522,7 +522,7 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
         let mut all_contiguous = true;
 
         for header in headers_reader.iter() {
-            let header_reader: block_header::Reader = header;
+            let header_reader: block_partial_header::Reader = header;
             let offset = header_reader.get_offset();
             let height = header_reader.get_height();
 
@@ -547,7 +547,9 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
                             .map_or(true, |b| b.offset < offset);
                         if is_latest_common_offset {
                             from_node_info.last_common_block =
-                                Some(BlockHeader::from_block_header_reader(header_reader)?);
+                                Some(BlockPartialHeader::from_block_partial_header_reader(
+                                    header_reader,
+                                )?);
                             has_new_common_block = true;
                         }
                     } else {
@@ -564,8 +566,9 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
                 .as_ref()
                 .map_or(true, |b| b.offset < offset);
             if is_latest_offset {
-                from_node_info.last_known_block =
-                    Some(BlockHeader::from_block_header_reader(header_reader)?);
+                from_node_info.last_known_block = Some(
+                    BlockPartialHeader::from_block_partial_header_reader(header_reader)?,
+                );
             }
         }
 
@@ -617,9 +620,9 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
         let from_node_info = self.get_or_create_node_info_mut(&from_node.id());
 
         // write incoming blocks
-        let mut last_local_block: Option<BlockHeader> = store
+        let mut last_local_block: Option<BlockPartialHeader> = store
             .get_last_block()?
-            .map(BlockHeader::from_stored_block)
+            .map(BlockPartialHeader::from_stored_block)
             .transpose()?;
         let blocks_reader = response_reader.get_blocks()?;
         for data_res in blocks_reader.iter() {
@@ -632,12 +635,12 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
             // make sure the block was expected in our chain, then add it
             let next_local_offset = last_local_block
                 .as_ref()
-                .map_or(0, BlockHeader::next_offset);
+                .map_or(0, BlockPartialHeader::next_offset);
             if block.offset() == next_local_offset {
                 sync_context.push_event(Event::NewChainBlock(block.offset()));
                 store.write_block(&block)?;
-                let new_block_header = BlockHeader::from_stored_block(block)?;
-                last_local_block = Some(new_block_header);
+                let new_block_partial_header = BlockPartialHeader::from_stored_block(block)?;
+                last_local_block = Some(new_block_partial_header);
             } else {
                 return Err(ChainSyncError::InvalidSyncResponse(format!(
                     "Got a block with data at an invalid offset. \
@@ -796,9 +799,9 @@ struct NodeSyncInfo {
     config: ChainSyncConfig,
     node_id: NodeId,
 
-    last_common_block: Option<BlockHeader>,
+    last_common_block: Option<BlockPartialHeader>,
     last_common_is_known: bool,
-    last_known_block: Option<BlockHeader>,
+    last_known_block: Option<BlockPartialHeader>,
 
     request_tracker: RequestTracker,
 }
@@ -896,10 +899,11 @@ enum NodeStatus {
 }
 
 ///
-/// Abstracts block's header coming from local store or remote node
+/// Partial header of a block coming from local store or remote node, used for comparison
+/// between local and remote stores
 ///
 #[derive(Debug)]
-struct BlockHeader {
+struct BlockPartialHeader {
     offset: BlockOffset,
     height: BlockHeight,
     hash: Vec<u8>,
@@ -911,12 +915,12 @@ struct BlockHeader {
     signatures_size: BlockSignaturesSize,
 }
 
-impl BlockHeader {
-    fn from_stored_block<B: Block>(stored_block: B) -> Result<BlockHeader, Error> {
+impl BlockPartialHeader {
+    fn from_stored_block<B: Block>(stored_block: B) -> Result<BlockPartialHeader, Error> {
         let block_reader: block::Reader = stored_block.block().get_reader()?;
         let block_signature = stored_block.block().inner().inner().multihash_bytes();
 
-        Ok(BlockHeader {
+        Ok(BlockPartialHeader {
             offset: stored_block.offset(),
             height: block_reader.get_height(),
             hash: block_signature.to_vec(),
@@ -929,18 +933,18 @@ impl BlockHeader {
         })
     }
 
-    fn from_block_header_reader(
-        block_header_reader: block_header::Reader,
-    ) -> Result<BlockHeader, Error> {
-        Ok(BlockHeader {
-            offset: block_header_reader.get_offset(),
-            height: block_header_reader.get_height(),
-            hash: block_header_reader.get_block_hash()?.to_vec(),
-            previous_offset: block_header_reader.get_previous_offset(),
-            previous_hash: block_header_reader.get_previous_hash()?.to_vec(),
-            block_size: block_header_reader.get_block_size(),
-            operations_size: block_header_reader.get_operations_size(),
-            signatures_size: block_header_reader.get_signatures_size(),
+    fn from_block_partial_header_reader(
+        block_partial_header_reader: block_partial_header::Reader,
+    ) -> Result<BlockPartialHeader, Error> {
+        Ok(BlockPartialHeader {
+            offset: block_partial_header_reader.get_offset(),
+            height: block_partial_header_reader.get_height(),
+            hash: block_partial_header_reader.get_block_hash()?.to_vec(),
+            previous_offset: block_partial_header_reader.get_previous_offset(),
+            previous_hash: block_partial_header_reader.get_previous_hash()?.to_vec(),
+            block_size: block_partial_header_reader.get_block_size(),
+            operations_size: block_partial_header_reader.get_operations_size(),
+            signatures_size: block_partial_header_reader.get_signatures_size(),
         })
     }
 
@@ -952,7 +956,7 @@ impl BlockHeader {
             + BlockOffset::from(self.signatures_size)
     }
 
-    fn copy_into_builder(&self, builder: &mut block_header::Builder) {
+    fn copy_into_builder(&self, builder: &mut block_partial_header::Builder) {
         builder.set_offset(self.offset);
         builder.set_height(self.height);
         builder.set_block_hash(&self.hash);
@@ -989,20 +993,20 @@ impl ChainSyncError {
 }
 
 ///
-/// Samples the local chain and returns a collection of `BlockHeader` at different position in the asked range.
+/// Samples the local chain and returns a collection of `BlockPartialHeader` at different position in the asked range.
 ///
 /// `from_offset` and `to_offset` are best efforts and fallback to begin/end of chain if they don't exist.
 /// `begin_count` and `end_count` are number of headers to include without sampling from beginning and end of range.
 /// `sampled_count` is the approximate number of headers to return, excluding the `begin_count` and `end_count`
 ///
-fn chain_sample_block_headers<CS: chain::ChainStore>(
+fn chain_sample_block_partial_headers<CS: chain::ChainStore>(
     store: &CS,
     from_offset: BlockOffset,
     to_offset: Option<BlockOffset>,
     begin_count: BlockOffset,
     end_count: BlockOffset,
     sampled_count: BlockOffset,
-) -> Result<Vec<BlockHeader>, Error> {
+) -> Result<Vec<BlockPartialHeader>, Error> {
     let mut headers = Vec::new();
 
     let segments_range = store.segments();
@@ -1057,8 +1061,8 @@ fn chain_sample_block_headers<CS: chain::ChainStore>(
             || blocks_count > range_blocks_lasts
             || blocks_count % range_blocks_skip == 0
         {
-            let block_header = BlockHeader::from_stored_block(current_block)?;
-            headers.push(block_header);
+            let block_partial_header = BlockPartialHeader::from_stored_block(current_block)?;
+            headers.push(block_partial_header);
         }
     }
 
@@ -1151,7 +1155,7 @@ mod tests {
     }
 
     #[test]
-    fn test_chain_sample_block_headers() -> Result<(), failure::Error> {
+    fn test_chain_sample_block_partial_headers() -> Result<(), failure::Error> {
         let mut cluster = EngineTestCluster::new(1);
         cluster.chain_generate_dummy(0, 100, 3424);
 
@@ -1160,25 +1164,26 @@ mod tests {
             .map(|b| b.offset)
             .collect();
 
-        let headers = chain_sample_block_headers(&cluster.chains[0], 0, None, 2, 2, 10)?;
+        let headers = chain_sample_block_partial_headers(&cluster.chains[0], 0, None, 2, 2, 10)?;
         assert_eq!(
             headers.iter().map(|b| b.height).collect::<Vec<_>>(),
             vec![0, 1, 9, 18, 27, 36, 45, 54, 63, 72, 81, 90, 98, 99]
         );
 
-        let headers = chain_sample_block_headers(&cluster.chains[0], 0, None, 0, 0, 1)?;
+        let headers = chain_sample_block_partial_headers(&cluster.chains[0], 0, None, 0, 0, 1)?;
         assert_eq!(
             headers.iter().map(|b| b.height).collect::<Vec<_>>(),
             vec![0, 99]
         );
 
-        let headers = chain_sample_block_headers(&cluster.chains[0], offsets[10], None, 5, 5, 10)?;
+        let headers =
+            chain_sample_block_partial_headers(&cluster.chains[0], offsets[10], None, 5, 5, 10)?;
         assert_eq!(
             headers.iter().map(|b| b.height).collect::<Vec<_>>(),
             vec![10, 11, 12, 13, 14, 18, 26, 34, 42, 50, 58, 66, 74, 82, 90, 95, 96, 97, 98, 99]
         );
 
-        let headers = chain_sample_block_headers(
+        let headers = chain_sample_block_partial_headers(
             &cluster.chains[0],
             offsets[10],
             Some(offsets[50]),

@@ -378,7 +378,7 @@ pub mod block {
     }
 }
 
-pub mod block_header {
+pub mod block_partial_header {
     #[derive(Copy, Clone)]
     pub struct Owned;
     impl<'a> ::capnp::traits::Owned<'a> for Owned {
@@ -700,7 +700,7 @@ pub mod block_header {
             data: 6,
             pointers: 3,
         };
-        pub const TYPE_ID: u64 = 0xc58d_6c6b_8803_2108;
+        pub const TYPE_ID: u64 = 0x8886_1bf3_a190_09f5;
     }
 }
 
