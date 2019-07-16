@@ -188,19 +188,17 @@ where
         in_message: InMessage,
         query: Query,
     ) -> Result<(), Error> {
-        // TODO: Error handling
-
         let weak_inner1 = weak_inner.clone();
         let weak_inner2 = weak_inner.clone();
         tokio::spawn(
             Inner::execute_query_async(weak_inner1, query)
-                .and_then(move |results| {
+                .then(move |result| {
                     let inner = weak_inner2.upgrade().ok_or(Error::InnerUpgrade)?;
                     let inner = inner.read()?;
                     if let Some(transport) = &inner.transport_out {
                         let message = message_serialize_query_response(
                             in_message.from,
-                            results,
+                            result,
                             &inner.schema,
                             &inner.cell,
                         )?;
@@ -215,8 +213,8 @@ where
 
                     Ok(())
                 })
-                .map_err(|err| {
-                    error!("Couldn't run incoming query: {}", err);
+                .map_err(|err: Error| {
+                    error!("Error executing incoming query: {}", err);
                 }),
         );
 
@@ -228,16 +226,13 @@ where
         in_message: InMessage,
         mutation: Mutation,
     ) -> Result<(), Error> {
-        // TODO: Error handling
-
         let inner = weak_inner.upgrade().ok_or(Error::InnerUpgrade)?;
         let inner = inner.read()?;
-
-        let op_id = inner.write_mutation(mutation)?;
+        let result = inner.write_mutation(mutation);
 
         if let Some(transport) = &inner.transport_out {
-            let message = message_serialize_mutation_response(in_message.from, op_id, &inner.cell)?;
-
+            let message =
+                message_serialize_mutation_response(in_message.from, result, &inner.cell)?;
             transport.unbounded_send(message).map_err(|_err| {
                 Error::Fatal(
                     "Couldn't return query results as transport channel is closed".to_string(),
@@ -349,7 +344,7 @@ where
         weak_inner: Weak<RwLock<Inner<CS, PS>>>,
         query: Query,
     ) -> impl Future<Item = EntitiesResults, Error = Error> {
-        // TODO: This is going to execute on whatever executor its given. We should schedule on bounded thread pool
+        // TODO: Use a bounded threadpool instead of executing on current executor: https://github.com/appaquet/exocore/issues/113
         future::lazy(|| {
             future::poll_fn(move || {
                 let inner = weak_inner.upgrade().ok_or(Error::InnerUpgrade)?;
@@ -419,31 +414,49 @@ fn message_deserialize_incoming(
 
 fn message_serialize_query_response(
     to_node: Node,
-    results: EntitiesResults,
+    result: Result<EntitiesResults, Error>,
     schema: &Arc<Schema>,
     cell: &Cell,
 ) -> Result<OutMessage, Error> {
     let mut msg = CapnpFrameBuilder::<query_response::Owned>::new();
     let mut msg_builder = msg.get_builder();
-    let serialized_results =
-        crate::domain::serialization::with_schema(&schema, || serde_json::to_vec(&results))?;
-    msg_builder.set_response(&serialized_results);
+
+    match result {
+        Ok(results) => {
+            let serialized_results = crate::domain::serialization::with_schema(&schema, || {
+                serde_json::to_vec(&results)
+            })?;
+            msg_builder.set_response(&serialized_results);
+        }
+        Err(err) => {
+            error!("Returning error executing incoming query: {}", err);
+            msg_builder.set_error(&err.to_string());
+        }
+    }
 
     let message = OutMessage::from_framed_message(cell, vec![to_node], msg)?;
-
     Ok(message)
 }
 
 fn message_serialize_mutation_response(
     to_node: Node,
-    operation_id: OperationId,
+    result: Result<OperationId, Error>,
     cell: &Cell,
 ) -> Result<OutMessage, Error> {
     let mut msg = CapnpFrameBuilder::<mutation_response::Owned>::new();
     let mut msg_builder = msg.get_builder();
-    msg_builder.set_operation_id(operation_id);
-    let message = OutMessage::from_framed_message(cell, vec![to_node], msg)?;
 
+    match result {
+        Ok(op_id) => {
+            msg_builder.set_operation_id(op_id);
+        }
+        Err(err) => {
+            error!("Returning error executing incoming mutation: {}", err);
+            msg_builder.set_error(&err.to_string());
+        }
+    }
+
+    let message = OutMessage::from_framed_message(cell, vec![to_node], msg)?;
     Ok(message)
 }
 
@@ -516,14 +529,12 @@ mod tests {
         let mut test_store = TestLocalStore::new()?;
         test_store.start_store()?;
 
-        let operation_id = test_store.put_contact_trait("entry1", "contact1", "Hello World")?;
+        let mutation = test_store.create_put_contact_mutation("entry1", "contact1", "Hello World");
+        let operation_id = test_store.mutate_via_handle(mutation)?;
         test_store.cluster.wait_operation_committed(0, operation_id);
 
         let query = Query::match_text("hello");
-        let results: EntitiesResults = test_store
-            .cluster
-            .runtime
-            .block_on(test_store.store_handle.query(query))?;
+        let results = test_store.query_via_handle(query)?;
         assert_eq!(results.results.len(), 1);
 
         Ok(())
@@ -534,14 +545,27 @@ mod tests {
         let mut test_store = TestLocalStore::new()?;
         test_store.start_store()?;
 
-        let mutation =
-            test_store.create_put_contact_trait_mutation("entry1", "contact1", "Hello World");
+        let mutation = test_store.create_put_contact_mutation("entry1", "contact1", "Hello World");
         let operation_id = test_store.mutate_via_transport(mutation)?;
         test_store.cluster.wait_operation_committed(0, operation_id);
 
         let query = Query::match_text("hello");
         let results = test_store.query_via_transport(query)?;
         assert_eq!(results.results.len(), 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn query_error_propagating() -> Result<(), failure::Error> {
+        let mut test_store = TestLocalStore::new()?;
+        test_store.start_store()?;
+
+        let query = Query::TestFail;
+        assert!(test_store.query_via_handle(query).is_err());
+
+        let query = Query::TestFail;
+        assert!(test_store.query_via_transport(query).is_err());
 
         Ok(())
     }
@@ -646,6 +670,14 @@ mod tests {
             Ok(())
         }
 
+        fn mutate_via_handle(&mut self, mutation: Mutation) -> Result<OperationId, failure::Error> {
+            let resp_future = self.store_handle.mutate(mutation);
+            self.cluster
+                .runtime
+                .block_on(resp_future)
+                .map_err(|err| err.into())
+        }
+
         fn mutate_via_transport(
             &mut self,
             mutation: Mutation,
@@ -693,6 +725,14 @@ mod tests {
                 TypedCapnpFrame::<_, mutation_response::Owned>::new(in_msg_reader.get_data()?)?;
             let resp_reader = resp_frame.get_reader()?;
             Ok(resp_reader.get_operation_id())
+        }
+
+        fn query_via_handle(&mut self, query: Query) -> Result<EntitiesResults, failure::Error> {
+            let resp_future = self.store_handle.query(query);
+            self.cluster
+                .runtime
+                .block_on(resp_future)
+                .map_err(|err| err.into())
         }
 
         fn query_via_transport(&mut self, query: Query) -> Result<EntitiesResults, failure::Error> {
@@ -747,25 +787,7 @@ mod tests {
             Ok(deserialized_response)
         }
 
-        fn put_contact_trait<E: Into<EntityId>, T: Into<TraitId>, N: Into<String>>(
-            &mut self,
-            entity_id: E,
-            trait_id: T,
-            name: N,
-        ) -> Result<OperationId, failure::Error> {
-            let mutation = self.create_put_contact_trait_mutation(entity_id, trait_id, name);
-            let res = self
-                .cluster
-                .runtime
-                .block_on(self.store_handle.mutate(mutation))?;
-            Ok(res)
-        }
-
-        fn create_put_contact_trait_mutation<
-            E: Into<EntityId>,
-            T: Into<TraitId>,
-            N: Into<String>,
-        >(
+        fn create_put_contact_mutation<E: Into<EntityId>, T: Into<TraitId>, N: Into<String>>(
             &self,
             entity_id: E,
             trait_id: T,

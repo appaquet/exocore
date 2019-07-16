@@ -6,6 +6,7 @@ struct MutationRequest {
 
 struct MutationResponse {
     operationId        @0: UInt64;
+    error              @1: Text;
 }
 
 struct QueryRequest {
@@ -14,4 +15,5 @@ struct QueryRequest {
 
 struct QueryResponse {
     response           @0: Data;
+    error              @1: Text;
 }

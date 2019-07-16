@@ -505,12 +505,14 @@ where
             Ok(data) => {
                 let mutation = Mutation::from_json_slice(schema, data).ok()?;
                 match mutation {
-                    Mutation::PutTrait(mutation) => Some(IndexMutation::PutTrait(PutTraitMutation {
-                        block_offset: None,
-                        operation_id: operation.operation_id,
-                        entity_id: mutation.entity_id,
-                        trt: mutation.trt,
-                    })),
+                    Mutation::PutTrait(mutation) => {
+                        Some(IndexMutation::PutTrait(PutTraitMutation {
+                            block_offset: None,
+                            operation_id: operation.operation_id,
+                            entity_id: mutation.entity_id,
+                            trt: mutation.trt,
+                        }))
+                    }
                     Mutation::DeleteTrait(mutation) => {
                         Some(IndexMutation::PutTraitTombstone(PutTraitTombstone {
                             block_offset: None,
@@ -520,9 +522,12 @@ where
                         }))
                     }
                 }
-            },
+            }
             Err(err) => {
-                debug!("Operation {} didn't have any data to index: {:?}", operation.operation_id, err);
+                debug!(
+                    "Operation {} didn't have any data to index: {:?}",
+                    operation.operation_id, err
+                );
                 None
             }
         }

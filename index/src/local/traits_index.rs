@@ -180,6 +180,9 @@ impl TraitsIndex {
             Query::Match(inner_query) => self.search_matches(searcher, inner_query, limit)?,
             Query::IdEqual(entity_id) => self.search_entity_id(searcher, &entity_id, limit)?,
             Query::Conjunction(_inner_query) => unimplemented!(),
+
+            #[cfg(test)]
+            Query::TestFail => return Err(Error::Other("Query failed for tests".to_string())),
         };
 
         Ok(res)

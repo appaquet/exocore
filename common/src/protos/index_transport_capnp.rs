@@ -259,6 +259,16 @@ pub mod mutation_response {
         pub fn get_operation_id(self) -> u64 {
             self.reader.get_data_field::<u64>(0)
         }
+        #[inline]
+        pub fn get_error(self) -> ::capnp::Result<::capnp::text::Reader<'a>> {
+            ::capnp::traits::FromPointerReader::get_from_pointer(
+                &self.reader.get_pointer_field(0),
+                ::std::option::Option::None,
+            )
+        }
+        pub fn has_error(&self) -> bool {
+            !self.reader.get_pointer_field(0).is_null()
+        }
     }
 
     pub struct Builder<'a> {
@@ -338,6 +348,24 @@ pub mod mutation_response {
         pub fn set_operation_id(&mut self, value: u64) {
             self.builder.set_data_field::<u64>(0, value);
         }
+        #[inline]
+        pub fn get_error(self) -> ::capnp::Result<::capnp::text::Builder<'a>> {
+            ::capnp::traits::FromPointerBuilder::get_from_pointer(
+                self.builder.get_pointer_field(0),
+                ::std::option::Option::None,
+            )
+        }
+        #[inline]
+        pub fn set_error(&mut self, value: ::capnp::text::Reader) {
+            self.builder.get_pointer_field(0).set_text(value);
+        }
+        #[inline]
+        pub fn init_error(self, size: u32) -> ::capnp::text::Builder<'a> {
+            self.builder.get_pointer_field(0).init_text(size)
+        }
+        pub fn has_error(&self) -> bool {
+            !self.builder.get_pointer_field(0).is_null()
+        }
     }
 
     pub struct Pipeline {
@@ -355,7 +383,7 @@ pub mod mutation_response {
         use capnp::private::layout;
         pub const STRUCT_SIZE: layout::StructSize = layout::StructSize {
             data: 1,
-            pointers: 0,
+            pointers: 1,
         };
         pub const TYPE_ID: u64 = 0xe283_c44d_776a_873c;
     }
@@ -621,6 +649,16 @@ pub mod query_response {
         pub fn has_response(&self) -> bool {
             !self.reader.get_pointer_field(0).is_null()
         }
+        #[inline]
+        pub fn get_error(self) -> ::capnp::Result<::capnp::text::Reader<'a>> {
+            ::capnp::traits::FromPointerReader::get_from_pointer(
+                &self.reader.get_pointer_field(1),
+                ::std::option::Option::None,
+            )
+        }
+        pub fn has_error(&self) -> bool {
+            !self.reader.get_pointer_field(1).is_null()
+        }
     }
 
     pub struct Builder<'a> {
@@ -710,6 +748,24 @@ pub mod query_response {
         pub fn has_response(&self) -> bool {
             !self.builder.get_pointer_field(0).is_null()
         }
+        #[inline]
+        pub fn get_error(self) -> ::capnp::Result<::capnp::text::Builder<'a>> {
+            ::capnp::traits::FromPointerBuilder::get_from_pointer(
+                self.builder.get_pointer_field(1),
+                ::std::option::Option::None,
+            )
+        }
+        #[inline]
+        pub fn set_error(&mut self, value: ::capnp::text::Reader) {
+            self.builder.get_pointer_field(1).set_text(value);
+        }
+        #[inline]
+        pub fn init_error(self, size: u32) -> ::capnp::text::Builder<'a> {
+            self.builder.get_pointer_field(1).init_text(size)
+        }
+        pub fn has_error(&self) -> bool {
+            !self.builder.get_pointer_field(1).is_null()
+        }
     }
 
     pub struct Pipeline {
@@ -727,7 +783,7 @@ pub mod query_response {
         use capnp::private::layout;
         pub const STRUCT_SIZE: layout::StructSize = layout::StructSize {
             data: 0,
-            pointers: 1,
+            pointers: 2,
         };
         pub const TYPE_ID: u64 = 0xc27a_b859_de9c_c5bf;
     }
