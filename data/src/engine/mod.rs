@@ -16,7 +16,7 @@ use exocore_common::time::Clock;
 use exocore_common::utils::completion_notifier::{
     CompletionError, CompletionListener, CompletionNotifier,
 };
-use exocore_transport::{Error as TransportError, InMessage, OutMessage, TransportHandle};
+use exocore_transport::{Error as TransportError, InMessage, OutMessage, TransportHandle, TransportLayer};
 use futures::prelude::*;
 use futures::sync::mpsc;
 use std;
@@ -703,13 +703,13 @@ impl SyncContextMessage {
 
         let message = match self {
             SyncContextMessage::PendingSyncRequest(_, request_builder) => {
-                OutMessage::from_framed_message(cell, to_nodes, request_builder)?
+                OutMessage::from_framed_message(cell, to_nodes, TransportLayer::Data, request_builder)?
             }
             SyncContextMessage::ChainSyncRequest(_, request_builder) => {
-                OutMessage::from_framed_message(cell, to_nodes, request_builder)?
+                OutMessage::from_framed_message(cell, to_nodes, TransportLayer::Data, request_builder)?
             }
             SyncContextMessage::ChainSyncResponse(_, response_builder) => {
-                OutMessage::from_framed_message(cell, to_nodes, response_builder)?
+                OutMessage::from_framed_message(cell, to_nodes, TransportLayer::Data, response_builder)?
             }
         };
 

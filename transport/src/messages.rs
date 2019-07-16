@@ -16,6 +16,7 @@ impl OutMessage {
     pub fn from_framed_message<T>(
         cell: &Cell,
         to_nodes: Vec<Node>,
+        to_layer: TransportLayer,
         frame: CapnpFrameBuilder<T>,
     ) -> Result<OutMessage, Error>
     where
@@ -23,7 +24,7 @@ impl OutMessage {
     {
         let mut envelope_frame_builder = CapnpFrameBuilder::<envelope::Owned>::new();
         let mut envelope_message_builder = envelope_frame_builder.get_builder();
-        envelope_message_builder.set_layer(TransportLayer::Data.into()); // TODO: Should be on the right layer
+        envelope_message_builder.set_layer(to_layer.to_code());
         envelope_message_builder.set_type(T::MESSAGE_TYPE);
         envelope_message_builder.set_cell_id(cell.id().as_bytes());
         envelope_message_builder.set_from_node_id(&cell.local_node().id().to_str());

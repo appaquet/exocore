@@ -20,6 +20,7 @@ use crate::operation::OperationId;
 use crate::*;
 use exocore_common::cell::FullCell;
 use exocore_transport::mock::MockTransport;
+use exocore_transport::TransportLayer;
 
 ///
 /// exocore-data testing utility
@@ -167,7 +168,7 @@ impl DataTestCluster {
     pub fn start_engine(&mut self, node_idx: usize) {
         let transport = self
             .transport_hub
-            .get_transport(self.nodes[node_idx].clone());
+            .get_transport(self.nodes[node_idx].clone(), TransportLayer::Data);
 
         let mut engine = Engine::new(
             self.engines_config[node_idx],

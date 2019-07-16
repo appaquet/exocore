@@ -16,7 +16,7 @@ use exocore_common::utils::completion_notifier::{
     CompletionError, CompletionListener, CompletionNotifier,
 };
 use exocore_data::operation::OperationId;
-use exocore_transport::{InMessage, OutMessage, TransportHandle};
+use exocore_transport::{InMessage, OutMessage, TransportHandle, TransportLayer};
 use futures::prelude::*;
 use futures::sync::mpsc;
 use std::sync::{Arc, RwLock, Weak};
@@ -434,7 +434,7 @@ fn message_serialize_query_response(
         }
     }
 
-    let message = OutMessage::from_framed_message(cell, vec![to_node], msg)?;
+    let message = OutMessage::from_framed_message(cell, vec![to_node], TransportLayer::Index, msg)?;
     Ok(message)
 }
 
@@ -456,7 +456,7 @@ fn message_serialize_mutation_response(
         }
     }
 
-    let message = OutMessage::from_framed_message(cell, vec![to_node], msg)?;
+    let message = OutMessage::from_framed_message(cell, vec![to_node], TransportLayer::Index, msg)?;
     Ok(message)
 }
 
@@ -509,11 +509,11 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::super::entities_index::EntitiesIndexConfig;
+    use super::super::traits_index::TraitsIndexConfig;
     use super::*;
     use crate::domain::entity::{EntityId, Record, Trait, TraitId};
     use crate::domain::schema::tests::create_test_schema;
-    use super::super::entities_index::EntitiesIndexConfig;
-    use super::super::traits_index::TraitsIndexConfig;
     use crate::mutation::PutTraitMutation;
     use exocore_common::node::LocalNode;
     use exocore_common::protos::index_transport_capnp::mutation_response;
@@ -521,6 +521,7 @@ mod tests {
     use exocore_data::{DirectoryChainStore, MemoryPendingStore};
     use exocore_transport::mock::MockTransportHandle;
     use exocore_transport::transport::{MpscHandleSink, MpscHandleStream};
+    use exocore_transport::TransportLayer;
     use failure::err_msg;
     use tempdir::TempDir;
 
@@ -613,7 +614,7 @@ mod tests {
 
             let transport = cluster
                 .transport_hub
-                .get_transport(cluster.nodes[0].clone());
+                .get_transport(cluster.nodes[0].clone(), TransportLayer::Index);
 
             let store = LocalStore::new(
                 cluster.cells[0].clone(),
@@ -626,8 +627,9 @@ mod tests {
 
             // external node & transport used to communicate with store
             let external_node = LocalNode::generate();
-            let mut external_transport_handle =
-                cluster.transport_hub.get_transport(external_node.clone());
+            let mut external_transport_handle = cluster
+                .transport_hub
+                .get_transport(external_node.clone(), TransportLayer::Index);
             let external_transport_sink = external_transport_handle.get_sink();
             let external_transport_stream = external_transport_handle.get_stream();
             cluster.runtime.spawn(
@@ -696,6 +698,7 @@ mod tests {
             let out_message = OutMessage::from_framed_message(
                 &external_cell,
                 vec![self.cluster.nodes[0].node().clone()],
+                TransportLayer::Index,
                 mutation_frame,
             )?;
             let sink = self.cluster.runtime.block_on(
@@ -749,6 +752,7 @@ mod tests {
             let out_message = OutMessage::from_framed_message(
                 &external_cell,
                 vec![self.cluster.nodes[0].node().clone()],
+                TransportLayer::Index,
                 query_frame,
             )?;
             let sink = self.cluster.runtime.block_on(

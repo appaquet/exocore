@@ -466,7 +466,7 @@ mod tests {
         let to_nodes = vec![node2.node().clone()];
         let mut frame_builder = CapnpFrameBuilder::<block_operation_header::Owned>::new();
         let _builder = frame_builder.get_builder();
-        let msg = OutMessage::from_framed_message(&node1_cell, to_nodes, frame_builder)?;
+        let msg = OutMessage::from_framed_message(&node1_cell, to_nodes, TransportLayer::Data, frame_builder)?;
         handle1_tester.send(msg);
         expect_eventually(|| handle2_tester.received().len() == 1);
 
@@ -474,7 +474,7 @@ mod tests {
         let to_nodes = vec![node1.node().clone(), node1.node().clone()];
         let mut frame_builder = CapnpFrameBuilder::<block_operation_header::Owned>::new();
         let _builder = frame_builder.get_builder();
-        let msg = OutMessage::from_framed_message(&node2_cell, to_nodes, frame_builder)?;
+        let msg = OutMessage::from_framed_message(&node2_cell, to_nodes, TransportLayer::Data, frame_builder)?;
         handle2_tester.send(msg);
         expect_eventually(|| handle1_tester.received().len() == 2);
 
