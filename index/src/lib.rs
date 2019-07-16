@@ -13,7 +13,8 @@ extern crate maplit;
 
 pub mod domain;
 pub mod error;
-pub mod index;
+pub mod local;
 pub mod mutation;
 pub mod query;
 pub mod results;
+pub mod store;

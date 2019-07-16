@@ -1,5 +1,18 @@
 @0x8ee58f74f0999479;
 
+#
+# Message envelope for transport between nodes / layers
+#
+struct Envelope {
+    cellId             @0: Data;
+    layer              @1: UInt8;
+    type               @2: UInt16;
+    fromNodeId         @3: Text;
+
+    data               @4: Data; # Usually a frame
+}
+
+
 struct Node {
     id          @0: Text;
     publicKey   @1: Text;
@@ -10,3 +23,5 @@ struct Node {
 struct NodeAddress {
     data        @0: Text;
 }
+
+

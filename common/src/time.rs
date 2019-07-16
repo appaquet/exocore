@@ -54,7 +54,7 @@ impl Clock {
         }
     }
 
-    pub fn consistent_time(&self, _node: &Node) -> u64 {
+    pub fn consistent_time(&self, node: &Node) -> u64 {
         // TODO: To be rewritten with https://github.com/appaquet/exocore/issues/6
 
         let counter = loop {
@@ -76,7 +76,7 @@ impl Clock {
 
         let unix_elapsed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         match &self.source {
-            Source::System => duration_to_consistent_u64(unix_elapsed, counter as u64),
+            Source::System => consistent_u64_from_context(unix_elapsed, counter as u64, node),
             #[cfg(any(test, feature = "tests_utils"))]
             Source::Mocked(time) => {
                 let mocked_instant = time.read().expect("Couldn't acquire read lock");
@@ -91,7 +91,7 @@ impl Clock {
                     unix_elapsed
                 };
 
-                duration_to_consistent_u64(unix_elapsed_offset, counter as u64)
+                consistent_u64_from_context(unix_elapsed_offset, counter as u64, node)
             }
         }
     }
@@ -142,9 +142,17 @@ enum Source {
     Mocked(std::sync::Arc<std::sync::RwLock<Option<Instant>>>),
 }
 
-pub fn duration_to_consistent_u64(duration: Duration, counter: u64) -> u64 {
-    // we shift by 1000 for milliseconds and then 100 for the counter
-    duration.as_secs() * 1_000 * 100 + u64::from(duration.subsec_millis()) * 100 + counter
+pub fn consistent_u64_from_context(duration: Duration, counter: u64, node: &Node) -> u64 {
+    // we shift by 1000 for milliseconds, 100 for node id, 100 for the counter
+    duration.as_secs() * 1_000 * 100 * 100
+        + u64::from(duration.subsec_millis()) * 100 * 100
+        + u64::from(node.consistent_clock_id() % 100) * 100
+        + counter
+}
+
+pub fn consistent_u64_from_duration(duration: Duration) -> u64 {
+    // we shift by 1000 for milliseconds, 100 for node id, 100 for the counter
+    duration.as_secs() * 1_000 * 100 * 100 + u64::from(duration.subsec_millis()) * 100
 }
 
 #[cfg(test)]
@@ -198,7 +206,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(10));
         let time4 = mocked_clock.consistent_time(local_node.node());
 
-        let elaps = duration_to_consistent_u64(Duration::from_millis(10), 0);
+        let elaps = consistent_u64_from_duration(Duration::from_millis(10));
         assert!(time4 - time3 > elaps);
     }
 
@@ -230,7 +238,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(10));
         let time4 = mocked_clock.consistent_time(local_node.node());
 
-        let elaps = duration_to_consistent_u64(Duration::from_millis(10), 0);
+        let elaps = consistent_u64_from_duration(Duration::from_millis(10));
         assert!(time4 - time3 > elaps);
     }
 

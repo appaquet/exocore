@@ -7,7 +7,7 @@ use crate::operation::{GroupId, OperationId};
 use exocore_common::crypto::signature::Signature;
 use exocore_common::node::NodeId;
 use exocore_common::protos::data_chain_capnp::chain_operation;
-use exocore_common::time::{duration_to_consistent_u64, Clock};
+use exocore_common::time::{consistent_u64_from_duration, Clock};
 
 use crate::block::{
     Block, BlockHeight, BlockOffset, BlockOperations, BlockOwned, BlockSignature, BlockSignatures,
@@ -290,7 +290,7 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
                     .checked_sub(previous_block.get_proposed_operation_id()?)
                     .unwrap_or(now);
                 let maximum_interval =
-                    duration_to_consistent_u64(self.config.commit_maximum_interval, 0);
+                    consistent_u64_from_duration(self.config.commit_maximum_interval);
                 return Ok(previous_block_elapsed >= maximum_interval);
             }
         }
@@ -590,7 +590,7 @@ fn is_node_commit_turn(
         .position(|node| node.id() == my_node_id)
         .ok_or(Error::MyNodeNotFound)? as u64;
 
-    let commit_interval = duration_to_consistent_u64(config.commit_maximum_interval, 0);
+    let commit_interval = consistent_u64_from_duration(config.commit_maximum_interval);
     let node_turn = (now / commit_interval) % (sorted_nodes.len() as u64);
     Ok(node_turn == my_node_position)
 }
@@ -1249,19 +1249,19 @@ mod tests {
         };
 
         let nodes = cluster.cells[0].nodes();
-        let now = duration_to_consistent_u64(Duration::from_millis(0), 0);
+        let now = consistent_u64_from_duration(Duration::from_millis(0));
         assert!(is_node_commit_turn(&nodes, first_node.id(), now, &config)?);
         assert!(!is_node_commit_turn(&nodes, sec_node.id(), now, &config)?);
 
-        let now = duration_to_consistent_u64(Duration::from_millis(1999), 0);
+        let now = consistent_u64_from_duration(Duration::from_millis(1999));
         assert!(is_node_commit_turn(&nodes, first_node.id(), now, &config)?);
         assert!(!is_node_commit_turn(&nodes, sec_node.id(), now, &config)?);
 
-        let now = duration_to_consistent_u64(Duration::from_millis(2000), 0);
+        let now = consistent_u64_from_duration(Duration::from_millis(2000));
         assert!(!is_node_commit_turn(&nodes, first_node.id(), now, &config)?);
         assert!(is_node_commit_turn(&nodes, sec_node.id(), now, &config)?);
 
-        let now = duration_to_consistent_u64(Duration::from_millis(3999), 0);
+        let now = consistent_u64_from_duration(Duration::from_millis(3999));
         assert!(!is_node_commit_turn(&nodes, first_node.id(), now, &config)?);
         assert!(is_node_commit_turn(&nodes, sec_node.id(), now, &config)?);
 

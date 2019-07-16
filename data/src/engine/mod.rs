@@ -7,8 +7,9 @@ use exocore_common;
 use exocore_common::cell::{Cell, CellNodes};
 use exocore_common::framing::{CapnpFrameBuilder, FrameReader, TypedCapnpFrame};
 use exocore_common::node::NodeId;
+use exocore_common::protos::common_capnp::envelope;
 use exocore_common::protos::data_transport_capnp::{
-    chain_sync_request, chain_sync_response, envelope, pending_sync_request,
+    chain_sync_request, chain_sync_response, pending_sync_request,
 };
 use exocore_common::protos::MessageType;
 use exocore_common::time::Clock;
@@ -382,7 +383,6 @@ where
 /// Inner instance of the engine, since the engine is owned by the executor. The executor owns a strong
 /// reference to this Inner, while handles own weak references.
 ///
-///
 pub(crate) struct Inner<CS, PS>
 where
     CS: chain::ChainStore,
@@ -628,6 +628,7 @@ where
         }
     }
 }
+
 ///
 /// Synchronization context used by `chain_sync`, `pending_sync` and `commit_manager` to dispatch
 /// messages to other nodes, and dispatch events to be sent to engine handles.

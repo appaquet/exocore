@@ -169,9 +169,6 @@ fn two_nodes_full_replication() -> Result<(), failure::Error> {
         .get_handle_mut(0)
         .write_entry_operation(b"i love rust 0")?;
 
-    // TODO: We need to sleep because the 2 nodes may generate same operation id until https://github.com/appaquet/exocore/issues/6
-    std::thread::sleep(Duration::from_millis(10));
-
     let op2 = cluster
         .get_handle_mut(1)
         .write_entry_operation(b"i love rust 1")?;

@@ -1,5 +1,5 @@
 use exocore_common::node::Node;
-use exocore_common::protos::data_transport_capnp::envelope;
+use exocore_common::protos::common_capnp::envelope;
 use exocore_common::protos::MessageType;
 
 use crate::{Error, TransportLayer};
@@ -23,7 +23,7 @@ impl OutMessage {
     {
         let mut envelope_frame_builder = CapnpFrameBuilder::<envelope::Owned>::new();
         let mut envelope_message_builder = envelope_frame_builder.get_builder();
-        envelope_message_builder.set_layer(TransportLayer::Data.into());
+        envelope_message_builder.set_layer(TransportLayer::Data.into()); // TODO: Should be on the right layer
         envelope_message_builder.set_type(T::MESSAGE_TYPE);
         envelope_message_builder.set_cell_id(cell.id().as_bytes());
         envelope_message_builder.set_from_node_id(&cell.local_node().id().to_str());
