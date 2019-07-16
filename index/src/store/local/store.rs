@@ -512,8 +512,8 @@ mod tests {
     use super::*;
     use crate::domain::entity::{EntityId, Record, Trait, TraitId};
     use crate::domain::schema::tests::create_test_schema;
-    use crate::local::entities_index::EntitiesIndexConfig;
-    use crate::local::traits_index::TraitsIndexConfig;
+    use super::super::entities_index::EntitiesIndexConfig;
+    use super::super::traits_index::TraitsIndexConfig;
     use crate::mutation::PutTraitMutation;
     use exocore_common::node::LocalNode;
     use exocore_common::protos::index_transport_capnp::mutation_response;
