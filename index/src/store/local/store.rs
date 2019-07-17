@@ -1,22 +1,16 @@
 use super::entities_index::EntitiesIndex;
 use crate::domain::schema::Schema;
 use crate::error::Error;
-use crate::mutation::Mutation;
-use crate::query::Query;
-use crate::results::EntitiesResults;
+use crate::mutation::{Mutation, MutationResult};
+use crate::query::{Query, QueryResult};
 use crate::store::{AsyncResult, AsyncStore};
-use exocore_common::cell::{Cell, FullCell};
-use exocore_common::framing::{CapnpFrameBuilder, TypedCapnpFrame};
-use exocore_common::node::Node;
-use exocore_common::protos::index_transport_capnp::{
-    mutation_request, mutation_response, query_request, query_response,
-};
+use exocore_common::cell::FullCell;
+use exocore_common::protos::index_transport_capnp::{mutation_request, query_request};
 use exocore_common::protos::MessageType;
 use exocore_common::utils::completion_notifier::{
     CompletionError, CompletionListener, CompletionNotifier,
 };
-use exocore_data::operation::OperationId;
-use exocore_transport::{InMessage, OutMessage, TransportHandle, TransportLayer};
+use exocore_transport::{InMessage, OutMessage, TransportHandle};
 use futures::prelude::*;
 use futures::sync::mpsc;
 use std::sync::{Arc, RwLock, Weak};
@@ -123,6 +117,7 @@ where
                 }),
         );
 
+        // schedule transport handle
         let weak_inner1 = Arc::downgrade(&self.inner);
         let weak_inner2 = Arc::downgrade(&self.inner);
         tokio::spawn(
@@ -136,6 +131,7 @@ where
                 }),
         );
 
+        // schedule data engine events stream
         let weak_inner1 = Arc::downgrade(&self.inner);
         let weak_inner2 = Arc::downgrade(&self.inner);
         let weak_inner3 = Arc::downgrade(&self.inner);
@@ -195,21 +191,15 @@ where
                 .then(move |result| {
                     let inner = weak_inner2.upgrade().ok_or(Error::InnerUpgrade)?;
                     let inner = inner.read()?;
-                    if let Some(transport) = &inner.transport_out {
-                        let message = message_serialize_query_response(
-                            in_message.from,
-                            result,
-                            &inner.schema,
-                            &inner.cell,
-                        )?;
 
-                        transport.unbounded_send(message).map_err(|_err| {
-                            Error::Fatal(
-                                "Couldn't return query results as transport channel is closed"
-                                    .to_string(),
-                            )
-                        })?;
+                    if let Err(err) = &result {
+                        error!("Returning error executing incoming query: {}", err);
                     }
+
+                    let resp_frame =
+                        QueryResult::result_to_query_response_frame(&inner.schema, result)?;
+                    let message = in_message.to_response_message(&inner.cell, resp_frame)?;
+                    inner.send_message(message)?;
 
                     Ok(())
                 })
@@ -228,17 +218,15 @@ where
     ) -> Result<(), Error> {
         let inner = weak_inner.upgrade().ok_or(Error::InnerUpgrade)?;
         let inner = inner.read()?;
-        let result = inner.write_mutation(mutation);
 
-        if let Some(transport) = &inner.transport_out {
-            let message =
-                message_serialize_mutation_response(in_message.from, result, &inner.cell)?;
-            transport.unbounded_send(message).map_err(|_err| {
-                Error::Fatal(
-                    "Couldn't return query results as transport channel is closed".to_string(),
-                )
-            })?;
+        let result = inner.write_mutation(mutation);
+        if let Err(err) = &result {
+            error!("Returning error executing incoming mutation: {}", err);
         }
+
+        let resp_frame = MutationResult::result_to_mutation_response_frame(&inner.schema, result)?;
+        let message = in_message.to_response_message(&inner.cell, resp_frame)?;
+        inner.send_message(message)?;
 
         Ok(())
     }
@@ -289,7 +277,7 @@ where
     schema: Arc<Schema>,
     index: EntitiesIndex<CS, PS>,
     data_handle: exocore_data::engine::EngineHandle<CS, PS>,
-    transport_out: Option<mpsc::UnboundedSender<OutMessage>>, // TODO: Make channel bounded
+    transport_out: Option<mpsc::UnboundedSender<OutMessage>>,
     stop_notifier: CompletionNotifier<(), Error>,
 }
 
@@ -326,24 +314,25 @@ where
     fn write_mutation_weak(
         weak_inner: &Weak<RwLock<Inner<CS, PS>>>,
         mutation: Mutation,
-    ) -> Result<OperationId, Error> {
+    ) -> Result<MutationResult, Error> {
         let inner = weak_inner.upgrade().ok_or(Error::InnerUpgrade)?;
         let inner = inner.read()?;
         inner.write_mutation(mutation)
     }
 
-    fn write_mutation(&self, mutation: Mutation) -> Result<OperationId, Error> {
+    fn write_mutation(&self, mutation: Mutation) -> Result<MutationResult, Error> {
         let json_mutation = mutation.to_json(self.schema.clone())?;
-        let op_id = self
+        let operation_id = self
             .data_handle
             .write_entry_operation(json_mutation.as_bytes())?;
-        Ok(op_id)
+
+        Ok(MutationResult { operation_id })
     }
 
     fn execute_query_async(
         weak_inner: Weak<RwLock<Inner<CS, PS>>>,
         query: Query,
-    ) -> impl Future<Item = EntitiesResults, Error = Error> {
+    ) -> impl Future<Item = QueryResult, Error = Error> {
         // TODO: Use a bounded threadpool instead of executing on current executor: https://github.com/appaquet/exocore/issues/113
         future::lazy(|| {
             future::poll_fn(move || {
@@ -364,6 +353,18 @@ where
         })
         .map_err(|err| Error::Other(format!("Error executing query in blocking block: {}", err)))
     }
+
+    fn send_message(&self, message: OutMessage) -> Result<(), Error> {
+        let transport = self.transport_out.as_ref().ok_or_else(|| {
+            Error::Fatal("Tried to send message, but transport_out was none".to_string())
+        })?;
+
+        transport.unbounded_send(message).map_err(|_err| {
+            Error::Fatal("Tried to send message, but transport_out channel is closed".to_string())
+        })?;
+
+        Ok(())
+    }
 }
 
 ///
@@ -378,31 +379,15 @@ fn message_deserialize_incoming(
     in_message: &InMessage,
     schema: &Arc<Schema>,
 ) -> Result<IncomingMessage, Error> {
-    let envelope_reader = in_message.envelope.get_reader().map_err(|err| {
-        Error::Other(format!("Couldn't parse incoming message envelope: {}", err))
-    })?;
-
-    match envelope_reader.get_type() {
+    match in_message.message_type {
         <mutation_request::Owned as MessageType>::MESSAGE_TYPE => {
-            let mutation_frame =
-                TypedCapnpFrame::<_, mutation_request::Owned>::new(envelope_reader.get_data()?)?;
-            let mutation_reader = mutation_frame.get_reader()?;
-            let mutation_data = mutation_reader.get_request()?;
-            let mutation = crate::domain::serialization::with_schema(schema, || {
-                serde_json::from_slice(mutation_data)
-            })?;
-
+            let mutation_frame = in_message.get_data_as_framed_message()?;
+            let mutation = Mutation::from_mutation_request_frame(schema, mutation_frame)?;
             Ok(IncomingMessage::Mutation(mutation))
         }
         <query_request::Owned as MessageType>::MESSAGE_TYPE => {
-            let query_frame =
-                TypedCapnpFrame::<_, query_request::Owned>::new(envelope_reader.get_data()?)?;
-            let query_reader = query_frame.get_reader()?;
-            let query_data = query_reader.get_request()?;
-            let query = crate::domain::serialization::with_schema(schema, || {
-                serde_json::from_slice(query_data)
-            })?;
-
+            let query_frame = in_message.get_data_as_framed_message()?;
+            let query = Query::from_query_request_frame(schema, query_frame)?;
             Ok(IncomingMessage::Query(query))
         }
         other => Err(Error::Other(format!(
@@ -410,54 +395,6 @@ fn message_deserialize_incoming(
             other
         ))),
     }
-}
-
-fn message_serialize_query_response(
-    to_node: Node,
-    result: Result<EntitiesResults, Error>,
-    schema: &Arc<Schema>,
-    cell: &Cell,
-) -> Result<OutMessage, Error> {
-    let mut msg = CapnpFrameBuilder::<query_response::Owned>::new();
-    let mut msg_builder = msg.get_builder();
-
-    match result {
-        Ok(results) => {
-            let serialized_results = crate::domain::serialization::with_schema(&schema, || {
-                serde_json::to_vec(&results)
-            })?;
-            msg_builder.set_response(&serialized_results);
-        }
-        Err(err) => {
-            error!("Returning error executing incoming query: {}", err);
-            msg_builder.set_error(&err.to_string());
-        }
-    }
-
-    let message = OutMessage::from_framed_message(cell, vec![to_node], TransportLayer::Index, msg)?;
-    Ok(message)
-}
-
-fn message_serialize_mutation_response(
-    to_node: Node,
-    result: Result<OperationId, Error>,
-    cell: &Cell,
-) -> Result<OutMessage, Error> {
-    let mut msg = CapnpFrameBuilder::<mutation_response::Owned>::new();
-    let mut msg_builder = msg.get_builder();
-
-    match result {
-        Ok(op_id) => {
-            msg_builder.set_operation_id(op_id);
-        }
-        Err(err) => {
-            error!("Returning error executing incoming mutation: {}", err);
-            msg_builder.set_error(&err.to_string());
-        }
-    }
-
-    let message = OutMessage::from_framed_message(cell, vec![to_node], TransportLayer::Index, msg)?;
-    Ok(message)
 }
 
 ///
@@ -494,14 +431,14 @@ where
     CS: exocore_data::chain::ChainStore,
     PS: exocore_data::pending::PendingStore,
 {
-    fn mutate(&self, mutation: Mutation) -> AsyncResult<OperationId> {
+    fn mutate(&self, mutation: Mutation) -> AsyncResult<MutationResult> {
         Box::new(future::result(Inner::write_mutation_weak(
             &self.inner,
             mutation,
         )))
     }
 
-    fn query(&self, query: Query) -> AsyncResult<EntitiesResults> {
+    fn query(&self, query: Query) -> AsyncResult<QueryResult> {
         let weak_inner = self.inner.clone();
         Box::new(Inner::execute_query_async(weak_inner, query))
     }
@@ -514,9 +451,8 @@ mod tests {
     use super::*;
     use crate::domain::entity::{EntityId, Record, Trait, TraitId};
     use crate::domain::schema::tests::create_test_schema;
-    use crate::mutation::PutTraitMutation;
+    use crate::mutation::{MutationResult, PutTraitMutation};
     use exocore_common::node::LocalNode;
-    use exocore_common::protos::index_transport_capnp::mutation_response;
     use exocore_data::tests_utils::DataTestCluster;
     use exocore_data::{DirectoryChainStore, MemoryPendingStore};
     use exocore_transport::mock::MockTransportHandle;
@@ -531,8 +467,10 @@ mod tests {
         test_store.start_store()?;
 
         let mutation = test_store.create_put_contact_mutation("entry1", "contact1", "Hello World");
-        let operation_id = test_store.mutate_via_handle(mutation)?;
-        test_store.cluster.wait_operation_committed(0, operation_id);
+        let response = test_store.mutate_via_handle(mutation)?;
+        test_store
+            .cluster
+            .wait_operation_committed(0, response.operation_id);
 
         let query = Query::match_text("hello");
         let results = test_store.query_via_handle(query)?;
@@ -547,8 +485,10 @@ mod tests {
         test_store.start_store()?;
 
         let mutation = test_store.create_put_contact_mutation("entry1", "contact1", "Hello World");
-        let operation_id = test_store.mutate_via_transport(mutation)?;
-        test_store.cluster.wait_operation_committed(0, operation_id);
+        let response = test_store.mutate_via_transport(mutation)?;
+        test_store
+            .cluster
+            .wait_operation_committed(0, response.operation_id);
 
         let query = Query::match_text("hello");
         let results = test_store.query_via_transport(query)?;
@@ -562,10 +502,10 @@ mod tests {
         let mut test_store = TestLocalStore::new()?;
         test_store.start_store()?;
 
-        let query = Query::TestFail;
+        let query = Query::test_fail();
         assert!(test_store.query_via_handle(query).is_err());
 
-        let query = Query::TestFail;
+        let query = Query::test_fail();
         assert!(test_store.query_via_transport(query).is_err());
 
         Ok(())
@@ -672,7 +612,10 @@ mod tests {
             Ok(())
         }
 
-        fn mutate_via_handle(&mut self, mutation: Mutation) -> Result<OperationId, failure::Error> {
+        fn mutate_via_handle(
+            &mut self,
+            mutation: Mutation,
+        ) -> Result<MutationResult, failure::Error> {
             let resp_future = self.store_handle.mutate(mutation);
             self.cluster
                 .runtime
@@ -683,24 +626,21 @@ mod tests {
         fn mutate_via_transport(
             &mut self,
             mutation: Mutation,
-        ) -> Result<OperationId, failure::Error> {
-            let mut mutation_frame = CapnpFrameBuilder::<mutation_request::Owned>::new();
-            let mut mutation_msg_builder = mutation_frame.get_builder();
-            let serialized_mutation =
-                crate::domain::serialization::with_schema(&self.schema, || {
-                    serde_json::to_vec(&mutation)
-                })?;
-            mutation_msg_builder.set_request(&serialized_mutation);
+        ) -> Result<MutationResult, failure::Error> {
+            let mutation_frame = mutation.to_mutation_request_frame(&self.schema)?;
 
             // send message to store
+            let follow_id = self.cluster.clocks[0].consistent_time(&self.cluster.nodes[0]);
             let external_cell =
                 self.cluster.cells[0].clone_for_local_node(self.external_node.clone());
             let out_message = OutMessage::from_framed_message(
                 &external_cell,
-                vec![self.cluster.nodes[0].node().clone()],
                 TransportLayer::Index,
                 mutation_frame,
-            )?;
+            )?
+            .with_to_node(self.cluster.nodes[0].node().clone())
+            .with_follow_id(follow_id);
+
             let sink = self.cluster.runtime.block_on(
                 self.external_transport_sink
                     .take()
@@ -723,14 +663,15 @@ mod tests {
 
             // read response into mutation response
             let in_msg: InMessage = received.unwrap();
-            let in_msg_reader = in_msg.envelope.get_reader()?;
-            let resp_frame =
-                TypedCapnpFrame::<_, mutation_response::Owned>::new(in_msg_reader.get_data()?)?;
-            let resp_reader = resp_frame.get_reader()?;
-            Ok(resp_reader.get_operation_id())
+            let resp_frame = in_msg.get_data_as_framed_message()?;
+            let response = MutationResult::from_mutation_response_frame(&self.schema, resp_frame)?;
+
+            assert_eq!(in_msg.follow_id, Some(follow_id));
+
+            Ok(response)
         }
 
-        fn query_via_handle(&mut self, query: Query) -> Result<EntitiesResults, failure::Error> {
+        fn query_via_handle(&mut self, query: Query) -> Result<QueryResult, failure::Error> {
             let resp_future = self.store_handle.query(query);
             self.cluster
                 .runtime
@@ -738,23 +679,21 @@ mod tests {
                 .map_err(|err| err.into())
         }
 
-        fn query_via_transport(&mut self, query: Query) -> Result<EntitiesResults, failure::Error> {
-            let mut query_frame = CapnpFrameBuilder::<query_request::Owned>::new();
-            let mut query_msg_builder = query_frame.get_builder();
-            let serialized_query = crate::domain::serialization::with_schema(&self.schema, || {
-                serde_json::to_vec(&query)
-            })?;
-            query_msg_builder.set_request(&serialized_query);
+        fn query_via_transport(&mut self, query: Query) -> Result<QueryResult, failure::Error> {
+            let query_frame = query.to_query_request_frame(&self.schema)?;
 
             // send message to store
+            let follow_id = self.cluster.clocks[0].consistent_time(&self.cluster.nodes[0]);
             let external_cell =
                 self.cluster.cells[0].clone_for_local_node(self.external_node.clone());
             let out_message = OutMessage::from_framed_message(
                 &external_cell,
-                vec![self.cluster.nodes[0].node().clone()],
                 TransportLayer::Index,
                 query_frame,
-            )?;
+            )?
+            .with_to_node(self.cluster.nodes[0].node().clone())
+            .with_follow_id(follow_id);
+
             let sink = self.cluster.runtime.block_on(
                 self.external_transport_sink
                     .take()
@@ -777,18 +716,12 @@ mod tests {
 
             // read response into a results
             let in_msg: InMessage = received.unwrap();
-            let in_msg_reader = in_msg.envelope.get_reader()?;
-            let resp_frame =
-                TypedCapnpFrame::<_, query_response::Owned>::new(in_msg_reader.get_data()?)?;
-            let resp_reader = resp_frame.get_reader()?;
-            let resp_data = resp_reader.get_response()?;
+            let resp_frame = in_msg.get_data_as_framed_message()?;
+            let results = QueryResult::from_query_response_frame(&self.schema, resp_frame)?;
 
-            let deserialized_response =
-                crate::domain::serialization::with_schema(&self.schema, || {
-                    serde_json::from_slice(resp_data)
-                })?;
+            assert_eq!(in_msg.follow_id, Some(follow_id));
 
-            Ok(deserialized_response)
+            Ok(results)
         }
 
         fn create_put_contact_mutation<E: Into<EntityId>, T: Into<TraitId>, N: Into<String>>(

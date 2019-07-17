@@ -5,7 +5,7 @@ struct MutationRequest {
 }
 
 struct MutationResponse {
-    operationId        @0: UInt64;
+    response           @0: Data;
     error              @1: Text;
 }
 

@@ -6,7 +6,7 @@ export GENERATE_PROTOS=1
 cargo clean -p exocore-common
 cargo build -p exocore-common
 
-for proto_path in `ls $CUR_DIR/../target/debug/build/exocore-common-*/out/proto/*_capnp.rs`; do
+for proto_path in `ls $CUR_DIR/../target/debug/build/exocore-common-*/out/protos/*_capnp.rs`; do
   proto_file="$(basename -- $proto_path)"
   dest_path="$CUR_DIR/../common/src/protos/$proto_file"
   echo "Copying $proto_file to $dest_path"

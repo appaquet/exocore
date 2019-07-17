@@ -8,6 +8,7 @@ use exocore_common::node::{LocalNode, Node, NodeId};
 
 use crate::transport::{MpscHandleSink, MpscHandleStream};
 use crate::{Error, InMessage, OutMessage, TransportHandle, TransportLayer};
+use exocore_common::framing::FrameBuilder;
 use exocore_common::utils::completion_notifier::{CompletionListener, CompletionNotifier};
 use futures::future::FutureResult;
 
@@ -128,7 +129,9 @@ impl Future for MockTransportHandle {
                     )));
                 })?;
 
-                let in_message = message.to_in_message(node.clone());
+                let envelope = message.envelope_builder.as_owned_frame();
+                let in_message = InMessage::from_node_and_frame(node.clone(), envelope)
+                    .expect("Couldn't InMessage from OutMessage");
                 for dest_node in &message.to {
                     let key = (dest_node.id().clone(), layer);
                     if let Some(sink) = nodes_sink.get_mut(&key) {

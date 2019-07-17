@@ -108,14 +108,16 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
 
             let nodes = self.cell.nodes();
             if next_block.has_my_signature && nodes.is_quorum(valid_signatures.count()) {
-                debug!("{}: Block has enough signatures, we should commit",
-                       self.cell.local_node().id(),
+                debug!(
+                    "{}: Block has enough signatures, we should commit",
+                    self.cell.local_node().id(),
                 );
                 self.commit_block(sync_context, next_block, pending_store, chain_store)?;
             }
         } else if self.should_propose_block(chain_store, &pending_blocks)? {
-            debug!("{}: No current block, and we can propose one",
-                  self.cell.local_node().id(),
+            debug!(
+                "{}: No current block, and we can propose one",
+                self.cell.local_node().id(),
             );
             self.propose_block(
                 sync_context,

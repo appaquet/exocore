@@ -7,7 +7,6 @@ use crate::domain::schema::Schema;
 use crate::error::Error;
 use crate::mutation::Mutation;
 use crate::query::*;
-use crate::results::{EntitiesResults, EntityResult, EntityResultSource};
 use exocore_data::block::{BlockHeight, BlockOffset};
 use exocore_data::engine::{EngineOperation, Event};
 use exocore_data::operation::{Operation, OperationId};
@@ -170,7 +169,7 @@ where
     }
 
     /// Execute a search query on the indices, and returning all entities matching the query.
-    pub fn search(&self, query: &Query) -> Result<EntitiesResults, Error> {
+    pub fn search(&self, query: &Query) -> Result<QueryResult, Error> {
         // TODO: Implement paging, counting, sorting & limit https://github.com/appaquet/exocore/issues/105
 
         let chain_results = self
@@ -224,7 +223,7 @@ where
             .take(100)
             .collect();
 
-        Ok(EntitiesResults {
+        Ok(QueryResult {
             results,
             next_page: None,
             current_page: QueryPaging {
@@ -717,7 +716,7 @@ mod tests {
         Ok(())
     }
 
-    fn count_results_source(results: &EntitiesResults, source: EntityResultSource) -> usize {
+    fn count_results_source(results: &QueryResult, source: EntityResultSource) -> usize {
         results
             .results
             .iter()

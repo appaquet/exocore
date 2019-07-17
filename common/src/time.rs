@@ -8,6 +8,8 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 // TODO: But will be rewritten in consistent clock logic in ticket https://github.com/appaquet/exocore/issues/6
 const CONSISTENT_COUNTER_MAX: usize = 99;
 
+pub type ConsistentTimestamp = u64;
+
 #[derive(Clone)]
 pub struct Clock {
     source: Source,
@@ -54,7 +56,7 @@ impl Clock {
         }
     }
 
-    pub fn consistent_time(&self, node: &Node) -> u64 {
+    pub fn consistent_time(&self, node: &Node) -> ConsistentTimestamp {
         // TODO: To be rewritten with https://github.com/appaquet/exocore/issues/6
 
         let counter = loop {
@@ -154,7 +156,7 @@ pub fn consistent_u64_from_context(
     duration: Duration,
     counter: u64,
     node_clock_id: u8,
-) -> u64 {
+) -> ConsistentTimestamp {
     // we shift by 1000 for milliseconds, 100 for node id, 100 for the counter
     duration.as_secs() * 1_000 * 100 * 100
         + u64::from(duration.subsec_millis()) * 100 * 100
@@ -162,7 +164,7 @@ pub fn consistent_u64_from_context(
         + counter
 }
 
-pub fn consistent_u64_from_duration(duration: Duration) -> u64 {
+pub fn consistent_u64_from_duration(duration: Duration) -> ConsistentTimestamp {
     consistent_u64_from_context(duration, 0, 0)
 }
 
