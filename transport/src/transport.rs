@@ -31,7 +31,6 @@ impl TransportLayer {
     }
 }
 
-
 ///
 /// Handle to the Transport that allows a layer of the architecture to communicate with
 /// other nodes for a given cell.

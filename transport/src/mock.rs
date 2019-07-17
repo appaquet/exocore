@@ -13,12 +13,14 @@ use futures::future::FutureResult;
 
 const CHANNELS_SIZE: usize = 1000;
 
+type HandleKey = (NodeId, TransportLayer);
+
 ///
 /// In memory transport used by all layers of Exocore through handles. There is one handle
 /// per cell per layer.
 ///
 pub struct MockTransport {
-    nodes_sink: Arc<Mutex<HashMap<(NodeId, TransportLayer), mpsc::Sender<InMessage>>>>,
+    nodes_sink: Arc<Mutex<HashMap<HandleKey, mpsc::Sender<InMessage>>>>,
 }
 
 impl Default for MockTransport {
@@ -60,7 +62,7 @@ pub struct MockTransportHandle {
     node: Node,
     layer: TransportLayer,
     started: bool,
-    nodes_sink: Weak<Mutex<HashMap<(NodeId, TransportLayer), mpsc::Sender<InMessage>>>>,
+    nodes_sink: Weak<Mutex<HashMap<HandleKey, mpsc::Sender<InMessage>>>>,
     incoming_stream: Option<mpsc::Receiver<InMessage>>,
     outgoing_stream: Option<mpsc::Receiver<OutMessage>>,
     completion_notifier: CompletionNotifier<(), Error>,
