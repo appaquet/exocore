@@ -76,7 +76,11 @@ impl Clock {
 
         let unix_elapsed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         match &self.source {
-            Source::System => consistent_u64_from_context(unix_elapsed, counter as u64, node),
+            Source::System => consistent_u64_from_context(
+                unix_elapsed,
+                counter as u64,
+                node.consistent_clock_id(),
+            ),
             #[cfg(any(test, feature = "tests_utils"))]
             Source::Mocked(time) => {
                 let mocked_instant = time.read().expect("Couldn't acquire read lock");
@@ -91,7 +95,11 @@ impl Clock {
                     unix_elapsed
                 };
 
-                consistent_u64_from_context(unix_elapsed_offset, counter as u64, node)
+                consistent_u64_from_context(
+                    unix_elapsed_offset,
+                    counter as u64,
+                    node.consistent_clock_id(),
+                )
             }
         }
     }
@@ -142,17 +150,20 @@ enum Source {
     Mocked(std::sync::Arc<std::sync::RwLock<Option<Instant>>>),
 }
 
-pub fn consistent_u64_from_context(duration: Duration, counter: u64, node: &Node) -> u64 {
+pub fn consistent_u64_from_context(
+    duration: Duration,
+    counter: u64,
+    node_clock_id: u8,
+) -> u64 {
     // we shift by 1000 for milliseconds, 100 for node id, 100 for the counter
     duration.as_secs() * 1_000 * 100 * 100
         + u64::from(duration.subsec_millis()) * 100 * 100
-        + u64::from(node.consistent_clock_id() % 100) * 100
+        + u64::from(node_clock_id % 100) * 100
         + counter
 }
 
 pub fn consistent_u64_from_duration(duration: Duration) -> u64 {
-    // we shift by 1000 for milliseconds, 100 for node id, 100 for the counter
-    duration.as_secs() * 1_000 * 100 * 100 + u64::from(duration.subsec_millis()) * 100
+    consistent_u64_from_context(duration, 0, 0)
 }
 
 #[cfg(test)]

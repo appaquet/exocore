@@ -74,7 +74,7 @@ impl DataTestCluster {
             let engine_config = EngineConfig {
                 manager_timer_interval: Duration::from_millis(100),
                 commit_manager_config: CommitManagerConfig {
-                    commit_maximum_interval: Duration::from_millis(200),
+                    commit_maximum_interval: Duration::from_millis(500),
                     ..CommitManagerConfig::default()
                 },
                 ..EngineConfig::default()
