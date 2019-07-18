@@ -1,5 +1,6 @@
 use exocore_common::capnp;
 use std::sync::Arc;
+use std::time::Duration;
 
 ///
 /// Index related error
@@ -36,6 +37,12 @@ pub enum Error {
 
     #[fail(display = "IO error of kind {:?}: {}", _0, _1)]
     IO(std::io::ErrorKind, String),
+
+    #[fail(display = "Error from remote index: {}", _0)]
+    Remote(String),
+
+    #[fail(display = "Timeout error: {:?} > {:?}", _0, _1)]
+    Timeout(Duration, Duration),
 
     #[fail(display = "Try to lock a mutex that was poisoned")]
     Poisoned,

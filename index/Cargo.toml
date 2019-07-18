@@ -5,6 +5,7 @@ authors = ["Andre-Philippe Paquet <appaquet@gmail.com>"]
 edition = "2018"
 
 [features]
+default = []
 local_store = ["tantivy", "tokio-threadpool", "exocore-data/engine"]
 
 [dependencies]
@@ -21,6 +22,7 @@ serde_yaml = "0.8"
 maplit = "1"
 tokio = { version = "0.1", features = ["io"], default-features = false }
 log = "0.4"
+wasm-timer = "0.1"
 
 # Local store
 tokio-threadpool = { version = "0.1", optional = true }

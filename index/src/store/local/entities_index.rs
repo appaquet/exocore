@@ -281,6 +281,9 @@ where
                 match mutation {
                     Mutation::PutTrait(trait_put) => Some(trait_put.trt),
                     Mutation::DeleteTrait(_) => None,
+
+                    #[cfg(test)]
+                    Mutation::TestFail(_) => None,
                 }
             })
             .collect();
@@ -439,20 +442,26 @@ where
                     None
                 }
             })
-            .map(|(offset, _height, op, mutation)| {
+            .flat_map(|(offset, _height, op, mutation)| {
                 // for every mutation we index in the chain index, we delete it from the pending index
                 pending_index_mutations.push(IndexMutation::DeleteOperation(op.operation_id));
 
                 match mutation {
-                    Mutation::PutTrait(trt_mut) => IndexMutation::PutTrait(PutTraitMutation {
-                        block_offset: Some(offset),
-                        operation_id: op.operation_id,
-                        entity_id: trt_mut.entity_id,
-                        trt: trt_mut.trt,
-                    }),
-                    Mutation::DeleteTrait(trt_del) => {
-                        IndexMutation::DeleteTrait(trt_del.entity_id, trt_del.trait_id)
+                    Mutation::PutTrait(trt_mut) => {
+                        Some(IndexMutation::PutTrait(PutTraitMutation {
+                            block_offset: Some(offset),
+                            operation_id: op.operation_id,
+                            entity_id: trt_mut.entity_id,
+                            trt: trt_mut.trt,
+                        }))
                     }
+                    Mutation::DeleteTrait(trt_del) => Some(IndexMutation::DeleteTrait(
+                        trt_del.entity_id,
+                        trt_del.trait_id,
+                    )),
+
+                    #[cfg(test)]
+                    Mutation::TestFail(_) => None,
                 }
             });
 
@@ -520,6 +529,9 @@ where
                             trait_id: mutation.trait_id,
                         }))
                     }
+
+                    #[cfg(test)]
+                    Mutation::TestFail(_mutation) => None,
                 }
             }
             Err(err) => {

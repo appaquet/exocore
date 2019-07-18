@@ -176,11 +176,13 @@ impl QueryResult {
         I: FrameReader,
     {
         let reader = frame.get_reader()?;
-        let data = reader.get_response()?;
-        let query_result = with_schema(schema, || serde_json::from_slice(data))?;
-        // TODO: Check for error
-
-        Ok(query_result)
+        if reader.has_error() {
+            Err(Error::Remote(reader.get_error()?.to_owned()))
+        } else {
+            let data = reader.get_response()?;
+            let query_result = with_schema(schema, || serde_json::from_slice(data))?;
+            Ok(query_result)
+        }
     }
 }
 

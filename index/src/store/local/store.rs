@@ -167,7 +167,7 @@ where
         let inner = weak_inner.upgrade().ok_or(Error::InnerUpgrade)?;
         let inner = inner.read()?;
 
-        match message_deserialize_incoming(&in_message, &inner.schema)? {
+        match IncomingMessage::parse_incoming_message(&in_message, &inner.schema)? {
             IncomingMessage::Mutation(mutation) => {
                 Self::handle_incoming_mutation_message(weak_inner, in_message, mutation)?;
             }
@@ -321,6 +321,13 @@ where
     }
 
     fn write_mutation(&self, mutation: Mutation) -> Result<MutationResult, Error> {
+        #[cfg(test)]
+        {
+            if let Mutation::TestFail(_mutation) = &mutation {
+                return Err(Error::Other("TestFail mutation".to_string()));
+            }
+        }
+
         let json_mutation = mutation.to_json(self.schema.clone())?;
         let operation_id = self
             .data_handle
@@ -375,25 +382,27 @@ enum IncomingMessage {
     Query(Query),
 }
 
-fn message_deserialize_incoming(
-    in_message: &InMessage,
-    schema: &Arc<Schema>,
-) -> Result<IncomingMessage, Error> {
-    match in_message.message_type {
-        <mutation_request::Owned as MessageType>::MESSAGE_TYPE => {
-            let mutation_frame = in_message.get_data_as_framed_message()?;
-            let mutation = Mutation::from_mutation_request_frame(schema, mutation_frame)?;
-            Ok(IncomingMessage::Mutation(mutation))
+impl IncomingMessage {
+    fn parse_incoming_message(
+        in_message: &InMessage,
+        schema: &Arc<Schema>,
+    ) -> Result<IncomingMessage, Error> {
+        match in_message.message_type {
+            <mutation_request::Owned as MessageType>::MESSAGE_TYPE => {
+                let mutation_frame = in_message.get_data_as_framed_message()?;
+                let mutation = Mutation::from_mutation_request_frame(schema, mutation_frame)?;
+                Ok(IncomingMessage::Mutation(mutation))
+            }
+            <query_request::Owned as MessageType>::MESSAGE_TYPE => {
+                let query_frame = in_message.get_data_as_framed_message()?;
+                let query = Query::from_query_request_frame(schema, query_frame)?;
+                Ok(IncomingMessage::Query(query))
+            }
+            other => Err(Error::Other(format!(
+                "Received message of unknown type: {}",
+                other
+            ))),
         }
-        <query_request::Owned as MessageType>::MESSAGE_TYPE => {
-            let query_frame = in_message.get_data_as_framed_message()?;
-            let query = Query::from_query_request_frame(schema, query_frame)?;
-            Ok(IncomingMessage::Query(query))
-        }
-        other => Err(Error::Other(format!(
-            "Received message of unknown type: {}",
-            other
-        ))),
     }
 }
 
@@ -445,13 +454,13 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::super::entities_index::EntitiesIndexConfig;
     use super::super::traits_index::TraitsIndexConfig;
     use super::*;
     use crate::domain::entity::{EntityId, Record, Trait, TraitId};
     use crate::domain::schema::tests::create_test_schema;
-    use crate::mutation::{MutationResult, PutTraitMutation};
+    use crate::mutation::{MutationResult, PutTraitMutation, TestFailMutation};
     use exocore_common::node::LocalNode;
     use exocore_data::tests_utils::DataTestCluster;
     use exocore_data::{DirectoryChainStore, MemoryPendingStore};
@@ -511,14 +520,29 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn mutation_error_propagating() -> Result<(), failure::Error> {
+        let mut test_store = TestLocalStore::new()?;
+        test_store.start_store()?;
+
+        let mutation = Mutation::TestFail(TestFailMutation {});
+        assert!(test_store.mutate_via_handle(mutation).is_err());
+
+        let mutation = Mutation::TestFail(TestFailMutation {});
+        assert!(test_store.mutate_via_transport(mutation).is_err());
+
+        Ok(())
+    }
+
     ///
     /// Utility to test local store
     ///
-    struct TestLocalStore {
-        cluster: DataTestCluster,
+    pub struct TestLocalStore {
+        pub cluster: DataTestCluster,
+        pub schema: Arc<Schema>,
+
         store: Option<LocalStore<DirectoryChainStore, MemoryPendingStore, MockTransportHandle>>,
         store_handle: StoreHandle<DirectoryChainStore, MemoryPendingStore>,
-        schema: Arc<Schema>,
         _temp_dir: TempDir,
 
         // external node & transport used to communicate with store
@@ -528,7 +552,7 @@ mod tests {
     }
 
     impl TestLocalStore {
-        fn new() -> Result<TestLocalStore, failure::Error> {
+        pub fn new() -> Result<TestLocalStore, failure::Error> {
             let mut cluster = DataTestCluster::new_single_and_start()?;
 
             let temp_dir = tempdir::TempDir::new("store")?;
@@ -584,9 +608,10 @@ mod tests {
 
             Ok(TestLocalStore {
                 cluster,
+                schema: schema.clone(),
+
                 store: Some(store),
                 store_handle,
-                schema: schema.clone(),
                 _temp_dir: temp_dir,
 
                 external_node,
@@ -595,7 +620,7 @@ mod tests {
             })
         }
 
-        fn start_store(&mut self) -> Result<(), failure::Error> {
+        pub fn start_store(&mut self) -> Result<(), failure::Error> {
             let store = self.store.take().unwrap();
             self.cluster.runtime.spawn(
                 store
@@ -612,7 +637,7 @@ mod tests {
             Ok(())
         }
 
-        fn mutate_via_handle(
+        pub fn mutate_via_handle(
             &mut self,
             mutation: Mutation,
         ) -> Result<MutationResult, failure::Error> {
@@ -623,7 +648,7 @@ mod tests {
                 .map_err(|err| err.into())
         }
 
-        fn mutate_via_transport(
+        pub fn mutate_via_transport(
             &mut self,
             mutation: Mutation,
         ) -> Result<MutationResult, failure::Error> {
@@ -671,7 +696,7 @@ mod tests {
             Ok(response)
         }
 
-        fn query_via_handle(&mut self, query: Query) -> Result<QueryResult, failure::Error> {
+        pub fn query_via_handle(&mut self, query: Query) -> Result<QueryResult, failure::Error> {
             let resp_future = self.store_handle.query(query);
             self.cluster
                 .runtime
@@ -679,7 +704,7 @@ mod tests {
                 .map_err(|err| err.into())
         }
 
-        fn query_via_transport(&mut self, query: Query) -> Result<QueryResult, failure::Error> {
+        pub fn query_via_transport(&mut self, query: Query) -> Result<QueryResult, failure::Error> {
             let query_frame = query.to_query_request_frame(&self.schema)?;
 
             // send message to store
@@ -724,7 +749,7 @@ mod tests {
             Ok(results)
         }
 
-        fn create_put_contact_mutation<E: Into<EntityId>, T: Into<TraitId>, N: Into<String>>(
+        pub fn create_put_contact_mutation<E: Into<EntityId>, T: Into<TraitId>, N: Into<String>>(
             &self,
             entity_id: E,
             trait_id: T,

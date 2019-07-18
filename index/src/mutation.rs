@@ -12,6 +12,9 @@ use std::sync::Arc;
 pub enum Mutation {
     PutTrait(PutTraitMutation),
     DeleteTrait(DeleteTraitMutation),
+
+    #[cfg(test)]
+    TestFail(TestFailMutation),
 }
 
 impl Mutation {
@@ -69,6 +72,10 @@ pub struct DeleteTraitMutation {
     pub trait_id: TraitId,
 }
 
+#[serde(rename_all = "snake_case")]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TestFailMutation {}
+
 ///
 /// Returned by store after executing mutation
 ///
@@ -107,10 +114,12 @@ impl MutationResult {
         I: FrameReader,
     {
         let reader = frame.get_reader()?;
-        let data = reader.get_response()?;
-        let mutation_result = with_schema(schema, || serde_json::from_slice(data))?;
-        // TODO: Check for error
-
-        Ok(mutation_result)
+        if reader.has_error() {
+            Err(Error::Remote(reader.get_error()?.to_owned()))
+        } else {
+            let data = reader.get_response()?;
+            let mutation_result = with_schema(schema, || serde_json::from_slice(data))?;
+            Ok(mutation_result)
+        }
     }
 }
