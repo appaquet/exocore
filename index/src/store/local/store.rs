@@ -114,7 +114,7 @@ where
                 })
                 .map(|_| ())
                 .map_err(move |err| {
-                    Inner::notify_stop("incoming transport stream", &weak_inner2, Err(err.into()));
+                    Inner::notify_stop("incoming transport stream", &weak_inner2, Err(err));
                 }),
         );
 
@@ -155,7 +155,7 @@ where
                     Inner::notify_stop("data engine event stream completion", &weak_inner2, Ok(()))
                 })
                 .map_err(move |err| {
-                    Inner::notify_stop("data engine event stream", &weak_inner3, Err(err.into()))
+                    Inner::notify_stop("data engine event stream", &weak_inner3, Err(err))
                 }),
         );
 
