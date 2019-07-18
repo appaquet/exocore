@@ -5,13 +5,12 @@ authors = ["Andre-Philippe Paquet <appaquet@gmail.com>"]
 edition = "2018"
 
 [features]
-default = []
 local_store = ["tantivy", "tokio-threadpool", "exocore-data/engine"]
 
 [dependencies]
+exocore-data = { path = "../data" }
 exocore-transport = { path = "../transport" }
 exocore-common = { path = "../common" }
-exocore-data = { path = "../data" }
 failure = "0.1"
 futures = "0.1"
 itertools = "0.8"

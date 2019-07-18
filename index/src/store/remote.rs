@@ -25,19 +25,22 @@ pub type FutureSpawner = Box<dyn Fn(Box<dyn Future<Item = (), Error = ()> + Send
 ///
 #[derive(Debug, Clone, Copy)]
 pub struct StoreConfiguration {
-    pub timeout_check_interval: Duration,
-
+    /// Duration before considering query has timed out if not responded
     pub query_timeout: Duration,
 
+    /// Duration before considering mutation has timed out if not responded
     pub mutation_timeout: Duration,
+
+    /// Interval at which we should check for pending queries and mutations timeout
+    pub timeout_check_interval: Duration,
 }
 
 impl Default for StoreConfiguration {
     fn default() -> Self {
         StoreConfiguration {
-            timeout_check_interval: Duration::from_millis(100),
             query_timeout: Duration::from_secs(10),
             mutation_timeout: Duration::from_secs(5),
+            timeout_check_interval: Duration::from_millis(100),
         }
     }
 }
@@ -53,10 +56,10 @@ where
     config: StoreConfiguration,
     future_spawner: FutureSpawner,
     start_notifier: CompletionNotifier<(), Error>,
-    inner: Arc<RwLock<Inner>>,
-    stop_listener: CompletionListener<(), Error>,
-    transport_handle: Option<T>,
     started: bool,
+    inner: Arc<RwLock<Inner>>,
+    transport_handle: Option<T>,
+    stop_listener: CompletionListener<(), Error>,
 }
 
 impl<T> RemoteStore<T>
@@ -91,10 +94,10 @@ where
             config,
             future_spawner,
             start_notifier,
-            inner,
-            stop_listener,
-            transport_handle: Some(transport_handle),
             started: false,
+            inner,
+            transport_handle: Some(transport_handle),
+            stop_listener,
         })
     }
 
@@ -163,16 +166,13 @@ where
                 }),
         ));
 
-        // schedule query & mutation requests timetout checker
+        // schedule query & mutation requests timeout checker
         let weak_inner1 = Arc::downgrade(&self.inner);
         let weak_inner2 = Arc::downgrade(&self.inner);
         (self.future_spawner)(Box::new(
             wasm_timer::Interval::new_interval(self.config.timeout_check_interval)
                 .map_err(|err| Error::Fatal(format!("Timer error: {}", err)))
-                .for_each(move |_| {
-                    Self::check_requests_timout(&weak_inner1)?;
-                    Ok(())
-                })
+                .for_each(move |_| Self::check_requests_timout(&weak_inner1))
                 .map_err(move |err| {
                     Inner::notify_stop("timeout check error", &weak_inner2, Err(err));
                 }),
@@ -296,13 +296,12 @@ impl Inner {
                 .with_follow_id(request_id);
         self.send_message(message)?;
 
-        let send_time = Instant::now();
         self.pending_mutations.insert(
             request_id,
             PendingRequest {
                 request_id,
                 result_sender,
-                send_time,
+                send_time: Instant::now(),
             },
         );
 
@@ -323,13 +322,12 @@ impl Inner {
                 .with_follow_id(request_id);
         self.send_message(message)?;
 
-        let send_time = Instant::now();
         self.pending_queries.insert(
             request_id,
             PendingRequest {
                 request_id,
                 result_sender,
-                send_time,
+                send_time: Instant::now(),
             },
         );
 
@@ -405,13 +403,12 @@ impl IncomingMessage {
         match in_message.message_type {
             <mutation_response::Owned as MessageType>::MESSAGE_TYPE => {
                 let mutation_frame = in_message.get_data_as_framed_message()?;
-                let mutation_result =
-                    MutationResult::from_mutation_response_frame(schema, mutation_frame)?;
+                let mutation_result = MutationResult::from_response_frame(schema, mutation_frame)?;
                 Ok(IncomingMessage::MutationResponse(mutation_result))
             }
             <query_response::Owned as MessageType>::MESSAGE_TYPE => {
                 let query_frame = in_message.get_data_as_framed_message()?;
-                let query_result = QueryResult::from_query_response_frame(schema, query_frame)?;
+                let query_result = QueryResult::from_query_frame(schema, query_frame)?;
                 Ok(IncomingMessage::QueryResponse(query_result))
             }
             other => Err(Error::Other(format!(
@@ -423,7 +420,7 @@ impl IncomingMessage {
 }
 
 ///
-/// Query or Mutation request for which we're waiting a response
+/// Query or mutation request for which we're waiting a response
 ///
 struct PendingRequest<T> {
     request_id: ConsistentTimestamp,
@@ -594,7 +591,6 @@ mod tests {
 
     struct TestRemoteStore {
         local_store: TestLocalStore,
-
         remote_store: Option<RemoteStore<MockTransportHandle>>,
         remote_handle: StoreHandle,
     }

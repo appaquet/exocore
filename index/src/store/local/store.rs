@@ -27,10 +27,10 @@ where
     T: TransportHandle,
 {
     start_notifier: CompletionNotifier<(), Error>,
-    inner: Arc<RwLock<Inner<CS, PS>>>,
-    stop_listener: CompletionListener<(), Error>,
-    transport_handle: Option<T>,
     started: bool,
+    inner: Arc<RwLock<Inner<CS, PS>>>,
+    transport_handle: Option<T>,
+    stop_listener: CompletionListener<(), Error>,
 }
 
 impl<CS, PS, T> LocalStore<CS, PS, T>
@@ -60,10 +60,10 @@ where
 
         Ok(LocalStore {
             start_notifier,
-            inner,
-            stop_listener,
-            transport_handle: Some(transport_handle),
             started: false,
+            inner,
+            transport_handle: Some(transport_handle),
+            stop_listener,
         })
     }
 
@@ -101,10 +101,11 @@ where
         tokio::spawn(
             transport_handle
                 .get_stream()
+                .map_err(|err| Error::Fatal(format!("Error in incoming transport stream: {}", err)))
                 .for_each(move |in_message| {
                     if let Err(err) = Self::handle_incoming_message(&weak_inner1, in_message) {
                         if err.is_fatal() {
-                            Inner::notify_stop("incoming message handling", &weak_inner1, Err(err))
+                            return Err(err);
                         } else {
                             error!("Couldn't process incoming message: {}", err);
                         }
@@ -139,10 +140,13 @@ where
             inner
                 .data_handle
                 .take_events_stream()?
+                .map_err(|err| err.into())
                 .for_each(move |event| {
                     if let Err(err) = Self::handle_data_engine_event(&weak_inner1, event) {
                         if err.is_fatal() {
-                            Inner::notify_stop("data engine event handling", &weak_inner1, Err(err))
+                            return Err(err);
+                        } else {
+                            error!("Error handling data engine event: {}", err);
                         }
                     }
                     Ok(())
@@ -196,8 +200,7 @@ where
                         error!("Returning error executing incoming query: {}", err);
                     }
 
-                    let resp_frame =
-                        QueryResult::result_to_query_response_frame(&inner.schema, result)?;
+                    let resp_frame = QueryResult::result_to_response_frame(&inner.schema, result)?;
                     let message = in_message.to_response_message(&inner.cell, resp_frame)?;
                     inner.send_message(message)?;
 
@@ -224,7 +227,7 @@ where
             error!("Returning error executing incoming mutation: {}", err);
         }
 
-        let resp_frame = MutationResult::result_to_mutation_response_frame(&inner.schema, result)?;
+        let resp_frame = MutationResult::result_to_response_frame(&inner.schema, result)?;
         let message = in_message.to_response_message(&inner.cell, resp_frame)?;
         inner.send_message(message)?;
 
@@ -689,7 +692,7 @@ pub mod tests {
             // read response into mutation response
             let in_msg: InMessage = received.unwrap();
             let resp_frame = in_msg.get_data_as_framed_message()?;
-            let response = MutationResult::from_mutation_response_frame(&self.schema, resp_frame)?;
+            let response = MutationResult::from_response_frame(&self.schema, resp_frame)?;
 
             assert_eq!(in_msg.follow_id, Some(follow_id));
 
@@ -742,7 +745,7 @@ pub mod tests {
             // read response into a results
             let in_msg: InMessage = received.unwrap();
             let resp_frame = in_msg.get_data_as_framed_message()?;
-            let results = QueryResult::from_query_response_frame(&self.schema, resp_frame)?;
+            let results = QueryResult::from_query_frame(&self.schema, resp_frame)?;
 
             assert_eq!(in_msg.follow_id, Some(follow_id));
 

@@ -86,7 +86,7 @@ pub struct MutationResult {
 }
 
 impl MutationResult {
-    pub fn result_to_mutation_response_frame(
+    pub fn result_to_response_frame(
         schema: &Arc<Schema>,
         result: Result<MutationResult, Error>,
     ) -> Result<CapnpFrameBuilder<mutation_response::Owned>, Error> {
@@ -106,7 +106,7 @@ impl MutationResult {
         Ok(frame_builder)
     }
 
-    pub fn from_mutation_response_frame<I>(
+    pub fn from_response_frame<I>(
         schema: &Arc<Schema>,
         frame: TypedCapnpFrame<I, mutation_response::Owned>,
     ) -> Result<MutationResult, Error>

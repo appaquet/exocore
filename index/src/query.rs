@@ -148,7 +148,7 @@ impl QueryResult {
         }
     }
 
-    pub fn result_to_query_response_frame(
+    pub fn result_to_response_frame(
         schema: &Arc<Schema>,
         result: Result<QueryResult, Error>,
     ) -> Result<CapnpFrameBuilder<query_response::Owned>, Error> {
@@ -168,7 +168,7 @@ impl QueryResult {
         Ok(frame_builder)
     }
 
-    pub fn from_query_response_frame<I>(
+    pub fn from_query_frame<I>(
         schema: &Arc<Schema>,
         frame: TypedCapnpFrame<I, query_response::Owned>,
     ) -> Result<QueryResult, Error>
@@ -199,19 +199,4 @@ pub struct EntityResult {
 pub enum EntityResultSource {
     Pending,
     Chain,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::domain::schema::tests::create_test_schema;
-
-    #[test]
-    fn test_serialization() {
-        let schema = create_test_schema();
-
-        let query = Query::with_entity_id("123");
-        let json = with_schema(&schema, || serde_json::to_string(&query));
-        println!("{:?}", json);
-    }
 }
