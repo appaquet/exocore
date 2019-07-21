@@ -498,8 +498,8 @@ mod tests {
     use super::*;
     use crate::mutation::TestFailMutation;
     use exocore_common::node::LocalNode;
-    use exocore_transport::mock::MockTransportHandle;
     use exocore_common::tests_utils::expect_eventually;
+    use exocore_transport::mock::MockTransportHandle;
 
     #[test]
     fn mutation_and_query() -> Result<(), failure::Error> {

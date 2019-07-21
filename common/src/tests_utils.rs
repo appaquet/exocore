@@ -93,7 +93,7 @@ where
 
 pub fn expect_eventually_within<F>(timeout: Duration, mut cb: F)
 where
-    F: FnMut () -> bool,
+    F: FnMut() -> bool,
 {
     let start_time = Instant::now();
     while start_time.elapsed() < timeout {
