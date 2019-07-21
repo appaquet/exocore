@@ -575,7 +575,10 @@ mod tests {
         assert_eq!(chain_res, 0);
 
         // index a few traits, wait for them to be in a block
-        test_index.put_contact_traits(10..=19)?;
+        let ops_id = test_index.put_contact_traits(10..=19)?;
+        test_index
+            .cluster
+            .wait_operations_committed(0, ops_id.into_iter());
         test_index.handle_engine_events()?;
         let res = test_index.index.search(&Query::with_trait("contact"))?;
         let pending_res = count_results_source(&res, EntityResultSource::Pending);
