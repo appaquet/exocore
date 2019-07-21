@@ -57,7 +57,7 @@ jobs:
           wget https://github.com/mozilla/grcov/releases/download/v0.5.1/grcov-linux-x86_64.tar.bz2
           tar -jxf grcov-linux-x86_64.tar.bz2
           export PATH=$PATH:`pwd`
-          ./utils/coverage_grcov.sh codecov_io
+          ./utils/coverage.sh codecov_io
           bash <(curl -s https://codecov.io/bash)
         displayName: 'Code coverage'
 
