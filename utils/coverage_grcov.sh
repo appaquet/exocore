@@ -15,7 +15,7 @@ mkdir -p $COVERAGE_DIR
 zip -0 $COVERAGE_DIR/ccov.zip `find . \( -name "*exocore*.gc*" \) -print`;
 
 # Create HTML report
-grcov $COVERAGE_DIR/ccov.zip -s . -t lcov --llvm --branch -o $COVERAGE_DIR/lcov.info \
+grcov $COVERAGE_DIR/ccov.zip -s . -t lcov --llvm -o $COVERAGE_DIR/lcov.info \
 	--ignore-not-existing \
 	--ignore-dir "clients/*" \
 	--ignore-dir "cli/*" \
