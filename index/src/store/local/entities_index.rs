@@ -566,7 +566,10 @@ mod tests {
         test_index.handle_engine_events()?;
 
         // index a few traits, they should now be available from pending index
-        test_index.put_contact_traits(0..=9)?;
+        let ops_id = test_index.put_contact_traits(0..=9)?;
+        test_index
+            .cluster
+            .wait_operations_exist(0, ops_id.into_iter());
         test_index.handle_engine_events()?;
         let res = test_index.index.search(&Query::with_trait("contact"))?;
         let pending_res = count_results_source(&res, EntityResultSource::Pending);
