@@ -499,6 +499,7 @@ mod tests {
     use crate::mutation::TestFailMutation;
     use exocore_common::node::LocalNode;
     use exocore_transport::mock::MockTransportHandle;
+    use exocore_common::tests_utils::expect_eventually;
 
     #[test]
     fn mutation_and_query() -> Result<(), failure::Error> {
@@ -511,9 +512,11 @@ mod tests {
             .create_put_contact_mutation("entity1", "trait1", "hello");
         test_remote_store.send_and_await_mutation(mutation)?;
 
-        let query = Query::match_text("hello");
-        let results = test_remote_store.send_and_await_query(query)?;
-        assert_eq!(results.results.len(), 1);
+        expect_eventually(|| {
+            let query = Query::match_text("hello");
+            let results = test_remote_store.send_and_await_query(query).unwrap();
+            results.results.len() == 1
+        });
 
         Ok(())
     }
