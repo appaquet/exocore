@@ -17,11 +17,12 @@ use exocore_common::utils::completion_notifier::{
 use futures::prelude::*;
 use futures::sync::mpsc;
 use futures::MapErr;
-use libp2p_core::{Multiaddr, PeerId, Swarm};
+use libp2p_core::{Multiaddr, PeerId};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock, Weak};
 use std::time::Duration;
 use tokio::timer::Interval;
+use libp2p_swarm::Swarm;
 
 ///
 /// libp2p transport configuration

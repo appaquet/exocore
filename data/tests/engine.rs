@@ -95,7 +95,7 @@ fn single_node_chain_iteration() -> Result<(), failure::Error> {
     let op2 = cluster
         .get_handle_mut(0)
         .write_entry_operation(b"i love rust 2")?;
-    cluster.wait_next_block_commit(0);
+    cluster.wait_operations_committed(0, vec![op1, op2].into_iter());
 
     let chain_operations = cluster
         .get_handle(0)
@@ -127,7 +127,7 @@ fn single_node_restart() -> Result<(), failure::Error> {
     expect_operations_emitted(&cluster, &[op1]);
 
     // wait for operations to be committed
-    cluster.wait_next_block_commit(0);
+    cluster.wait_operation_committed(0, op1);
 
     // make sure operation is in chain
     let entry_before = cluster.get_handle(0).get_operation(op1)?.unwrap();
@@ -168,8 +168,8 @@ fn two_nodes_full_replication() -> Result<(), failure::Error> {
         .write_entry_operation(b"i love rust 1")?;
 
     // wait for both nodes to have the operation committed locally
-    cluster.wait_operation_committed(0, op1);
-    cluster.wait_operation_committed(1, op2);
+    cluster.wait_operations_committed(0, vec![op1, op2].into_iter());
+    cluster.wait_operations_committed(1, vec![op1, op2].into_iter());
 
     // chain should be the same on both node with operations committed
     let segments_0 = cluster.get_handle(0).get_chain_segments()?;
