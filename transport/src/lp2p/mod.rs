@@ -18,11 +18,11 @@ use futures::prelude::*;
 use futures::sync::mpsc;
 use futures::MapErr;
 use libp2p_core::{Multiaddr, PeerId};
+use libp2p_swarm::Swarm;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock, Weak};
 use std::time::Duration;
 use tokio::timer::Interval;
-use libp2p_swarm::Swarm;
 
 ///
 /// libp2p transport configuration

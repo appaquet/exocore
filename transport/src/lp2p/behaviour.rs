@@ -169,8 +169,8 @@ mod tests {
     use futures::sync::mpsc;
     use libp2p_core::identity;
     use libp2p_core::{Multiaddr, PeerId};
-    use tokio::runtime::Runtime;
     use libp2p_swarm::Swarm;
+    use tokio::runtime::Runtime;
 
     #[test]
     fn behaviour_integration() {
