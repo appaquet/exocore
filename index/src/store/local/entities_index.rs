@@ -577,8 +577,12 @@ mod tests {
 
         // index a few traits, wait for first block ot be committed
         let second_ops_id = test_index.put_contact_traits(10..=19)?;
-        test_index.cluster.wait_operations_emitted(0, &second_ops_id);
-        test_index.cluster.wait_operations_committed(0, &first_ops_id);
+        test_index
+            .cluster
+            .wait_operations_emitted(0, &second_ops_id);
+        test_index
+            .cluster
+            .wait_operations_committed(0, &first_ops_id);
         test_index.handle_engine_events()?;
         let res = test_index.index.search(&Query::with_trait("contact"))?;
         let pending_res = count_results_source(&res, EntityResultSource::Pending);
