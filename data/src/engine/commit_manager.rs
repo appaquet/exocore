@@ -53,7 +53,7 @@ impl Default for CommitManagerConfig {
             operations_cleanup_after_block_depth: 6,
             commit_maximum_pending_store_count: 10,
             commit_maximum_interval: Duration::from_secs(3),
-            block_proposal_timeout: Duration::from_secs(5),
+            block_proposal_timeout: Duration::from_secs(7),
         }
     }
 }
@@ -107,7 +107,7 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
         let potential_next_blocks = pending_blocks.potential_next_blocks();
         let best_potential_next_block = potential_next_blocks.first().map(|b| b.group_id);
         debug!(
-            "{}: potential_next_blocks={:?} best_next_block={:?}",
+            "{}: Tick begins. potential_next_blocks={:?} best_next_block={:?}",
             self.cell.local_node().id(),
             potential_next_blocks,
             best_potential_next_block
@@ -783,7 +783,6 @@ impl PendingBlocks {
                     } else if nodes.is_quorum(refusals.len()) || has_my_refusal {
                         BlockStatus::NextRefused
                     } else if has_expired {
-                        println!("GOT AN EXPIRED");
                         BlockStatus::NextExpired
                     } else {
                         BlockStatus::NextPotential
