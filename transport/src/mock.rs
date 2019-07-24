@@ -184,7 +184,7 @@ impl Drop for MockTransportHandle {
 }
 
 ///
-/// Add test methods to the handle
+/// Wraps a transport handle to add test methods
 ///
 pub struct TestableTransportHandle<T: TransportHandle> {
     handle: Option<T>,

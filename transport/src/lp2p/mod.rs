@@ -3,7 +3,7 @@ pub mod common_transport;
 pub mod protocol;
 
 use crate::messages::{InMessage, OutMessage};
-use crate::transport::{MpscHandleSink, MpscHandleStream, Transport};
+use crate::transport::{MpscHandleSink, MpscHandleStream};
 use crate::Error;
 use crate::{TransportHandle, TransportLayer};
 use behaviour::{ExocoreBehaviour, ExocoreBehaviourEvent, ExocoreBehaviourMessage};
@@ -335,18 +335,14 @@ impl Libp2pTransport {
     }
 }
 
-impl Transport for Libp2pTransport {
-    type Handle = Libp2pTransportHandle;
-}
-
 impl Future for Libp2pTransport {
     type Item = ();
     type Error = Error;
 
     fn poll(&mut self) -> Result<Async<Self::Item>, Self::Error> {
         if !self.start_notifier.is_complete() {
-            let start_result = self.start()?;
-            self.start_notifier.complete(Ok(start_result));
+            self.start()?;
+            self.start_notifier.complete(Ok(()));
         }
 
         self.stop_listener.poll().map_err(|err| match err {

@@ -4,13 +4,6 @@ use futures::sync::mpsc;
 use crate::{Error, InMessage, OutMessage};
 
 ///
-/// Transport that allows a layer of the architecture to communicate with other nodes
-///
-pub trait Transport: Future<Item = (), Error = Error> + Send + 'static {
-    type Handle: TransportHandle;
-}
-
-///
 /// Handle for a cell & layer to the transport
 ///
 pub trait TransportHandle: Future<Item = (), Error = Error> + Send + 'static {

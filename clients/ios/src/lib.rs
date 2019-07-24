@@ -1,3 +1,5 @@
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
 #[macro_use]
 extern crate log;
 
@@ -19,10 +21,9 @@ use libc;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 
-#[repr(C, u8)]
+#[repr(u8)]
 enum Error {
     Success = 0,
-    TokioRuntime = 1,
 }
 
 pub struct Context {
@@ -38,6 +39,7 @@ impl Context {
 
         let mut runtime = Runtime::new().expect("Couldn't start runtime");
 
+        // TODO: To be cleaned up when cell management will be ironed out: https://github.com/appaquet/exocore/issues/80
         let local_node = LocalNode::new_from_keypair(Keypair::decode_base58_string("ae4WbDdfhv3416xs8S2tQgczBarmR8HKABvPCmRcNMujdVpDzuCJVQADVeqkqwvDmqYUUjLqv7kcChyCYn8R9BNgXP").unwrap());
         let local_addr = "/ip4/0.0.0.0/tcp/0"
             .parse()
@@ -138,7 +140,7 @@ pub extern "C" fn exocore_context_new() -> ContextResult {
 }
 
 #[no_mangle]
-pub extern "C" fn exocore_send_query(ctx: *mut Context, query: *const libc::c_char) {
+pub extern "C" fn exocore_send_query(ctx: *mut Context, _query: *const libc::c_char) {
     let context = unsafe { ctx.as_mut().unwrap() };
 
     match context
@@ -153,6 +155,7 @@ pub extern "C" fn exocore_send_query(ctx: *mut Context, query: *const libc::c_ch
     }
 }
 
+// TODO: To be cleaned up in https://github.com/appaquet/exocore/issues/104
 fn create_test_schema() -> Arc<Schema> {
     Arc::new(
         Schema::parse(
@@ -187,6 +190,7 @@ fn create_test_schema() -> Arc<Schema> {
     )
 }
 
+// TODO: To be moved https://github.com/appaquet/exocore/issues/123
 fn tokio_future_spawner(future: Box<dyn Future<Item = (), Error = ()> + Send>) {
     tokio::spawn(future);
 }

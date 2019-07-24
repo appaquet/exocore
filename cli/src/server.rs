@@ -82,18 +82,17 @@ pub fn start(
                 }),
         );
 
-        // start ws server
-        let ws_handle = config.websocket_listen_address.map(|listen_address| {
+        // start WebSocket server if needed
+        let ws_transport_handle = config.websocket_listen_address.map(|listen_address| {
             info!("Starting a WebSocket transport server");
             start_ws_server(&mut rt, &cell, listen_address)
         });
 
-        // start an index if needed
+        // start an local store index if needed
         if server_opts.index_node {
             let full_cell = opt_full_cell.ok_or_else(|| {
                 err_msg("Tried to start a local index, but node doesn't have full cell access (not private key)")
             })?;
-
             let schema = create_test_schema();
 
             let mut index_dir = cell_config.data_directory.clone();
@@ -108,21 +107,23 @@ pub fn start(
                 index_engine_handle.try_clone()?,
             )?;
 
-            let libp2p_handle = transport.get_handle(cell.clone(), TransportLayer::Index)?;
-            if let Some(ws_handle) = ws_handle {
-                let transport = EitherTransportHandle::new(libp2p_handle, ws_handle?);
+            // if we have a WebSocket handle, we create a combined transport
+            if let Some(ws_transport) = ws_transport_handle {
+                let libp2p_handle = transport.get_handle(cell.clone(), TransportLayer::Index)?;
+                let combined_transport = EitherTransportHandle::new(libp2p_handle, ws_transport?);
                 create_local_store(
                     &mut rt,
-                    transport,
+                    combined_transport,
                     index_engine_handle,
                     full_cell,
                     schema,
                     entities_index,
                 )?;
             } else {
+                let transport_handle = transport.get_handle(cell.clone(), TransportLayer::Index)?;
                 create_local_store(
                     &mut rt,
-                    libp2p_handle,
+                    transport_handle,
                     index_engine_handle,
                     full_cell,
                     schema,
@@ -191,6 +192,7 @@ fn create_local_store<T: TransportHandle>(
     Ok(())
 }
 
+// TODO: To be cleaned up in https://github.com/appaquet/exocore/issues/104
 fn create_test_schema() -> Arc<Schema> {
     Arc::new(
         Schema::parse(

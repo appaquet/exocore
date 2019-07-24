@@ -10,8 +10,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Weak};
 
 ///
-/// Transport handle that wraps 2 different transport handles. When it receives messages,
-/// it nodes from which transport it came so that it can be sent back to via the same
+/// Transport handle that wraps 2 other transport handles. When it receives messages,
+/// it notes from which transport it came so that replies can be sent back via the same
 /// transport.
 ///
 /// !! If we never received a message for a node, it will automatically select the first handle !!
@@ -42,7 +42,7 @@ impl<TLeft: TransportHandle, TRight: TransportHandle> EitherTransportHandle<TLef
 impl<TLeft: TransportHandle, TRight: TransportHandle> TransportHandle
     for EitherTransportHandle<TLeft, TRight>
 {
-    // TODO: Figure out static types
+    // TODO: Figure out static types https://github.com/appaquet/exocore/issues/125
     type StartFuture = Box<dyn Future<Item = (), Error = Error> + Send + 'static>;
     type Sink = Box<dyn Sink<SinkItem = OutMessage, SinkError = Error> + Send + 'static>;
     type Stream = Box<dyn Stream<Item = InMessage, Error = Error> + Send + 'static>;
@@ -99,6 +99,7 @@ impl<TLeft: TransportHandle, TRight: TransportHandle> TransportHandle
                     })?;
                     let side = Inner::get_side(&weak_inner1, node.id())?;
 
+                    // default to left side if we didn't find node
                     if let Some(Side::Right) = side {
                         right_sender.unbounded_send(out_message).map_err(|err| {
                             Error::Other(format!("Couldn't send to right sink: {}", err))
@@ -123,8 +124,7 @@ impl<TLeft: TransportHandle, TRight: TransportHandle> TransportHandle
     fn get_stream(&mut self) -> Self::Stream {
         let weak_inner = Arc::downgrade(&self.inner);
         let left = self.left.get_stream().map(move |in_message| {
-            if let Err(err) = Inner::maybe_add_node(&weak_inner, in_message.from.id(), &Side::Left)
-            {
+            if let Err(err) = Inner::maybe_add_node(&weak_inner, in_message.from.id(), Side::Left) {
                 error!("Error saving node's transport from left side: {}", err);
                 let _ = Inner::maybe_complete_error(&weak_inner, err);
             }
@@ -133,7 +133,7 @@ impl<TLeft: TransportHandle, TRight: TransportHandle> TransportHandle
 
         let weak_inner = Arc::downgrade(&self.inner);
         let right = self.right.get_stream().map(move |in_message| {
-            if let Err(err) = Inner::maybe_add_node(&weak_inner, in_message.from.id(), &Side::Right)
+            if let Err(err) = Inner::maybe_add_node(&weak_inner, in_message.from.id(), Side::Right)
             {
                 error!("Error saving node's transport from right side: {}", err);
                 let _ = Inner::maybe_complete_error(&weak_inner, err);
@@ -175,7 +175,7 @@ impl<TLeft: TransportHandle, TRight: TransportHandle> Future
 }
 
 ///
-///
+/// Inner shared instance of the handle
 ///
 struct Inner {
     node_map: HashMap<NodeId, Side>,
@@ -192,22 +192,22 @@ impl Inner {
     fn maybe_add_node(
         weak_inner: &Weak<RwLock<Inner>>,
         node_id: &NodeId,
-        side: &Side,
+        side: Side,
     ) -> Result<(), Error> {
         let inner = weak_inner.upgrade().ok_or(Error::Upgrade)?;
 
         {
             // check if node is already in map with read lock
             let inner = inner.read()?;
-            if inner.node_map.get(node_id) == Some(side) {
+            if inner.node_map.get(node_id) == Some(&side) {
                 return Ok(());
             }
         }
 
         {
-            // if node is not in map, we write lock
+            // if we're here, node is not in the map and need the write lock
             let mut inner = inner.write()?;
-            inner.node_map.insert(node_id.clone(), *side);
+            inner.node_map.insert(node_id.clone(), side);
         }
 
         Ok(())
@@ -242,10 +242,11 @@ mod tests {
 
         let mock_transport1 = MockTransport::default();
         let mock_transport2 = MockTransport::default();
-
         let node1 = LocalNode::generate();
         let node2 = LocalNode::generate();
 
+        // create 2 different kind of transports
+        // on node 1, we use it combined using the EitherTransportHandle
         let node1_transport1 = mock_transport1.get_transport(node1.clone(), Index);
         let node1_transport2 = mock_transport2.get_transport(node1.clone(), Index);
         let mut node1_either = rt
@@ -258,6 +259,7 @@ mod tests {
             .unwrap();
         node1_either.start(&mut rt);
 
+        // on node 2, we use transports independently
         let mut node2_transport1 = mock_transport1
             .get_transport(node2.clone(), Index)
             .into_testable();
@@ -267,7 +269,7 @@ mod tests {
             .into_testable();
         node2_transport2.start(&mut rt);
 
-        // since node2 has never sent message, it will send via transport 1
+        // since node1 has never sent message, it will send to node 2 via transport 1 (left side)
         node1_either.send_test_message(&mut rt, node2.node(), 1);
         assert!(node2_transport1.has_message()?);
         assert!(!node2_transport2.has_message()?);
@@ -282,7 +284,7 @@ mod tests {
         assert_eq!(&from, node2.id());
         assert_eq!(msg, 3);
 
-        // sending to node2 should now be sent via transport 2 since its last used transport
+        // sending to node2 should now be sent via transport 2 since its last used transport (right side)
         node1_either.send_test_message(&mut rt, node2.node(), 4);
         let (from, msg) = node2_transport2.receive_test_message(&mut rt);
         assert_eq!(&from, node1.id());

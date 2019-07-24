@@ -4,7 +4,7 @@ use self::websocket::client::r#async::{Framed, TcpStream};
 use self::websocket::r#async::MessageCodec;
 use self::websocket::OwnedMessage;
 pub use self::websocket::WebSocketError;
-use crate::transport::{MpscHandleSink, MpscHandleStream, Transport};
+use crate::transport::{MpscHandleSink, MpscHandleStream};
 use crate::{Error, InMessage, OutMessage, TransportHandle};
 use exocore_common::cell::{Cell, CellId};
 use exocore_common::framing::{FrameBuilder, TypedCapnpFrame};
@@ -334,10 +334,6 @@ impl WebsocketTransport {
 
         Ok(())
     }
-}
-
-impl Transport for WebsocketTransport {
-    type Handle = WebsocketTransportHandle;
 }
 
 impl Future for WebsocketTransport {
