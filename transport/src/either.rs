@@ -233,6 +233,7 @@ mod tests {
     use crate::mock::{MockTransport, TestableTransportHandle};
     use crate::TransportLayer::Index;
     use exocore_common::node::LocalNode;
+    use exocore_common::tests_utils::{expect_result, result_assert_false, result_assert_true};
     use futures::future;
     use tokio::runtime::Runtime;
 
@@ -271,8 +272,13 @@ mod tests {
 
         // since node1 has never sent message, it will send to node 2 via transport 1 (left side)
         node1_either.send_test_message(&mut rt, node2.node(), 1);
-        assert!(node2_transport1.has_message()?);
-        assert!(!node2_transport2.has_message()?);
+        expect_result::<_, _, failure::Error>(|| {
+            let transport1_has_message = node2_transport1.has_message()?;
+            let transport2_has_message = node2_transport2.has_message()?;
+            result_assert_true(transport1_has_message)?;
+            result_assert_false(transport2_has_message)?;
+            Ok(())
+        });
 
         // sending to node1 via both transport should be received
         node2_transport1.send_test_message(&mut rt, node1.node(), 2);
