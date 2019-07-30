@@ -1,5 +1,6 @@
 use crate::domain::entity::{EntityId, FieldValue, Record, Trait, TraitId};
 use crate::domain::schema;
+use crate::domain::schema::SchemaRecord;
 use crate::error::Error;
 use crate::query::*;
 use exocore_data::block::BlockOffset;
@@ -195,7 +196,7 @@ impl TraitsIndex {
         let record_schema: &schema::TraitSchema = mutation.trt.record_schema();
 
         let mut doc = Document::default();
-        doc.add_u64(self.fields.trait_type, u64::from(record_schema.id));
+        doc.add_u64(self.fields.trait_type, u64::from(record_schema.id()));
         doc.add_text(self.fields.trait_id, &mutation.trt.id());
         doc.add_text(self.fields.entity_id, &mutation.entity_id);
         doc.add_text(
@@ -208,7 +209,7 @@ impl TraitsIndex {
             doc.add_u64(self.fields.block_offset, block_offset);
         }
 
-        let indexeds = record_schema.fields.iter().filter(|f| f.indexed);
+        let indexeds = record_schema.fields().iter().filter(|f| f.indexed);
         for field in indexeds {
             if let Some(field_value) = mutation.trt.value(field) {
                 match (&field.typ, field_value) {
@@ -257,14 +258,14 @@ impl TraitsIndex {
     where
         S: Deref<Target = Searcher>,
     {
-        let trait_schema = if let Some(trait_schema) = self.schema.trait_by_name(&query.trait_name)
-        {
-            trait_schema
-        } else {
-            return Ok(vec![]);
-        };
+        let trait_schema =
+            if let Some(trait_schema) = self.schema.trait_by_full_name(&query.trait_name) {
+                trait_schema
+            } else {
+                return Ok(vec![]);
+            };
 
-        let term = Term::from_field_u64(self.fields.trait_type, u64::from(trait_schema.id));
+        let term = Term::from_field_u64(self.fields.trait_type, u64::from(trait_schema.id()));
         let query = TermQuery::new(term, IndexRecordOption::Basic);
 
         self.execute_tantivy_query(searcher, &query, limit)
@@ -465,7 +466,7 @@ mod tests {
             block_offset: Some(1234),
             operation_id: 2345,
             entity_id: "entity_id1".to_string(),
-            trt: Trait::new(schema.clone(), "contact")
+            trt: Trait::new(schema.clone(), "exocore.contact")
                 .with_id("trudeau1".to_string())
                 .with_value_by_name("name", "Justin Trudeau")
                 .with_value_by_name("email", "justin.trudeau@gov.ca"),
@@ -496,7 +497,7 @@ mod tests {
             block_offset: None,
             operation_id: 1,
             entity_id: "entity_id1".to_string(),
-            trt: Trait::new(schema.clone(), "contact")
+            trt: Trait::new(schema.clone(), "exocore.contact")
                 .with_id("trt1".to_string())
                 .with_value_by_name("name", "Justin Trudeau")
                 .with_value_by_name("email", "justin.trudeau@gov.ca"),
@@ -506,7 +507,7 @@ mod tests {
             block_offset: None,
             operation_id: 2,
             entity_id: "entity_id2".to_string(),
-            trt: Trait::new(schema.clone(), "email")
+            trt: Trait::new(schema.clone(), "exocore.email")
                 .with_id("trt2".to_string())
                 .with_value_by_name("subject", "Some subject")
                 .with_value_by_name("body", "Very important body"),
@@ -514,7 +515,7 @@ mod tests {
 
         index.apply_mutations(vec![contact_mutation, email_mutation].into_iter())?;
 
-        let query = Query::with_trait("email");
+        let query = Query::with_trait("exocore.email");
         let results = index.search(&query, 10)?;
         assert!(find_trait_result(&results, "trt2").is_some());
 
@@ -533,7 +534,7 @@ mod tests {
             block_offset: Some(1234),
             operation_id: 1,
             entity_id: "et1".to_string(),
-            trt: Trait::new(schema.clone(), "contact").with_id("trt1".to_string()),
+            trt: Trait::new(schema.clone(), "exocore.contact").with_id("trt1".to_string()),
         }))?;
         assert_eq!(index.highest_indexed_block()?, Some(1234));
 
@@ -541,7 +542,7 @@ mod tests {
             block_offset: Some(120),
             operation_id: 2,
             entity_id: "et1".to_string(),
-            trt: Trait::new(schema.clone(), "contact").with_id("trt1".to_string()),
+            trt: Trait::new(schema.clone(), "exocore.contact").with_id("trt1".to_string()),
         }))?;
         assert_eq!(index.highest_indexed_block()?, Some(1234));
 
@@ -549,7 +550,7 @@ mod tests {
             block_offset: Some(9999),
             operation_id: 3,
             entity_id: "et1".to_string(),
-            trt: Trait::new(schema.clone(), "contact").with_id("trt1".to_string()),
+            trt: Trait::new(schema.clone(), "exocore.contact").with_id("trt1".to_string()),
         }))?;
         assert_eq!(index.highest_indexed_block()?, Some(9999));
 
@@ -566,7 +567,7 @@ mod tests {
             block_offset: None,
             operation_id: 1234,
             entity_id: "entity_id1".to_string(),
-            trt: Trait::new(schema.clone(), "contact")
+            trt: Trait::new(schema.clone(), "exocore.contact")
                 .with_id("trudeau1".to_string())
                 .with_value_by_name("name", "Justin Trudeau")
                 .with_value_by_name("email", "justin.trudeau@gov.ca"),
@@ -596,7 +597,7 @@ mod tests {
             block_offset: None,
             operation_id: 1234,
             entity_id: "entity_id1".to_string(),
-            trt: Trait::new(schema.clone(), "contact")
+            trt: Trait::new(schema.clone(), "exocore.contact")
                 .with_id("trudeau1".to_string())
                 .with_value_by_name("name", "Justin Trudeau")
                 .with_value_by_name("email", "justin.trudeau@gov.ca"),
@@ -631,7 +632,7 @@ mod tests {
             block_offset: None,
             operation_id: 2345,
             entity_id: "entity_id2".to_string(),
-            trt: Trait::new(schema.clone(), "contact")
+            trt: Trait::new(schema.clone(), "exocore.contact")
                 .with_id("trudeau2".to_string())
                 .with_value_by_name("name", "Justin Trudeau")
                 .with_value_by_name("email", "justin.trudeau@gov.ca"),

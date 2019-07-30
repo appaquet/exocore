@@ -145,13 +145,13 @@ mod tests {
 
         let mutation = Mutation::PutTrait(PutTraitMutation {
             entity_id: "entity1".to_owned(),
-            trt: Trait::new(schema.clone(), "contact").with_value_by_name("name", "bob"),
+            trt: Trait::new(schema.clone(), "exocore.contact").with_value_by_name("name", "bob"),
         });
         assert!(mutation.validate().is_err());
 
         let mutation = Mutation::PutTrait(PutTraitMutation {
             entity_id: "entity1".to_owned(),
-            trt: Trait::new(schema, "contact")
+            trt: Trait::new(schema, "exocore.contact")
                 .with_id("someid")
                 .with_value_by_name("name", "bob"),
         });

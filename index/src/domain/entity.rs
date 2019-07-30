@@ -1,6 +1,6 @@
 use super::schema::SchemaRecord;
 use crate::domain::schema::{
-    Schema, SchemaField, SchemaFieldId, SchemaStructId, SchemaTraitId, StructSchema, TraitSchema,
+    Namespace, Schema, SchemaField, SchemaFieldId, StructSchema, TraitSchema,
 };
 use crate::error::Error;
 use std::collections::HashMap;
@@ -10,8 +10,6 @@ pub type EntityId = String;
 pub type EntityIdRef = str;
 pub type TraitId = String;
 pub type TraitIdRef = str;
-
-// TODO: To be completed in https://github.com/appaquet/exocore/issues/104
 
 ///
 /// An entity is an object on which traits can be added to shape what it represents.
@@ -46,19 +44,31 @@ impl Entity {
 ///
 pub struct Trait {
     schema: Arc<Schema>,
-    schema_id: SchemaTraitId,
+    namespace: Arc<Namespace>,
+    trait_schema: Arc<TraitSchema>,
     values: HashMap<SchemaFieldId, FieldValue>,
 }
 
 impl Trait {
-    pub fn new(schema: Arc<Schema>, trait_name: &str) -> Trait {
-        let schema_id = schema
+    // TODO: Should be faillible
+    pub fn new(schema: Arc<Schema>, full_name: &str) -> Trait {
+        let (ns_name, trait_name) = super::schema::parse_record_full_name(full_name)
+            .expect("Couldn't parse trait full name");
+
+        let namespace = schema
+            .namespace_by_name(ns_name)
+            .expect("Namespace doesn't exist in schema")
+            .clone();
+
+        let trait_schema = namespace
             .trait_by_name(trait_name)
-            .expect("Trait doesn't exist in schema")
-            .id;
+            .expect("Trait doesn't exist in namespace")
+            .clone();
+
         Trait {
             schema,
-            schema_id,
+            namespace,
+            trait_schema,
             values: HashMap::new(),
         }
     }
@@ -73,8 +83,8 @@ impl Trait {
             .value_by_name(TraitSchema::TRAIT_ID_FIELD)
             .ok_or_else(|| {
                 Error::DataIntegrity(format!(
-                    "Trait with schema_trait_id={} didn't have an ID",
-                    self.schema_id
+                    "Trait with schema_trait_id={} didn't have an ID field",
+                    self.trait_schema.id(),
                 ))
             })?;
 
@@ -103,10 +113,12 @@ impl Record for Trait {
         &self.schema
     }
 
-    fn record_schema(&self) -> &Self::SchemaType {
-        self.schema
-            .trait_by_id(self.schema_id)
-            .expect("Trait doesn't exist in schema")
+    fn namespace(&self) -> &Arc<Namespace> {
+        &self.namespace
+    }
+
+    fn record_schema(&self) -> &Arc<Self::SchemaType> {
+        &self.trait_schema
     }
 
     fn values(&self) -> &HashMap<SchemaFieldId, FieldValue> {
@@ -126,11 +138,11 @@ impl std::fmt::Debug for Trait {
 
 impl PartialEq for Trait {
     fn eq(&self, other: &Self) -> bool {
-        if self.schema.name != other.schema.name {
+        if self.namespace.name() != other.namespace.name() {
             return false;
         }
 
-        if self.schema_id != other.schema_id {
+        if self.trait_schema.id() != other.trait_schema.id() {
             return false;
         }
 
@@ -146,7 +158,17 @@ pub trait Record: Sized {
 
     fn schema(&self) -> &Arc<Schema>;
 
-    fn record_schema(&self) -> &Self::SchemaType;
+    fn namespace(&self) -> &Arc<Namespace>;
+
+    fn record_schema(&self) -> &Arc<Self::SchemaType>;
+
+    fn full_name(&self) -> String {
+        format!(
+            "{}.{}",
+            self.namespace().name(),
+            self.record_schema().name()
+        )
+    }
 
     fn values(&self) -> &HashMap<SchemaFieldId, FieldValue>;
 
@@ -174,8 +196,8 @@ pub trait Record: Sized {
 
     fn debug_fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         let record_schema = self.record_schema();
-        let name = record_schema.name();
-        let mut str_fmt = f.debug_struct(name);
+        let name = self.full_name();
+        let mut str_fmt = f.debug_struct(&name);
         for (field_id, value) in self.values() {
             let field = record_schema
                 .field_by_id(*field_id)
@@ -192,19 +214,31 @@ pub trait Record: Sized {
 ///
 pub struct Struct {
     schema: Arc<Schema>,
-    schema_id: SchemaStructId,
+    namespace: Arc<Namespace>,
+    struct_schema: Arc<StructSchema>,
     values: HashMap<SchemaFieldId, FieldValue>,
 }
 
 impl Struct {
-    pub fn new(schema: Arc<Schema>, struct_name: &str) -> Struct {
-        let struct_id = schema
+    // TODO: Should be faillible
+    pub fn new(schema: Arc<Schema>, full_name: &str) -> Struct {
+        let (ns_name, struct_name) = super::schema::parse_record_full_name(full_name)
+            .expect("Couldn't parse struct full name");
+
+        let namespace = schema
+            .namespace_by_name(ns_name)
+            .expect("Namespace doesn't exist in schema")
+            .clone();
+
+        let struct_schema = namespace
             .struct_by_name(struct_name)
-            .expect("Struct doesn't exist in schema")
-            .id;
+            .expect("Struct doesn't exist in namespace")
+            .clone();
+
         Struct {
             schema,
-            schema_id: struct_id,
+            namespace,
+            struct_schema,
             values: HashMap::new(),
         }
     }
@@ -212,14 +246,17 @@ impl Struct {
 
 impl Record for Struct {
     type SchemaType = StructSchema;
+
     fn schema(&self) -> &Arc<Schema> {
         &self.schema
     }
 
-    fn record_schema(&self) -> &Self::SchemaType {
-        self.schema
-            .struct_by_id(self.schema_id)
-            .expect("Struct doesn't exist in schema")
+    fn namespace(&self) -> &Arc<Namespace> {
+        &self.namespace
+    }
+
+    fn record_schema(&self) -> &Arc<Self::SchemaType> {
+        &self.struct_schema
     }
 
     fn values(&self) -> &HashMap<SchemaFieldId, FieldValue> {
@@ -239,11 +276,11 @@ impl std::fmt::Debug for Struct {
 
 impl PartialEq for Struct {
     fn eq(&self, other: &Self) -> bool {
-        if self.schema.name != other.schema.name {
+        if self.namespace.name() != other.namespace.name() {
             return false;
         }
 
-        if self.schema_id != other.schema_id {
+        if self.struct_schema.id() != other.struct_schema.id() {
             return false;
         }
 
@@ -291,22 +328,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_basic() -> Result<(), failure::Error> {
+    fn trait_parse_basic() -> Result<(), failure::Error> {
         let schema = Arc::new(Schema::parse(
             r#"
-        name: schema1
-        traits:
-            - id: 0
-              name: trait1
-              fields:
+        namespaces:
+            - name: exocore
+              traits:
                 - id: 0
-                  name: field1
-                  type: string
+                  name: trait1
+                  fields:
+                    - id: 0
+                      name: field1
+                      type: string
+              structs:
+                - id: 0
+                  name: struct1
+                  fields:
+                    - id: 0
+                      name: field1
+                      type: string
         "#,
         )?);
 
-        let trt = Trait::new(schema, "trait1").with_value_by_name("field1", "hello");
-
+        let trt =
+            Trait::new(schema.clone(), "exocore.trait1").with_value_by_name("field1", "hello");
         assert_eq!(
             FieldValue::String("hello".to_string()),
             *trt.value_by_name("field1").unwrap()
@@ -316,6 +361,19 @@ mod tests {
             *trt.value_by_id(0).unwrap()
         );
         assert_eq!(None, trt.value_by_name("doesnt_exist"));
+        debug!("Trait: {:?}", trt);
+
+        let stc = Struct::new(schema, "exocore.struct1").with_value_by_name("field1", "hello");
+        assert_eq!(
+            FieldValue::String("hello".to_string()),
+            *stc.value_by_name("field1").unwrap()
+        );
+        assert_eq!(
+            FieldValue::String("hello".to_string()),
+            *stc.value_by_id(0).unwrap()
+        );
+        assert_eq!(None, stc.value_by_name("doesnt_exist"));
+        debug!("Struct: {:?}", stc);
 
         Ok(())
     }

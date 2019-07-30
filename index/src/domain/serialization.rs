@@ -45,7 +45,11 @@ where
     let mut ser = serializer.serialize_map(Some(record.values().len() + 1))?;
     ser.serialize_entry(
         &"_type",
-        &format!("{}.{}", record.schema().name, record.record_schema().name()),
+        &format!(
+            "{}.{}",
+            record.namespace().name(),
+            record.record_schema().name()
+        ),
     )?;
     for (field_id, field_value) in record.values().iter() {
         if let Some(field) = record_schema.field_by_id(*field_id) {
@@ -86,6 +90,8 @@ impl<'de> Deserialize<'de> for Trait {
         })?;
 
         let trait_type = extract_record_type(&mut values)?;
+
+        // TODO: Should be faillible
         let mut new_trait = Trait::new(schema, &trait_type);
         for (field_name, value) in values {
             new_trait = new_trait.with_value_by_name(&field_name, value);
@@ -96,6 +102,7 @@ impl<'de> Deserialize<'de> for Trait {
 }
 
 struct MapVisitor;
+
 impl<'de> Visitor<'de> for MapVisitor {
     type Value = HashMap<String, FieldValue>;
 
@@ -137,20 +144,13 @@ fn extract_record_type<E: serde::de::Error>(
         .remove("_type")
         .ok_or_else(|| serde::de::Error::custom("No _type field found"))?;
 
-    let struct_type = if let FieldValue::String(typ) = struct_type {
+    let record_type = if let FieldValue::String(typ) = struct_type {
         typ
     } else {
         return Err(serde::de::Error::custom("Field _type was not a string"));
     };
 
-    let struct_type = struct_type.split('.').nth(1).ok_or_else(|| {
-        serde::de::Error::custom(format!(
-            "Invalid _type field in JSON for struct: {}",
-            struct_type
-        ))
-    })?;
-
-    Ok(struct_type.to_string())
+    Ok(record_type.to_string())
 }
 
 fn struct_from_values<'de, D: Deserializer<'de>>(
@@ -182,6 +182,7 @@ impl<'de> Deserialize<'de> for FieldValue {
 }
 
 struct FieldValueVisitor;
+
 impl<'de> Visitor<'de> for FieldValueVisitor {
     type Value = FieldValue;
 
@@ -316,7 +317,8 @@ mod tests {
     fn serialize_deserialize_struct() -> Result<(), failure::Error> {
         let schema = create_test_schema();
 
-        let value = Struct::new(schema.clone(), "struct1").with_value_by_name("field1", 1234);
+        let value =
+            Struct::new(schema.clone(), "exocore.struct1").with_value_by_name("field1", 1234);
         let value_ser = serde_json::to_string(&value)?;
         let value_deser = with_schema(&schema, || serde_json::from_str::<Struct>(&value_ser))?;
         assert_eq!(
@@ -332,9 +334,9 @@ mod tests {
     fn serialize_deserialize_trait() -> Result<(), failure::Error> {
         let schema = create_test_schema();
 
-        let value = Trait::new(schema.clone(), "trait1")
+        let value = Trait::new(schema.clone(), "exocore.trait1")
             .with_value_by_name("field1", "hey you")
-            .with_value_by_name("field2", Struct::new(schema.clone(), "struct1"));
+            .with_value_by_name("field2", Struct::new(schema.clone(), "exocore.struct1"));
         let value_ser = serde_json::to_string(&value)?;
         let value_deser = with_schema(&schema, || serde_json::from_str::<Trait>(&value_ser))?;
         assert_eq!(
@@ -350,25 +352,26 @@ mod tests {
         Arc::new(
             Schema::parse(
                 r#"
-        name: schema1
-        traits:
-            - id: 0
-              name: trait1
-              fields:
+            namespaces:
+              - name: exocore
+                traits:
                 - id: 0
-                  name: field1
-                  type: string
-                - id: 1
-                  name: field2
-                  type:
-                      struct: 0
-        structs:
-            - id: 0
-              name: struct1
-              fields:
+                  name: trait1
+                  fields:
+                    - id: 0
+                      name: field1
+                      type: string
+                    - id: 1
+                      name: field2
+                      type:
+                          struct: 0
+                structs:
                 - id: 0
-                  name: field1
-                  type: int 
+                  name: struct1
+                  fields:
+                    - id: 0
+                      name: field1
+                      type: int
         "#,
             )
             .unwrap(),

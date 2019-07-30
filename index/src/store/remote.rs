@@ -550,8 +550,11 @@ mod tests {
 
         let invalid_mutation = Mutation::PutTrait(PutTraitMutation {
             entity_id: "et1".into(),
-            trt: Trait::new(test_remote_store.local_store.schema.clone(), "contact")
-                .with_value_by_name("name", "some name"),
+            trt: Trait::new(
+                test_remote_store.local_store.schema.clone(),
+                "exocore.contact",
+            )
+            .with_value_by_name("name", "some name"),
         });
         let result = test_remote_store.send_and_await_mutation(invalid_mutation);
         assert!(result.is_err());

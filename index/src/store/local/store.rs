@@ -547,14 +547,14 @@ pub mod tests {
 
         let invalid_mutation = Mutation::PutTrait(PutTraitMutation {
             entity_id: "et1".into(),
-            trt: Trait::new(test_store.schema.clone(), "contact")
+            trt: Trait::new(test_store.schema.clone(), "exocore.contact")
                 .with_value_by_name("name", "some name"),
         });
         assert!(test_store.mutate_via_handle(invalid_mutation).is_err());
 
         let invalid_mutation = Mutation::PutTrait(PutTraitMutation {
             entity_id: "et1".into(),
-            trt: Trait::new(test_store.schema.clone(), "contact")
+            trt: Trait::new(test_store.schema.clone(), "exocore.contact")
                 .with_value_by_name("name", "some name"),
         });
         assert!(test_store.mutate_via_transport(invalid_mutation).is_err());
@@ -785,7 +785,7 @@ pub mod tests {
         ) -> Mutation {
             Mutation::PutTrait(PutTraitMutation {
                 entity_id: entity_id.into(),
-                trt: Trait::new(self.schema.clone(), "contact")
+                trt: Trait::new(self.schema.clone(), "exocore.contact")
                     .with_id(trait_id.into())
                     .with_value_by_name("name", name.into()),
             })
