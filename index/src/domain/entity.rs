@@ -1,10 +1,11 @@
-use super::schema::SchemaRecord;
+use super::schema::RecordSchema;
 use crate::domain::schema::{
-    Namespace, Schema, SchemaField, SchemaFieldId, StructSchema, TraitSchema,
+    FieldSchema, Namespace, Schema, SchemaFieldId, StructSchema, TraitIdValue, TraitSchema,
 };
 use crate::error::Error;
 use std::collections::HashMap;
 use std::sync::Arc;
+use uuid::Uuid;
 
 pub type EntityId = String;
 pub type EntityIdRef = str;
@@ -46,63 +47,106 @@ pub struct Trait {
     schema: Arc<Schema>,
     namespace: Arc<Namespace>,
     trait_schema: Arc<TraitSchema>,
+    trait_id: TraitId,
     values: HashMap<SchemaFieldId, FieldValue>,
 }
 
 impl Trait {
     // TODO: Should be faillible
     pub fn new(schema: Arc<Schema>, full_name: &str) -> Trait {
-        let (ns_name, trait_name) = super::schema::parse_record_full_name(full_name)
-            .expect("Couldn't parse trait full name");
+        Self::new_try(schema, full_name).expect("Error creating trait")
+    }
+
+    pub fn new_try(schema: Arc<Schema>, full_name: &str) -> Result<Trait, Error> {
+        let (ns_name, trait_name) =
+            super::schema::parse_record_full_name(full_name).ok_or_else(|| {
+                Error::Schema(format!("Couldn't parse record full name '{}'", full_name))
+            })?;
 
         let namespace = schema
             .namespace_by_name(ns_name)
-            .expect("Namespace doesn't exist in schema")
+            .ok_or_else(|| {
+                Error::Schema(format!("Couldn't find namespace with name '{}'", ns_name))
+            })?
             .clone();
 
         let trait_schema = namespace
             .trait_by_name(trait_name)
-            .expect("Trait doesn't exist in namespace")
+            .ok_or_else(|| {
+                Error::Schema(format!(
+                    "Couldn't find trait with name '{}' in namespace '{}'",
+                    trait_name, ns_name
+                ))
+            })?
             .clone();
 
-        Trait {
+        let mut trt = Trait {
             schema,
             namespace,
             trait_schema,
+            trait_id: "".to_owned(),
             values: HashMap::new(),
+        };
+
+        // TODO: Prevent this
+        let trait_id = trt.generate_id()?;
+        trt.trait_id = trait_id;
+
+        Ok(trt)
+    }
+
+    fn generate_id(&self) -> Result<String, Error> {
+        let current_id_value = self
+            .value_by_name(TraitSchema::TRAIT_ID_FIELD)
+            .and_then(|fv| match fv {
+                FieldValue::String(s) => Some(s.clone()),
+                _ => None,
+            });
+
+        match self.trait_schema.id_field() {
+            TraitIdValue::Specified => {
+                current_id_value
+                    .ok_or_else(|| {
+                        Error::DataIntegrity(format!(
+                            "Trait with schema_trait_id={} didn't have a value for id field but should have been specified",
+                            self.trait_schema.id(),
+                        ))
+                    })
+            }
+            TraitIdValue::Generated => {
+                match current_id_value {
+                    Some(id) => Ok(id),
+                    None =>
+                        Ok(Uuid::new_v4().to_string()),
+                }
+            }
+            TraitIdValue::Static(id) => {
+                Ok(id.clone())
+            }
+            TraitIdValue::Field(_id) => {
+                // TODO: To implement
+                unimplemented!()
+            }
+            TraitIdValue::Fields(_ids) => {
+                // TODO: To implement
+                unimplemented!()
+            }
         }
     }
 
-    pub fn build(self) -> Result<Self, Error> {
-        // TODO: Add Trait ID generation logic
-        Ok(self)
-    }
-
     pub fn validate(&self) -> Result<(), Error> {
-        let _ = self
-            .value_by_name(TraitSchema::TRAIT_ID_FIELD)
-            .ok_or_else(|| {
-                Error::DataIntegrity(format!(
-                    "Trait with schema_trait_id={} didn't have an ID field",
-                    self.trait_schema.id(),
-                ))
-            })?;
-
+        // TODO:
         Ok(())
     }
 
     pub fn id(&self) -> &TraitId {
-        match self.value_by_name(TraitSchema::TRAIT_ID_FIELD) {
-            Some(FieldValue::String(id)) => id,
-            other => panic!(
-                "Trait didn't contain a trait_id or it wasn't a string: value={:?}",
-                other
-            ),
-        }
+        &self.trait_id
     }
 
-    pub fn with_id<V: Into<TraitId>>(self, id: V) -> Self {
-        self.with_value_by_name(TraitSchema::TRAIT_ID_FIELD, id.into())
+    pub fn with_id<V: Into<TraitId>>(mut self, id: V) -> Self {
+        let trait_id = id.into();
+        self.trait_id = trait_id.clone();
+        self.with_value_by_name(TraitSchema::TRAIT_ID_FIELD, trait_id.clone())
     }
 }
 
@@ -154,7 +198,7 @@ impl PartialEq for Trait {
 /// Common (Rust) trait between `Struct` and `Trait`, since both are a collection of fields.
 ///
 pub trait Record: Sized {
-    type SchemaType: SchemaRecord;
+    type SchemaType: RecordSchema;
 
     fn schema(&self) -> &Arc<Schema>;
 
@@ -174,7 +218,7 @@ pub trait Record: Sized {
 
     fn values_mut(&mut self) -> &mut HashMap<SchemaFieldId, FieldValue>;
 
-    fn value(&self, field: &SchemaField) -> Option<&FieldValue> {
+    fn value(&self, field: &FieldSchema) -> Option<&FieldValue> {
         self.values().get(&field.id)
     }
 

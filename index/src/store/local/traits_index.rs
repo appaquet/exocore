@@ -1,6 +1,6 @@
 use crate::domain::entity::{EntityId, FieldValue, Record, Trait, TraitId};
 use crate::domain::schema;
-use crate::domain::schema::SchemaRecord;
+use crate::domain::schema::RecordSchema;
 use crate::error::Error;
 use crate::query::*;
 use exocore_data::block::BlockOffset;

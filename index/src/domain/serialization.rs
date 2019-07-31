@@ -1,5 +1,5 @@
 use super::entity::{FieldValue, Record, Struct, Trait};
-use super::schema::{Schema, SchemaRecord};
+use super::schema::{Schema, RecordSchema};
 use serde::de::{MapAccess, Visitor};
 use serde::export::Formatter;
 use serde::{ser::SerializeMap, Deserialize, Deserializer, Serialize, Serializer};

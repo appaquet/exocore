@@ -2,6 +2,7 @@ use crate::error::Error;
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use crate::domain::entity::TraitId;
 
 pub type SchemaRecordId = u16;
 pub type SchemaTraitId = SchemaRecordId;
@@ -53,6 +54,15 @@ impl Schema {
         self.namespace_by_name(ns_name)
             .and_then(|ns| ns.struct_by_name(trait_name))
     }
+
+    pub fn to_serializable(&self) -> SerializableSchema {
+        let namespaces = self
+            .namespaces
+            .iter()
+            .map(|ns| ns.to_serializable())
+            .collect();
+        SerializableSchema { namespaces }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -89,6 +99,10 @@ impl SerializableSchema {
             namespaces,
             namespaces_name,
         })
+    }
+
+    pub fn to_yaml_string(&self) -> String {
+        serde_yaml::to_string(self).expect("Couldn't convert serializable schema to yaml")
     }
 }
 
@@ -127,6 +141,25 @@ impl Namespace {
 
     pub fn struct_by_name(&self, name: &str) -> Option<&Arc<StructSchema>> {
         self.structs_name.get(name)
+    }
+
+    pub fn to_serializable(&self) -> SerializableNamespace {
+        let traits = self
+            .traits_id
+            .values()
+            .map(|t| t.as_ref().clone())
+            .collect();
+        let structs = self
+            .structs_id
+            .values()
+            .map(|s| s.as_ref().clone())
+            .collect();
+
+        SerializableNamespace {
+            name: self.name.clone(),
+            traits,
+            structs,
+        }
     }
 }
 
@@ -172,17 +205,21 @@ impl SerializableNamespace {
                 }
 
                 if let Some(_other_field) = stc.fields_id.insert(field.id, field_pos) {
-                    return Err(Error::Schema(format!(
-                        "Struct {} already had a field with id {}",
-                        stc.name, field.id
-                    )));
+                    if !field.is_special() {
+                        return Err(Error::Schema(format!(
+                            "Struct {} already had a field with id {}",
+                            stc.name, field.id
+                        )));
+                    }
                 }
 
                 if let Some(_other_field) = stc.fields_name.insert(field.name.clone(), field_pos) {
-                    return Err(Error::Schema(format!(
-                        "Struct {} already had a field with name {}",
-                        stc.name, field.name
-                    )));
+                    if !field.is_special() {
+                        return Err(Error::Schema(format!(
+                            "Struct {} already had a field with name {}",
+                            stc.name, field.name
+                        )));
+                    }
                 }
             }
 
@@ -227,17 +264,42 @@ impl SerializableNamespace {
                 }
 
                 if let Some(_other_field) = trt.fields_id.insert(field.id, field_pos) {
-                    return Err(Error::Schema(format!(
-                        "Trait {} already had a field with id {}",
-                        trt.name, field.id
-                    )));
+                    if !field.is_special() {
+                        return Err(Error::Schema(format!(
+                            "Trait {} already had a field with id {}",
+                            trt.name, field.id
+                        )));
+                    }
                 }
 
                 if let Some(_other_field) = trt.fields_name.insert(field.name.clone(), field_pos) {
-                    return Err(Error::Schema(format!(
-                        "Trait {} already had a field with name {}",
-                        trt.name, field.name
-                    )));
+                    if !field.is_special() {
+                        return Err(Error::Schema(format!(
+                            "Trait {} already had a field with name {}",
+                            trt.name, field.name
+                        )));
+                    }
+                }
+            }
+
+            match &trt.id_field {
+                TraitIdValue::Generated | TraitIdValue::Specified | TraitIdValue::Static(_) => {}
+                TraitIdValue::Field(id) => {
+                    if trt.fields_id.get(&id).is_none() {
+                        return Err(Error::Schema(format!(
+                            "Trait {} had a `id_field` that points to a non-existent field id {}",
+                            trt.name, id
+                        )));
+                    }
+                }
+                TraitIdValue::Fields(ids) => {
+                    let missing_field = ids.iter().any(|id| trt.fields_id.get(id).is_none());
+                    if missing_field {
+                        return Err(Error::Schema(format!(
+                            "Trait {} had a `id_field` that points to a non-existent field (ids={:?})",
+                            trt.name, ids
+                        )));
+                    }
                 }
             }
 
@@ -265,30 +327,36 @@ impl SerializableNamespace {
             structs_name,
         })
     }
+
+    pub fn to_yaml_string(&self) -> String {
+        serde_yaml::to_string(self).expect("Couldn't convert namespace schema to yaml")
+    }
 }
 
 ///
 /// Common trait of Trait and Structs. Both have a name and fields.
 ///
-pub trait SchemaRecord {
+pub trait RecordSchema {
     fn id(&self) -> SchemaRecordId;
     fn name(&self) -> &str;
 
-    fn fields(&self) -> &[SchemaField];
-    fn field_by_id(&self, id: SchemaFieldId) -> Option<&SchemaField>;
-    fn field_by_name(&self, name: &str) -> Option<&SchemaField>;
+    fn fields(&self) -> &[FieldSchema];
+    fn field_by_id(&self, id: SchemaFieldId) -> Option<&FieldSchema>;
+    fn field_by_name(&self, name: &str) -> Option<&FieldSchema>;
 }
 
 ///
 /// Schema definition of a Trait. A Trait can be added to an Entity to define its
 /// behaviour.
 ///
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub struct TraitSchema {
     id: SchemaTraitId,
     name: String,
-    fields: Vec<SchemaField>,
+    #[serde(default = "default_id_generated")]
+    id_field: TraitIdValue,
+    fields: Vec<FieldSchema>,
     #[serde(skip)]
     fields_id: HashMap<SchemaFieldId, usize>,
     #[serde(skip)]
@@ -300,23 +368,27 @@ impl TraitSchema {
     pub const CREATION_DATE_FIELD: &'static str = "creation_date";
     pub const MODIFICATION_DATE_FIELD: &'static str = "modification_date";
 
-    fn default_fields() -> Vec<SchemaField> {
+    pub fn id_field(&self) -> &TraitIdValue {
+        &self.id_field
+    }
+    
+    pub fn default_fields() -> Vec<FieldSchema> {
         vec![
-            SchemaField {
+            FieldSchema {
                 id: 65400,
                 name: Self::TRAIT_ID_FIELD.to_owned(),
                 typ: FieldType::String,
                 indexed: false, // special case, it's indexed & stored in another way
                 optional: false,
             },
-            SchemaField {
+            FieldSchema {
                 id: 65401,
                 name: Self::CREATION_DATE_FIELD.to_owned(),
                 typ: FieldType::Int, // TODO: date
                 indexed: true,
                 optional: false,
             },
-            SchemaField {
+            FieldSchema {
                 id: 65402,
                 name: Self::MODIFICATION_DATE_FIELD.to_owned(),
                 typ: FieldType::Int, // TODO: date
@@ -327,7 +399,7 @@ impl TraitSchema {
     }
 }
 
-impl SchemaRecord for TraitSchema {
+impl RecordSchema for TraitSchema {
     fn id(&self) -> SchemaTraitId {
         self.id
     }
@@ -336,27 +408,29 @@ impl SchemaRecord for TraitSchema {
         &self.name
     }
 
-    fn fields(&self) -> &[SchemaField] {
+    fn fields(&self) -> &[FieldSchema] {
         &self.fields
     }
 
-    fn field_by_id(&self, id: SchemaFieldId) -> Option<&SchemaField> {
+    fn field_by_id(&self, id: SchemaFieldId) -> Option<&FieldSchema> {
         self.fields_id
             .get(&id)
             .and_then(|pos| self.fields.get(*pos))
     }
 
-    fn field_by_name(&self, name: &str) -> Option<&SchemaField> {
+    fn field_by_name(&self, name: &str) -> Option<&FieldSchema> {
         self.fields_name
             .get(name)
             .and_then(|pos| self.fields.get(*pos))
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
-pub enum IdField {
+pub enum TraitIdValue {
     Generated,
+    Specified,
+    Static(TraitId),
     Field(SchemaFieldId),
     Fields(Vec<SchemaFieldId>),
 }
@@ -364,19 +438,19 @@ pub enum IdField {
 ///
 /// Schema definition of a Struct. A struct can be used in a field of a Trait or Struct.
 ///
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub struct StructSchema {
     id: u16,
     name: String,
-    fields: Vec<SchemaField>,
+    fields: Vec<FieldSchema>,
     #[serde(skip)]
     fields_id: HashMap<SchemaFieldId, usize>,
     #[serde(skip)]
     fields_name: HashMap<String, usize>,
 }
 
-impl SchemaRecord for StructSchema {
+impl RecordSchema for StructSchema {
     fn id(&self) -> SchemaStructId {
         self.id
     }
@@ -385,17 +459,17 @@ impl SchemaRecord for StructSchema {
         &self.name
     }
 
-    fn fields(&self) -> &[SchemaField] {
+    fn fields(&self) -> &[FieldSchema] {
         &self.fields
     }
 
-    fn field_by_id(&self, id: SchemaFieldId) -> Option<&SchemaField> {
+    fn field_by_id(&self, id: SchemaFieldId) -> Option<&FieldSchema> {
         self.fields_id
             .get(&id)
             .and_then(|pos| self.fields.get(*pos))
     }
 
-    fn field_by_name(&self, name: &str) -> Option<&SchemaField> {
+    fn field_by_name(&self, name: &str) -> Option<&FieldSchema> {
         self.fields_name
             .get(name)
             .and_then(|pos| self.fields.get(*pos))
@@ -405,9 +479,9 @@ impl SchemaRecord for StructSchema {
 ///
 /// Field of a Trait of Struct.
 ///
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
-pub struct SchemaField {
+pub struct FieldSchema {
     pub id: u16,
     pub name: String,
     #[serde(default = "default_true")]
@@ -418,13 +492,13 @@ pub struct SchemaField {
     pub typ: FieldType,
 }
 
-impl SchemaField {
+impl FieldSchema {
     fn is_special(&self) -> bool {
         self.id >= 65400
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum FieldType {
     String,
@@ -441,6 +515,10 @@ fn default_false() -> bool {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_id_generated() -> TraitIdValue {
+    TraitIdValue::Generated
 }
 
 fn is_valid_name(name: &str) -> bool {
@@ -470,6 +548,20 @@ pub(crate) fn parse_record_full_name(full_name: &str) -> Option<(&str, &str)> {
 pub mod tests {
     use super::*;
     use std::sync::Arc;
+
+    #[test]
+    fn serialization_deserialization() {
+        let schema = create_test_schema();
+
+        let schema_yaml = schema.to_serializable().to_yaml_string();
+        let schema_deser = Schema::parse(&schema_yaml).unwrap();
+        assert_eq!(schema.namespaces.len(), schema_deser.namespaces.len());
+
+        let ns = schema.namespace_by_name("exocore").unwrap();
+        let ns_yaml = ns.to_serializable().to_yaml_string();
+        let ns_deser = Namespace::parse(&ns_yaml).unwrap();
+        assert_eq!(ns.traits_id.len(), ns_deser.traits_id.len());
+    }
 
     #[test]
     fn names_validation() {
@@ -519,8 +611,6 @@ pub mod tests {
         assert!(trt
             .field_by_name(TraitSchema::MODIFICATION_DATE_FIELD)
             .is_some());
-
-        //  TODO: Put back  assert!(serde_yaml::to_string(&ns).is_ok());
     }
 
     #[test]
@@ -682,8 +772,88 @@ pub mod tests {
     }
 
     #[test]
-    fn generated_id_field() {
-        // TODO:
+    fn trait_id_field_generation() {
+        Namespace::parse(
+            r#"
+            name: exocore
+            traits:
+              - id: 0
+                name: contact
+                id_field:
+                  field: 0
+                fields:
+                  - id: 0
+                    name: name
+                    type: string
+                    indexed: true
+          "#,
+        )
+        .unwrap();
+
+        Namespace::parse(
+            r#"
+            name: exocore
+            traits:
+              - id: 0
+                name: contact
+                id_field:
+                  field: 1
+                fields:
+                  - id: 0
+                    name: name
+                    type: string
+                    indexed: true
+          "#,
+        )
+        .err()
+        .unwrap();
+
+        Namespace::parse(
+            r#"
+            name: exocore
+            traits:
+              - id: 0
+                name: contact
+                id_field:
+                  fields:
+                    - 0
+                    - 1
+                fields:
+                  - id: 0
+                    name: name1
+                    type: string
+                    indexed: true
+                  - id: 1
+                    name: name2
+                    type: string
+                    indexed: true
+          "#,
+        )
+        .unwrap();
+
+        Namespace::parse(
+            r#"
+            name: exocore
+            traits:
+              - id: 0
+                name: contact
+                id_field:
+                  fields:
+                    - 0
+                    - 2
+                fields:
+                  - id: 0
+                    name: name1
+                    type: string
+                    indexed: true
+                  - id: 1
+                    name: name2
+                    type: string
+                    indexed: true
+          "#,
+        )
+        .err()
+        .unwrap();
     }
 
     pub fn create_test_schema() -> Arc<Schema> {
