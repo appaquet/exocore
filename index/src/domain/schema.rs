@@ -1,8 +1,8 @@
+use crate::domain::entity::TraitId;
 use crate::error::Error;
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use crate::domain::entity::TraitId;
 
 pub type SchemaRecordId = u16;
 pub type SchemaTraitId = SchemaRecordId;
@@ -364,19 +364,20 @@ pub struct TraitSchema {
 }
 
 impl TraitSchema {
-    pub const TRAIT_ID_FIELD: &'static str = "_id";
+    pub const TRAIT_ID_FIELD: SchemaFieldId = 65400;
+    pub const TRAIT_ID_FIELD_NAME: &'static str = "_id";
     pub const CREATION_DATE_FIELD: &'static str = "creation_date";
     pub const MODIFICATION_DATE_FIELD: &'static str = "modification_date";
 
     pub fn id_field(&self) -> &TraitIdValue {
         &self.id_field
     }
-    
+
     pub fn default_fields() -> Vec<FieldSchema> {
         vec![
             FieldSchema {
-                id: 65400,
-                name: Self::TRAIT_ID_FIELD.to_owned(),
+                id: Self::TRAIT_ID_FIELD,
+                name: Self::TRAIT_ID_FIELD_NAME.to_owned(),
                 typ: FieldType::String,
                 indexed: false, // special case, it's indexed & stored in another way
                 optional: false,
@@ -604,7 +605,9 @@ pub mod tests {
         assert_eq!("ns1", ns.name);
 
         let trt = ns.trait_by_name("trait2").unwrap();
-        assert!(trt.field_by_name(TraitSchema::TRAIT_ID_FIELD).is_some());
+        assert!(trt
+            .field_by_name(TraitSchema::TRAIT_ID_FIELD_NAME)
+            .is_some());
         assert!(trt
             .field_by_name(TraitSchema::CREATION_DATE_FIELD)
             .is_some());
@@ -865,23 +868,35 @@ pub mod tests {
             traits:
               - id: 0
                 name: contact
+                id_field:
+                    field: 0
                 fields:
                   - id: 0
-                    name: name
+                    name: id
                     type: string
                     indexed: true
                   - id: 1
+                    name: name
+                    type: string
+                    indexed: true
+                  - id: 2
                     name: email
                     type: string
                     indexed: true
               - id: 1
                 name: email
+                id_field:
+                    field: 0
                 fields:
                   - id: 0
-                    name: subject
+                    name: id
                     type: string
                     indexed: true
                   - id: 1
+                    name: subject
+                    type: string
+                    indexed: true
+                  - id: 2
                     name: body
                     type: string
                     indexed: true

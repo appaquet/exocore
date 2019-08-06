@@ -572,7 +572,7 @@ mod tests {
     use exocore_data::tests_utils::DataTestCluster;
     use exocore_data::{DirectoryChainStore, MemoryPendingStore};
 
-    use crate::domain::entity::{Record, Trait, TraitId};
+    use crate::domain::entity::{RecordBuilder, TraitBuilder, TraitId};
     use crate::domain::schema::tests::create_test_schema;
     use crate::mutation::{DeleteTraitMutation, PutTraitMutation};
 
@@ -894,9 +894,10 @@ mod tests {
         ) -> Result<OperationId, failure::Error> {
             let mutation = Mutation::PutTrait(PutTraitMutation {
                 entity_id: entity_id.into(),
-                trt: Trait::new(self.schema.clone(), "exocore.contact")
-                    .with_id(trait_id.into())
-                    .with_value_by_name("name", name.into()),
+                trt: TraitBuilder::new(self.schema.clone(), "exocore", "contact")?
+                    .with_value_by_name("id", trait_id.into())
+                    .with_value_by_name("name", name.into())
+                    .build()?,
             });
             let json_mutation = mutation.to_json(self.schema.clone())?;
             let op_id = self

@@ -1,5 +1,6 @@
 use super::entity::{FieldValue, Record, Struct, Trait};
-use super::schema::{Schema, RecordSchema};
+use super::schema::{RecordSchema, Schema};
+use crate::domain::entity::{RecordBuilder, StructBuilder, TraitBuilder};
 use serde::de::{MapAccess, Visitor};
 use serde::export::Formatter;
 use serde::{ser::SerializeMap, Deserialize, Deserializer, Serialize, Serializer};
@@ -91,11 +92,22 @@ impl<'de> Deserialize<'de> for Trait {
 
         let trait_type = extract_record_type(&mut values)?;
 
-        // TODO: Should be faillible
-        let mut new_trait = Trait::new(schema, &trait_type);
+        let mut trait_builder =
+            TraitBuilder::new_full_name(schema, &trait_type).map_err(|err| {
+                serde::de::Error::custom(format!(
+                    "Couldn't create trait from serialized valued: {}",
+                    err
+                ))
+            })?;
         for (field_name, value) in values {
-            new_trait = new_trait.with_value_by_name(&field_name, value);
+            trait_builder = trait_builder.with_value_by_name(&field_name, value);
         }
+        let new_trait = trait_builder.build().map_err(|err| {
+            serde::de::Error::custom(format!(
+                "Couldn't create trait from serialized valued: {}",
+                err
+            ))
+        })?;
 
         Ok(new_trait)
     }
@@ -161,10 +173,24 @@ fn struct_from_values<'de, D: Deserializer<'de>>(
         .ok_or_else(|| serde::de::Error::custom("Schema not set in thread local".to_string()))?;
 
     let struct_type = extract_record_type(&mut values)?;
-    let mut new_struct = Struct::new(schema, &struct_type);
+
+    let mut struct_builder = StructBuilder::new_full_name(schema, &struct_type).map_err(|err| {
+        serde::de::Error::custom(format!(
+            "Couldn't create struct from serialized valued: {}",
+            err
+        ))
+    })?;
+
     for (field_name, value) in values {
-        new_struct = new_struct.with_value_by_name(&field_name, value);
+        struct_builder = struct_builder.with_value_by_name(&field_name, value);
     }
+
+    let new_struct = struct_builder.build().map_err(|err| {
+        serde::de::Error::custom(format!(
+            "Couldn't create struct from serialized valued: {}",
+            err
+        ))
+    })?;
 
     Ok(new_struct)
 }
@@ -264,10 +290,25 @@ impl<'de> Visitor<'de> for FieldValueVisitor {
             })?;
 
             let struct_type = extract_record_type(&mut values)?;
-            let mut new_struct = Struct::new(schema, &struct_type);
+
+            let mut struct_builder =
+                StructBuilder::new_full_name(schema, &struct_type).map_err(|err| {
+                    serde::de::Error::custom(format!(
+                        "Couldn't create struct from serialized valued: {}",
+                        err
+                    ))
+                })?;
+
             for (field_name, value) in values {
-                new_struct = new_struct.with_value_by_name(&field_name, value);
+                struct_builder = struct_builder.with_value_by_name(&field_name, value);
             }
+
+            let new_struct = struct_builder.build().map_err(|err| {
+                serde::de::Error::custom(format!(
+                    "Couldn't create struct from serialized valued: {}",
+                    err
+                ))
+            })?;
 
             Ok(FieldValue::Struct(new_struct))
         } else {
@@ -317,8 +358,9 @@ mod tests {
     fn serialize_deserialize_struct() -> Result<(), failure::Error> {
         let schema = create_test_schema();
 
-        let value =
-            Struct::new(schema.clone(), "exocore.struct1").with_value_by_name("field1", 1234);
+        let value = StructBuilder::new(schema.clone(), "exocore", "struct1")?
+            .with_value_by_name("field1", 1234)
+            .build()?;
         let value_ser = serde_json::to_string(&value)?;
         let value_deser = with_schema(&schema, || serde_json::from_str::<Struct>(&value_ser))?;
         assert_eq!(
@@ -334,16 +376,20 @@ mod tests {
     fn serialize_deserialize_trait() -> Result<(), failure::Error> {
         let schema = create_test_schema();
 
-        let value = Trait::new(schema.clone(), "exocore.trait1")
+        let trt = TraitBuilder::new(schema.clone(), "exocore", "trait1")?
             .with_value_by_name("field1", "hey you")
-            .with_value_by_name("field2", Struct::new(schema.clone(), "exocore.struct1"));
-        let value_ser = serde_json::to_string(&value)?;
+            .with_value_by_name(
+                "field2",
+                StructBuilder::new(schema.clone(), "exocore", "struct1")?.build()?,
+            )
+            .build()?;
+        let value_ser = serde_json::to_string(&trt)?;
         let value_deser = with_schema(&schema, || serde_json::from_str::<Trait>(&value_ser))?;
         assert_eq!(
             FieldValue::String("hey you".to_string()),
             *value_deser.value_by_name("field1").unwrap()
         );
-        assert_eq!(value, value_deser);
+        assert_eq!(trt, value_deser);
 
         Ok(())
     }
@@ -357,6 +403,8 @@ mod tests {
                 traits:
                 - id: 0
                   name: trait1
+                  id_field:
+                    field: 0
                   fields:
                     - id: 0
                       name: field1
