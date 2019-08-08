@@ -895,8 +895,8 @@ mod tests {
             let mutation = Mutation::PutTrait(PutTraitMutation {
                 entity_id: entity_id.into(),
                 trt: TraitBuilder::new(self.schema.clone(), "exocore", "contact")?
-                    .with_value_by_name("id", trait_id.into())
-                    .with_value_by_name("name", name.into())
+                    .set("id", trait_id.into())
+                    .set("name", name.into())
                     .build()?,
             });
             let json_mutation = mutation.to_json(self.schema.clone())?;

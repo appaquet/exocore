@@ -1,6 +1,8 @@
 use super::entity::{FieldValue, Record, Struct, Trait};
 use super::schema::{RecordSchema, Schema};
 use crate::domain::entity::{RecordBuilder, StructBuilder, TraitBuilder};
+use crate::domain::schema::{FieldSchema, FieldType};
+use chrono::prelude::*;
 use serde::de::{MapAccess, Visitor};
 use serde::export::Formatter;
 use serde::{ser::SerializeMap, Deserialize, Deserializer, Serialize, Serializer};
@@ -72,6 +74,7 @@ impl Serialize for FieldValue {
             FieldValue::String(v) => v.serialize(serializer),
             FieldValue::Struct(v) => v.serialize(serializer),
             FieldValue::Int(v) => v.serialize(serializer),
+            FieldValue::DateTime(v) => v.serialize(serializer),
             FieldValue::Map(v) => v.serialize(serializer),
         }
     }
@@ -100,7 +103,15 @@ impl<'de> Deserialize<'de> for Trait {
                 ))
             })?;
         for (field_name, value) in values {
-            trait_builder = trait_builder.with_value_by_name(&field_name, value);
+            let remapped_value = if let Some(field_record) =
+                trait_builder.record_schema().field_by_name(&field_name)
+            {
+                maybe_remap_value(field_record, value)
+            } else {
+                value
+                // TODO: Else support for named values
+            };
+            trait_builder = trait_builder.set(&field_name, remapped_value);
         }
         let new_trait = trait_builder.build().map_err(|err| {
             serde::de::Error::custom(format!(
@@ -182,7 +193,14 @@ fn struct_from_values<'de, D: Deserializer<'de>>(
     })?;
 
     for (field_name, value) in values {
-        struct_builder = struct_builder.with_value_by_name(&field_name, value);
+        let remapped_value =
+            if let Some(field_record) = struct_builder.record_schema().field_by_name(&field_name) {
+                maybe_remap_value(field_record, value)
+            } else {
+                value
+                // TODO: Else support for named values
+            };
+        struct_builder = struct_builder.set(&field_name, remapped_value);
     }
 
     let new_struct = struct_builder.build().map_err(|err| {
@@ -300,7 +318,7 @@ impl<'de> Visitor<'de> for FieldValueVisitor {
                 })?;
 
             for (field_name, value) in values {
-                struct_builder = struct_builder.with_value_by_name(&field_name, value);
+                struct_builder = struct_builder.set(&field_name, value);
             }
 
             let new_struct = struct_builder.build().map_err(|err| {
@@ -314,6 +332,21 @@ impl<'de> Visitor<'de> for FieldValueVisitor {
         } else {
             Ok(FieldValue::Map(values))
         }
+    }
+}
+
+pub fn maybe_remap_value(field: &FieldSchema, value: FieldValue) -> FieldValue {
+    match (&field.typ, value) {
+        (FieldType::DateTime, FieldValue::String(date_str)) => {
+            match DateTime::parse_from_rfc3339(&date_str) {
+                Ok(res) => FieldValue::DateTime(res.with_timezone(&Utc)),
+                Err(err) => {
+                    warn!("Error parsing string: {}", err);
+                    FieldValue::String(date_str)
+                }
+            }
+        }
+        (_, value) => value,
     }
 }
 
@@ -358,15 +391,25 @@ mod tests {
     fn serialize_deserialize_struct() -> Result<(), failure::Error> {
         let schema = create_test_schema();
 
+        let now = std::time::SystemTime::now();
+        let chrono_now = DateTime::<Utc>::from(now);
+
+        let strt = StructBuilder::new(schema.clone(), "exocore", "struct1")?.build()?;
+
         let value = StructBuilder::new(schema.clone(), "exocore", "struct1")?
-            .with_value_by_name("field1", 1234)
+            .set("string_field", "string_value")
+            .set("int_field", 1234)
+            .set("date_field", chrono_now)
+            .set("struct_field", strt.clone())
             .build()?;
+
         let value_ser = serde_json::to_string(&value)?;
         let value_deser = with_schema(&schema, || serde_json::from_str::<Struct>(&value_ser))?;
-        assert_eq!(
-            FieldValue::Int(1234),
-            *value_deser.value_by_name("field1").unwrap()
-        );
+
+        assert_eq!(value_deser.get_string("string_field")?, "string_value");
+        assert_eq!(value_deser.get_int("int_field")?, 1234,);
+        assert_eq!(value_deser.get_datetime("date_field")?, &chrono_now);
+        assert_eq!(value_deser.get_struct("struct_field")?, &strt);
         assert_eq!(value, value_deser);
 
         Ok(())
@@ -376,19 +419,25 @@ mod tests {
     fn serialize_deserialize_trait() -> Result<(), failure::Error> {
         let schema = create_test_schema();
 
+        let now = std::time::SystemTime::now();
+        let chrono_now = DateTime::<Utc>::from(now);
+
+        let strt = StructBuilder::new(schema.clone(), "exocore", "struct1")?.build()?;
+
         let trt = TraitBuilder::new(schema.clone(), "exocore", "trait1")?
-            .with_value_by_name("field1", "hey you")
-            .with_value_by_name(
-                "field2",
-                StructBuilder::new(schema.clone(), "exocore", "struct1")?.build()?,
-            )
+            .set("string_field", "string_value")
+            .set("int_field", 1234)
+            .set("date_field", chrono_now)
+            .set("struct_field", strt.clone())
             .build()?;
+
         let value_ser = serde_json::to_string(&trt)?;
         let value_deser = with_schema(&schema, || serde_json::from_str::<Trait>(&value_ser))?;
-        assert_eq!(
-            FieldValue::String("hey you".to_string()),
-            *value_deser.value_by_name("field1").unwrap()
-        );
+
+        assert_eq!(value_deser.get_string("string_field")?, "string_value");
+        assert_eq!(value_deser.get_int("int_field")?, 1234,);
+        assert_eq!(value_deser.get_datetime("date_field")?, &chrono_now);
+        assert_eq!(value_deser.get_struct("struct_field")?, &strt);
         assert_eq!(trt, value_deser);
 
         Ok(())
@@ -407,10 +456,16 @@ mod tests {
                     field: 0
                   fields:
                     - id: 0
-                      name: field1
+                      name: string_field
                       type: string
                     - id: 1
-                      name: field2
+                      name: int_field
+                      type: int
+                    - id: 2
+                      name: date_field
+                      type: date_time
+                    - id: 3
+                      name: struct_field
                       type:
                           struct: 0
                 structs:
@@ -418,8 +473,18 @@ mod tests {
                   name: struct1
                   fields:
                     - id: 0
-                      name: field1
+                      name: string_field
+                      type: string
+                    - id: 1
+                      name: int_field
                       type: int
+                    - id: 2
+                      name: date_field
+                      type: date_time
+                    - id: 3
+                      name: struct_field
+                      type:
+                          struct: 0
         "#,
             )
             .unwrap(),

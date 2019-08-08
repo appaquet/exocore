@@ -13,6 +13,18 @@ pub enum Error {
     #[fail(display = "Data integrity error: {}", _0)]
     DataIntegrity(String),
 
+    #[fail(display = "Record field error: {}", _0)]
+    Field(String),
+
+    #[fail(display = "Record field {} didn't have a value", _0)]
+    FieldEmptyValue(String), // TODO: Should have Arc<Namespace> and Arc<SchemaField>
+
+    #[fail(display = "Record field type error: {}", _0)]
+    FieldType(String), // TODO: Should have expected and found FieldType
+
+    #[fail(display = "Field named {} was not in schema", _0)]
+    NamedFieldNotInSchema(String),
+
     #[cfg(feature = "local_store")]
     #[fail(display = "Error in Tantivy: {}", _0)]
     Tantivy(Arc<tantivy::TantivyError>),

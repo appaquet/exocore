@@ -1,8 +1,10 @@
-use crate::domain::entity::TraitId;
-use crate::error::Error;
-use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+
+use serde_derive::{Deserialize, Serialize};
+
+use crate::domain::entity::TraitId;
+use crate::error::Error;
 
 pub type SchemaRecordId = u16;
 pub type SchemaTraitId = SchemaRecordId;
@@ -366,8 +368,10 @@ pub struct TraitSchema {
 impl TraitSchema {
     pub const TRAIT_ID_FIELD: SchemaFieldId = 65400;
     pub const TRAIT_ID_FIELD_NAME: &'static str = "_id";
-    pub const CREATION_DATE_FIELD: &'static str = "creation_date";
-    pub const MODIFICATION_DATE_FIELD: &'static str = "modification_date";
+    pub const CREATION_DATE_FIELD: SchemaFieldId = 65401;
+    pub const CREATION_DATE_FIELD_NAME: &'static str = "creation_date";
+    pub const MODIFICATION_DATE_FIELD: SchemaFieldId = 65402;
+    pub const MODIFICATION_DATE_FIELD_NAME: &'static str = "modification_date";
 
     pub fn id_field(&self) -> &TraitIdValue {
         &self.id_field
@@ -383,15 +387,15 @@ impl TraitSchema {
                 optional: false,
             },
             FieldSchema {
-                id: 65401,
-                name: Self::CREATION_DATE_FIELD.to_owned(),
+                id: Self::CREATION_DATE_FIELD,
+                name: Self::CREATION_DATE_FIELD_NAME.to_owned(),
                 typ: FieldType::Int, // TODO: date
                 indexed: true,
                 optional: false,
             },
             FieldSchema {
-                id: 65402,
-                name: Self::MODIFICATION_DATE_FIELD.to_owned(),
+                id: Self::MODIFICATION_DATE_FIELD,
+                name: Self::MODIFICATION_DATE_FIELD_NAME.to_owned(),
                 typ: FieldType::Int, // TODO: date
                 indexed: true,
                 optional: false,
@@ -506,6 +510,7 @@ pub enum FieldType {
     Int,
     Bool,
     Struct(SchemaStructId),
+    DateTime,
     // TODO: Date time
     // TODO: Consistent timestamp
 }
@@ -547,8 +552,9 @@ pub(crate) fn parse_record_full_name(full_name: &str) -> Option<(&str, &str)> {
 
 #[cfg(test)]
 pub mod tests {
-    use super::*;
     use std::sync::Arc;
+
+    use super::*;
 
     #[test]
     fn serialization_deserialization() {
@@ -609,10 +615,10 @@ pub mod tests {
             .field_by_name(TraitSchema::TRAIT_ID_FIELD_NAME)
             .is_some());
         assert!(trt
-            .field_by_name(TraitSchema::CREATION_DATE_FIELD)
+            .field_by_name(TraitSchema::CREATION_DATE_FIELD_NAME)
             .is_some());
         assert!(trt
-            .field_by_name(TraitSchema::MODIFICATION_DATE_FIELD)
+            .field_by_name(TraitSchema::MODIFICATION_DATE_FIELD_NAME)
             .is_some());
     }
 
@@ -885,21 +891,63 @@ pub mod tests {
                     indexed: true
               - id: 1
                 name: email
-                id_field:
-                    field: 0
+                id_field: specified
                 fields:
                   - id: 0
-                    name: id
-                    type: string
-                    indexed: true
-                  - id: 1
                     name: subject
                     type: string
                     indexed: true
-                  - id: 2
+                  - id: 1
                     name: body
                     type: string
                     indexed: true
+                  - id: 2
+                    name: from
+                    type:
+                        struct: 0
+                    indexed: true
+              - id: 2
+                name: note
+                id_field: generated
+                fields:
+                  - id: 0
+                    name: title
+                    type: string
+                    indexed: true
+                  - id: 1
+                    name: body
+                    type: string
+                    indexed: true
+              - id: 3
+                name: annotation
+                id_field: generated
+                fields:
+                  - id: 0
+                    name: count
+                    type: int
+                    indexed: false
+              - id: 4
+                name: collection
+                id_field:
+                    static: collection_id
+                fields:
+                  - id: 0
+                    name: name
+                    type: string
+                    indexed: true
+            structs:
+              - id: 0
+                name: email_contact
+                fields:
+                  - id: 0
+                    name: name
+                    type: string
+                    indexed: true
+                  - id: 1
+                    name: email
+                    type: string
+                    indexed: true
+
         "#,
             )
             .unwrap(),

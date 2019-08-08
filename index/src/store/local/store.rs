@@ -763,8 +763,8 @@ pub mod tests {
                 entity_id: entity_id.into(),
                 trt: TraitBuilder::new(self.schema.clone(), "exocore", "contact")
                     .unwrap()
-                    .with_value_by_name("id", trait_id.into())
-                    .with_value_by_name("name", name.into())
+                    .set("id", trait_id.into())
+                    .set("name", name.into())
                     .build()
                     .unwrap(),
             })

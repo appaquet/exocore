@@ -468,9 +468,9 @@ mod tests {
             operation_id: 2345,
             entity_id: "entity_id1".to_string(),
             trt: TraitBuilder::new(schema.clone(), "exocore", "contact")?
-                .with_value_by_name("id", "trudeau1".to_string())
-                .with_value_by_name("name", "Justin Trudeau")
-                .with_value_by_name("email", "justin.trudeau@gov.ca")
+                .set("id", "trudeau1".to_string())
+                .set("name", "Justin Trudeau")
+                .set("email", "justin.trudeau@gov.ca")
                 .build()?,
         });
 
@@ -500,9 +500,9 @@ mod tests {
             operation_id: 1,
             entity_id: "entity_id1".to_string(),
             trt: TraitBuilder::new(schema.clone(), "exocore", "contact")?
-                .with_value_by_name("id", "trt1".to_string())
-                .with_value_by_name("name", "Justin Trudeau")
-                .with_value_by_name("email", "justin.trudeau@gov.ca")
+                .set_id("trt1".to_string())
+                .set("name", "Justin Trudeau")
+                .set("email", "justin.trudeau@gov.ca")
                 .build()?,
         });
 
@@ -511,9 +511,9 @@ mod tests {
             operation_id: 2,
             entity_id: "entity_id2".to_string(),
             trt: TraitBuilder::new(schema.clone(), "exocore", "email")?
-                .with_value_by_name("id", "trt2")
-                .with_value_by_name("subject", "Some subject")
-                .with_value_by_name("body", "Very important body")
+                .set_id("trt2")
+                .set("subject", "Some subject")
+                .set("body", "Very important body")
                 .build()?,
         });
 
@@ -539,7 +539,7 @@ mod tests {
             operation_id: 1,
             entity_id: "et1".to_string(),
             trt: TraitBuilder::new(schema.clone(), "exocore", "contact")?
-                .with_value_by_name("id", "trt1".to_string())
+                .set("id", "trt1".to_string())
                 .build()?,
         }))?;
         assert_eq!(index.highest_indexed_block()?, Some(1234));
@@ -549,7 +549,7 @@ mod tests {
             operation_id: 2,
             entity_id: "et1".to_string(),
             trt: TraitBuilder::new(schema.clone(), "exocore", "contact")?
-                .with_value_by_name("id", "trt1".to_string())
+                .set("id", "trt1".to_string())
                 .build()?,
         }))?;
         assert_eq!(index.highest_indexed_block()?, Some(1234));
@@ -559,7 +559,7 @@ mod tests {
             operation_id: 3,
             entity_id: "et1".to_string(),
             trt: TraitBuilder::new(schema.clone(), "exocore", "contact")?
-                .with_value_by_name("id", "trt1".to_string())
+                .set("id", "trt1".to_string())
                 .build()?,
         }))?;
         assert_eq!(index.highest_indexed_block()?, Some(9999));
@@ -578,9 +578,9 @@ mod tests {
             operation_id: 1234,
             entity_id: "entity_id1".to_string(),
             trt: TraitBuilder::new(schema.clone(), "exocore", "contact")?
-                .with_value_by_name("id", "trudeau1".to_string())
-                .with_value_by_name("name", "Justin Trudeau")
-                .with_value_by_name("email", "justin.trudeau@gov.ca")
+                .set("id", "trudeau1".to_string())
+                .set("name", "Justin Trudeau")
+                .set("email", "justin.trudeau@gov.ca")
                 .build()?,
         });
         index.apply_mutation(contact_mutation)?;
@@ -609,9 +609,9 @@ mod tests {
             operation_id: 1234,
             entity_id: "entity_id1".to_string(),
             trt: TraitBuilder::new(schema.clone(), "exocore", "contact")?
-                .with_value_by_name("id", "trudeau1".to_string())
-                .with_value_by_name("name", "Justin Trudeau")
-                .with_value_by_name("email", "justin.trudeau@gov.ca")
+                .set("id", "trudeau1".to_string())
+                .set("name", "Justin Trudeau")
+                .set("email", "justin.trudeau@gov.ca")
                 .build()?,
         });
         index.apply_mutation(contact_mutation)?;
@@ -645,9 +645,9 @@ mod tests {
             operation_id: 2345,
             entity_id: "entity_id2".to_string(),
             trt: TraitBuilder::new(schema.clone(), "exocore", "contact")?
-                .with_value_by_name("id", "trudeau2".to_string())
-                .with_value_by_name("name", "Justin Trudeau")
-                .with_value_by_name("email", "justin.trudeau@gov.ca")
+                .set("id", "trudeau2".to_string())
+                .set("name", "Justin Trudeau")
+                .set("email", "justin.trudeau@gov.ca")
                 .build()?,
         });
         index.apply_mutation(contact_mutation)?;

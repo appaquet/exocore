@@ -3,7 +3,9 @@ use crate::domain::schema::{
     FieldSchema, Namespace, Schema, SchemaFieldId, StructSchema, TraitIdValue, TraitSchema,
 };
 use crate::error::Error;
+use chrono::prelude::*;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -66,13 +68,46 @@ pub trait Record: Sized {
         self.values().get(&field.id)
     }
 
-    fn value_by_id(&self, id: SchemaFieldId) -> Option<&FieldValue> {
+    fn get_by_id(&self, id: SchemaFieldId) -> Option<&FieldValue> {
         self.values().get(&id)
     }
 
-    fn value_by_name(&self, field_name: &str) -> Option<&FieldValue> {
+    fn get_value(&self, field_name: &str) -> Option<&FieldValue> {
         let field = self.record_schema().field_by_name(field_name)?;
         self.values().get(&field.id)
+    }
+
+    fn get<'s, T: TryFrom<&'s FieldValue, Error = Error>>(
+        &'s self,
+        field_name: &str,
+    ) -> Result<T, Error> {
+        let field = self
+            .record_schema()
+            .field_by_name(field_name)
+            .ok_or_else(|| Error::NamedFieldNotInSchema(field_name.to_owned()))?;
+
+        let value = self
+            .values()
+            .get(&field.id)
+            .ok_or_else(|| Error::FieldEmptyValue(field_name.to_owned()))?;
+
+        T::try_from(value)
+    }
+
+    fn get_string(&self, field_name: &str) -> Result<&str, Error> {
+        self.get(field_name)
+    }
+
+    fn get_int(&self, field_name: &str) -> Result<i64, Error> {
+        self.get(field_name)
+    }
+
+    fn get_datetime(&self, field_name: &str) -> Result<&DateTime<Utc>, Error> {
+        self.get(field_name)
+    }
+
+    fn get_struct(&self, field_name: &str) -> Result<&Struct, Error> {
+        self.get(field_name)
     }
 
     fn debug_fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
@@ -118,19 +153,16 @@ pub trait RecordBuilder: Sized {
         self.values().get(&field.id)
     }
 
-    fn value_by_id(&self, id: SchemaFieldId) -> Option<&FieldValue> {
-        self.values().get(&id)
-    }
-
-    fn value_by_name(&self, field_name: &str) -> Option<&FieldValue> {
-        let field = self.record_schema().field_by_name(field_name)?;
-        self.values().get(&field.id)
-    }
-
-    fn with_value_by_name<V: Into<FieldValue>>(mut self, field_name: &str, value: V) -> Self {
+    fn set<V: Into<FieldValue>>(self, field_name: &str, value: V) -> Self {
         if let Some(field_id) = self.record_schema().field_by_name(field_name).map(|f| f.id) {
-            self.values_mut().insert(field_id, value.into());
+            self.set_by_id(field_id, value.into())
+        } else {
+            self
         }
+    }
+
+    fn set_by_id<V: Into<FieldValue>>(mut self, field_id: SchemaFieldId, value: V) -> Self {
+        self.values_mut().insert(field_id, value.into());
         self
     }
 
@@ -209,9 +241,11 @@ impl TraitBuilder {
         Self::new(schema, ns_name, trait_name)
     }
 
-    pub fn with_id(mut self, value: String) -> Self {
-        self.values
-            .insert(TraitSchema::TRAIT_ID_FIELD, value.into());
+    pub fn set_id<S: Into<String>>(mut self, value: S) -> Self {
+        self.values.insert(
+            TraitSchema::TRAIT_ID_FIELD,
+            FieldValue::String(value.into()),
+        );
         self
     }
 
@@ -239,6 +273,9 @@ impl TraitBuilder {
                     FieldValue::String(s) => Some(s.clone()),
                     _ => None,
                 });
+        if let Some(current_id_value) = current_id_value {
+            return Ok(current_id_value);
+        }
 
         match self.trait_schema.id_field() {
             TraitIdValue::Specified => {
@@ -303,6 +340,7 @@ impl RecordBuilder for TraitBuilder {
 ///
 /// Trait that can be added to an entity, shaping its representation.
 ///
+#[derive(Clone)]
 pub struct Trait {
     schema: Arc<Schema>,
     namespace: Arc<Namespace>,
@@ -459,6 +497,7 @@ impl RecordBuilder for StructBuilder {
 ///
 /// Structure with field-value pairs that can be used as a value of any field in a `Record`
 ///
+#[derive(Clone)]
 pub struct Struct {
     schema: Arc<Schema>,
     namespace: Arc<Namespace>,
@@ -509,10 +548,11 @@ impl PartialEq for Struct {
 ///
 /// Value of a field of a record
 ///
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum FieldValue {
     String(String),
     Int(i64),
+    DateTime(DateTime<Utc>),
     Struct(Struct),
     Map(HashMap<String, FieldValue>),
 }
@@ -529,79 +569,177 @@ impl From<String> for FieldValue {
     }
 }
 
-impl From<Struct> for FieldValue {
-    fn from(v: Struct) -> FieldValue {
-        FieldValue::Struct(v)
-    }
-}
-
 impl From<i64> for FieldValue {
     fn from(v: i64) -> FieldValue {
         FieldValue::Int(v)
     }
 }
 
+impl From<DateTime<Utc>> for FieldValue {
+    fn from(v: DateTime<Utc>) -> FieldValue {
+        FieldValue::DateTime(v)
+    }
+}
+
+impl From<Struct> for FieldValue {
+    fn from(v: Struct) -> FieldValue {
+        FieldValue::Struct(v)
+    }
+}
+
+impl<'s> TryFrom<&'s FieldValue> for &'s str {
+    type Error = Error;
+
+    fn try_from(value: &'s FieldValue) -> Result<Self, Error> {
+        match value {
+            FieldValue::String(value) => Ok(value),
+            other => Err(Error::FieldType(format!(
+                "Field was not a string, but was '{:?}'",
+                other
+            ))),
+        }
+    }
+}
+
+impl TryFrom<&FieldValue> for i64 {
+    type Error = Error;
+
+    fn try_from(value: &FieldValue) -> Result<Self, Error> {
+        match value {
+            FieldValue::Int(value) => Ok(*value),
+            other => Err(Error::FieldType(format!(
+                "Field was not an int, but was '{:?}'",
+                other
+            ))),
+        }
+    }
+}
+
+impl<'s> TryFrom<&'s FieldValue> for &'s DateTime<Utc> {
+    type Error = Error;
+
+    fn try_from(value: &'s FieldValue) -> Result<Self, Error> {
+        match value {
+            FieldValue::DateTime(value) => Ok(value),
+            other => Err(Error::FieldType(format!(
+                "Field was not a DateTime, but was '{:?}'",
+                other
+            ))),
+        }
+    }
+}
+
+impl<'s> TryFrom<&'s FieldValue> for &'s Struct {
+    type Error = Error;
+
+    fn try_from(value: &'s FieldValue) -> Result<Self, Error> {
+        match value {
+            FieldValue::Struct(value) => Ok(value),
+            other => Err(Error::FieldType(format!(
+                "Field was not a struct, but was '{:?}'",
+                other
+            ))),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::schema::tests::create_test_schema;
 
     #[test]
-    fn trait_parse_basic() -> Result<(), failure::Error> {
-        let schema = Arc::new(Schema::parse(
-            r#"
-        namespaces:
-            - name: exocore
-              traits:
-                - id: 0
-                  name: trait1
-                  fields:
-                    - id: 0
-                      name: field1
-                      type: string
-              structs:
-                - id: 0
-                  name: struct1
-                  fields:
-                    - id: 0
-                      name: field1
-                      type: string
-        "#,
-        )?);
+    fn string_field_value() -> Result<(), failure::Error> {
+        let schema = create_test_schema();
 
-        let trt = TraitBuilder::new(schema.clone(), "exocore", "trait1")?
-            .with_value_by_name("field1", "hello")
+        let collection = TraitBuilder::new(schema.clone(), "exocore", "collection")?
+            .set("name", "some collection")
             .build()?;
-        assert_eq!(
-            FieldValue::String("hello".to_string()),
-            *trt.value_by_name("field1").unwrap()
-        );
-        assert_eq!(
-            FieldValue::String("hello".to_string()),
-            *trt.value_by_id(0).unwrap()
-        );
-        assert_eq!(None, trt.value_by_name("doesnt_exist"));
-        debug!("Trait: {:?}", trt);
+        assert_eq!(collection.get_string("name")?, "some collection");
+        assert_eq!(collection.get::<&str>("name")?, "some collection");
 
-        let stc = StructBuilder::new(schema, "exocore", "struct1")?
-            .with_value_by_name("field1", "hello")
+        let email_contact = StructBuilder::new(schema.clone(), "exocore", "email_contact")?
+            .set("name", "Some Name")
             .build()?;
+        assert_eq!(email_contact.get::<&str>("name")?, "Some Name");
+        assert_eq!(email_contact.get_string("name")?, "Some Name");
+
+        Ok(())
+    }
+
+    #[test]
+    fn struct_field_value() -> Result<(), failure::Error> {
+        let schema = create_test_schema();
+
+        let email_from = StructBuilder::new(schema.clone(), "exocore", "email_contact")?
+            .set("name", "Some Name")
+            .build()?;
+
+        let email = TraitBuilder::new(schema.clone(), "exocore", "email")?
+            .set_id("email_id")
+            .set("name", "some collection")
+            .set("from", email_from)
+            .build()?;
+
+        assert_eq!(email.get_struct("from")?.get_string("name")?, "Some Name");
         assert_eq!(
-            FieldValue::String("hello".to_string()),
-            *stc.value_by_name("field1").unwrap()
+            email.get::<&Struct>("from")?.get_string("name")?,
+            "Some Name"
         );
-        assert_eq!(
-            FieldValue::String("hello".to_string()),
-            *stc.value_by_id(0).unwrap()
-        );
-        assert_eq!(None, stc.value_by_name("doesnt_exist"));
-        debug!("Struct: {:?}", stc);
+
+        Ok(())
+    }
+
+    #[test]
+    fn int_field_value() -> Result<(), failure::Error> {
+        let schema = create_test_schema();
+
+        let annot = TraitBuilder::new(schema.clone(), "exocore", "annotation")?
+            .set("count", 1234)
+            .build()?;
+
+        assert_eq!(annot.get_int("count")?, 1234);
+        assert_eq!(annot.get::<i64>("count")?, 1234);
 
         Ok(())
     }
 
     #[test]
     fn trait_id_generation() -> Result<(), failure::Error> {
-        // TODO:
+        let schema = create_test_schema();
+
+        // email has specified id
+        let email_res = TraitBuilder::new(schema.clone(), "exocore", "email")?
+            .set("subject", "Some title")
+            .set("body", "Some body")
+            .build();
+        assert!(email_res.is_err());
+
+        let email = TraitBuilder::new(schema.clone(), "exocore", "email")?
+            .set_id("email_id")
+            .set("subject", "Some title")
+            .set("body", "Some body")
+            .build()?;
+        assert_eq!(email.id(), "email_id");
+
+        // annotation has generated id
+        let annot = TraitBuilder::new(schema.clone(), "exocore", "annotation")?
+            .set("count", 1234)
+            .build()?;
+        assert!(annot.id().len() > 10);
+
+        // contact id is based on another field
+        let contact = TraitBuilder::new(schema.clone(), "exocore", "contact")?
+            .set("id", "some_id")
+            .build()?;
+        assert_eq!(contact.id(), "some_id");
+
+        let contact_res = TraitBuilder::new(schema.clone(), "exocore", "contact")?.build();
+        assert!(contact_res.is_err());
+
+        // collection has static id
+        let collection = TraitBuilder::new(schema.clone(), "exocore", "collection")?.build()?;
+        assert_eq!(collection.id(), "collection_id");
 
         Ok(())
     }
