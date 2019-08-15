@@ -761,7 +761,7 @@ pub mod tests {
         ) -> Mutation {
             Mutation::PutTrait(PutTraitMutation {
                 entity_id: entity_id.into(),
-                trt: TraitBuilder::new(self.schema.clone(), "exocore", "contact")
+                trt: TraitBuilder::new(&self.schema, "exocore", "contact")
                     .unwrap()
                     .set("id", trait_id.into())
                     .set("name", name.into())

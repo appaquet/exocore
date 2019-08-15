@@ -96,7 +96,7 @@ impl<'de> Deserialize<'de> for Trait {
         let trait_type = extract_record_type(&mut values)?;
 
         let mut trait_builder =
-            TraitBuilder::new_full_name(schema, &trait_type).map_err(|err| {
+            TraitBuilder::new_full_name(&schema, &trait_type).map_err(|err| {
                 serde::de::Error::custom(format!(
                     "Couldn't create trait from serialized valued: {}",
                     err
@@ -185,12 +185,13 @@ fn struct_from_values<'de, D: Deserializer<'de>>(
 
     let struct_type = extract_record_type(&mut values)?;
 
-    let mut struct_builder = StructBuilder::new_full_name(schema, &struct_type).map_err(|err| {
-        serde::de::Error::custom(format!(
-            "Couldn't create struct from serialized valued: {}",
-            err
-        ))
-    })?;
+    let mut struct_builder =
+        StructBuilder::new_full_name(&schema, &struct_type).map_err(|err| {
+            serde::de::Error::custom(format!(
+                "Couldn't create struct from serialized valued: {}",
+                err
+            ))
+        })?;
 
     for (field_name, value) in values {
         let remapped_value =
@@ -310,7 +311,7 @@ impl<'de> Visitor<'de> for FieldValueVisitor {
             let struct_type = extract_record_type(&mut values)?;
 
             let mut struct_builder =
-                StructBuilder::new_full_name(schema, &struct_type).map_err(|err| {
+                StructBuilder::new_full_name(&schema, &struct_type).map_err(|err| {
                     serde::de::Error::custom(format!(
                         "Couldn't create struct from serialized valued: {}",
                         err
@@ -394,9 +395,9 @@ mod tests {
         let now = std::time::SystemTime::now();
         let chrono_now = DateTime::<Utc>::from(now);
 
-        let strt = StructBuilder::new(schema.clone(), "exocore", "struct1")?.build()?;
+        let strt = StructBuilder::new(&schema, "exocore", "struct1")?.build()?;
 
-        let value = StructBuilder::new(schema.clone(), "exocore", "struct1")?
+        let value = StructBuilder::new(&schema, "exocore", "struct1")?
             .set("string_field", "string_value")
             .set("int_field", 1234)
             .set("date_field", chrono_now)
@@ -422,9 +423,9 @@ mod tests {
         let now = std::time::SystemTime::now();
         let chrono_now = DateTime::<Utc>::from(now);
 
-        let strt = StructBuilder::new(schema.clone(), "exocore", "struct1")?.build()?;
+        let strt = StructBuilder::new(&schema, "exocore", "struct1")?.build()?;
 
-        let trt = TraitBuilder::new(schema.clone(), "exocore", "trait1")?
+        let trt = TraitBuilder::new(&schema, "exocore", "trait1")?
             .set("string_field", "string_value")
             .set("int_field", 1234)
             .set("date_field", chrono_now)

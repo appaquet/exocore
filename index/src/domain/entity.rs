@@ -182,7 +182,68 @@ pub trait RecordBuilder: Sized {
 }
 
 ///
+/// Trait that can be added to an entity, shaping its representation.
 ///
+#[derive(Clone)]
+pub struct Trait {
+    schema: Arc<Schema>,
+    namespace: Arc<Namespace>,
+    trait_schema: Arc<TraitSchema>,
+    values: HashMap<SchemaFieldId, FieldValue>,
+}
+
+impl Trait {
+    pub fn id(&self) -> &TraitId {
+        let value = self.values.get(&TraitSchema::TRAIT_ID_FIELD);
+        match value {
+            Some(FieldValue::String(str)) => str,
+            _ => panic!("Trait didn't have a valid ID value"),
+        }
+    }
+}
+
+impl Record for Trait {
+    type SchemaType = TraitSchema;
+
+    fn schema(&self) -> &Arc<Schema> {
+        &self.schema
+    }
+
+    fn namespace(&self) -> &Arc<Namespace> {
+        &self.namespace
+    }
+
+    fn record_schema(&self) -> &Arc<Self::SchemaType> {
+        &self.trait_schema
+    }
+
+    fn values(&self) -> &HashMap<SchemaFieldId, FieldValue> {
+        &self.values
+    }
+}
+
+impl std::fmt::Debug for Trait {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        self.debug_fmt(f)
+    }
+}
+
+impl PartialEq for Trait {
+    fn eq(&self, other: &Self) -> bool {
+        if self.namespace.name() != other.namespace.name() {
+            return false;
+        }
+
+        if self.trait_schema.id() != other.trait_schema.id() {
+            return false;
+        }
+
+        self.values == other.values
+    }
+}
+
+///
+/// Trait builder
 ///
 pub struct TraitBuilder {
     schema: Arc<Schema>,
@@ -193,7 +254,7 @@ pub struct TraitBuilder {
 
 impl TraitBuilder {
     pub fn new<N: AsRef<str>, T: AsRef<str>>(
-        schema: Arc<Schema>,
+        schema: &Arc<Schema>,
         namespace_name: N,
         trait_name: T,
     ) -> Result<TraitBuilder, Error> {
@@ -219,7 +280,7 @@ impl TraitBuilder {
             .clone();
 
         Ok(TraitBuilder {
-            schema,
+            schema: schema.clone(),
             namespace,
             trait_schema,
             values: HashMap::new(),
@@ -227,7 +288,7 @@ impl TraitBuilder {
     }
 
     pub fn new_full_name<S: AsRef<str>>(
-        schema: Arc<Schema>,
+        schema: &Arc<Schema>,
         full_trait_name: S,
     ) -> Result<TraitBuilder, Error> {
         let (ns_name, trait_name) = super::schema::parse_record_full_name(full_trait_name.as_ref())
@@ -338,67 +399,6 @@ impl RecordBuilder for TraitBuilder {
 }
 
 ///
-/// Trait that can be added to an entity, shaping its representation.
-///
-#[derive(Clone)]
-pub struct Trait {
-    schema: Arc<Schema>,
-    namespace: Arc<Namespace>,
-    trait_schema: Arc<TraitSchema>,
-    values: HashMap<SchemaFieldId, FieldValue>,
-}
-
-impl Trait {
-    pub fn id(&self) -> &TraitId {
-        let value = self.values.get(&TraitSchema::TRAIT_ID_FIELD);
-        match value {
-            Some(FieldValue::String(str)) => str,
-            _ => panic!("Trait didn't have a valid ID value"),
-        }
-    }
-}
-
-impl Record for Trait {
-    type SchemaType = TraitSchema;
-
-    fn schema(&self) -> &Arc<Schema> {
-        &self.schema
-    }
-
-    fn namespace(&self) -> &Arc<Namespace> {
-        &self.namespace
-    }
-
-    fn record_schema(&self) -> &Arc<Self::SchemaType> {
-        &self.trait_schema
-    }
-
-    fn values(&self) -> &HashMap<SchemaFieldId, FieldValue> {
-        &self.values
-    }
-}
-
-impl std::fmt::Debug for Trait {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        self.debug_fmt(f)
-    }
-}
-
-impl PartialEq for Trait {
-    fn eq(&self, other: &Self) -> bool {
-        if self.namespace.name() != other.namespace.name() {
-            return false;
-        }
-
-        if self.trait_schema.id() != other.trait_schema.id() {
-            return false;
-        }
-
-        self.values == other.values
-    }
-}
-
-///
 ///
 ///
 pub struct StructBuilder {
@@ -410,7 +410,7 @@ pub struct StructBuilder {
 
 impl StructBuilder {
     pub fn new<N: AsRef<str>, T: AsRef<str>>(
-        schema: Arc<Schema>,
+        schema: &Arc<Schema>,
         namespace_name: N,
         struct_name: T,
     ) -> Result<StructBuilder, Error> {
@@ -436,7 +436,7 @@ impl StructBuilder {
             .clone();
 
         Ok(StructBuilder {
-            schema,
+            schema: schema.clone(),
             namespace,
             struct_schema,
             values: HashMap::new(),
@@ -444,7 +444,7 @@ impl StructBuilder {
     }
 
     pub fn new_full_name<S: AsRef<str>>(
-        schema: Arc<Schema>,
+        schema: &Arc<Schema>,
         full_struct_name: S,
     ) -> Result<StructBuilder, Error> {
         let (ns_name, struct_name) =
@@ -652,13 +652,13 @@ mod tests {
     fn string_field_value() -> Result<(), failure::Error> {
         let schema = create_test_schema();
 
-        let collection = TraitBuilder::new(schema.clone(), "exocore", "collection")?
+        let collection = TraitBuilder::new(&schema, "exocore", "collection")?
             .set("name", "some collection")
             .build()?;
         assert_eq!(collection.get_string("name")?, "some collection");
         assert_eq!(collection.get::<&str>("name")?, "some collection");
 
-        let email_contact = StructBuilder::new(schema.clone(), "exocore", "email_contact")?
+        let email_contact = StructBuilder::new(&schema.clone(), "exocore", "email_contact")?
             .set("name", "Some Name")
             .build()?;
         assert_eq!(email_contact.get::<&str>("name")?, "Some Name");
@@ -671,11 +671,11 @@ mod tests {
     fn struct_field_value() -> Result<(), failure::Error> {
         let schema = create_test_schema();
 
-        let email_from = StructBuilder::new(schema.clone(), "exocore", "email_contact")?
+        let email_from = StructBuilder::new(&schema, "exocore", "email_contact")?
             .set("name", "Some Name")
             .build()?;
 
-        let email = TraitBuilder::new(schema.clone(), "exocore", "email")?
+        let email = TraitBuilder::new(&schema, "exocore", "email")?
             .set_id("email_id")
             .set("name", "some collection")
             .set("from", email_from)
@@ -694,7 +694,7 @@ mod tests {
     fn int_field_value() -> Result<(), failure::Error> {
         let schema = create_test_schema();
 
-        let annot = TraitBuilder::new(schema.clone(), "exocore", "annotation")?
+        let annot = TraitBuilder::new(&schema, "exocore", "annotation")?
             .set("count", 1234)
             .build()?;
 
@@ -709,13 +709,13 @@ mod tests {
         let schema = create_test_schema();
 
         // email has specified id
-        let email_res = TraitBuilder::new(schema.clone(), "exocore", "email")?
+        let email_res = TraitBuilder::new(&schema, "exocore", "email")?
             .set("subject", "Some title")
             .set("body", "Some body")
             .build();
         assert!(email_res.is_err());
 
-        let email = TraitBuilder::new(schema.clone(), "exocore", "email")?
+        let email = TraitBuilder::new(&schema, "exocore", "email")?
             .set_id("email_id")
             .set("subject", "Some title")
             .set("body", "Some body")
@@ -723,22 +723,22 @@ mod tests {
         assert_eq!(email.id(), "email_id");
 
         // annotation has generated id
-        let annot = TraitBuilder::new(schema.clone(), "exocore", "annotation")?
+        let annot = TraitBuilder::new(&schema, "exocore", "annotation")?
             .set("count", 1234)
             .build()?;
         assert!(annot.id().len() > 10);
 
         // contact id is based on another field
-        let contact = TraitBuilder::new(schema.clone(), "exocore", "contact")?
+        let contact = TraitBuilder::new(&schema, "exocore", "contact")?
             .set("id", "some_id")
             .build()?;
         assert_eq!(contact.id(), "some_id");
 
-        let contact_res = TraitBuilder::new(schema.clone(), "exocore", "contact")?.build();
+        let contact_res = TraitBuilder::new(&schema, "exocore", "contact")?.build();
         assert!(contact_res.is_err());
 
         // collection has static id
-        let collection = TraitBuilder::new(schema.clone(), "exocore", "collection")?.build()?;
+        let collection = TraitBuilder::new(&schema, "exocore", "collection")?.build()?;
         assert_eq!(collection.id(), "collection_id");
 
         Ok(())

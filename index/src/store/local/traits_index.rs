@@ -467,7 +467,7 @@ mod tests {
             block_offset: Some(1234),
             operation_id: 2345,
             entity_id: "entity_id1".to_string(),
-            trt: TraitBuilder::new(schema.clone(), "exocore", "contact")?
+            trt: TraitBuilder::new(&schema, "exocore", "contact")?
                 .set("id", "trudeau1".to_string())
                 .set("name", "Justin Trudeau")
                 .set("email", "justin.trudeau@gov.ca")
@@ -499,7 +499,7 @@ mod tests {
             block_offset: None,
             operation_id: 1,
             entity_id: "entity_id1".to_string(),
-            trt: TraitBuilder::new(schema.clone(), "exocore", "contact")?
+            trt: TraitBuilder::new(&schema, "exocore", "contact")?
                 .set_id("trt1".to_string())
                 .set("name", "Justin Trudeau")
                 .set("email", "justin.trudeau@gov.ca")
@@ -510,7 +510,7 @@ mod tests {
             block_offset: None,
             operation_id: 2,
             entity_id: "entity_id2".to_string(),
-            trt: TraitBuilder::new(schema.clone(), "exocore", "email")?
+            trt: TraitBuilder::new(&schema, "exocore", "email")?
                 .set_id("trt2")
                 .set("subject", "Some subject")
                 .set("body", "Very important body")
@@ -538,7 +538,7 @@ mod tests {
             block_offset: Some(1234),
             operation_id: 1,
             entity_id: "et1".to_string(),
-            trt: TraitBuilder::new(schema.clone(), "exocore", "contact")?
+            trt: TraitBuilder::new(&schema, "exocore", "contact")?
                 .set("id", "trt1".to_string())
                 .build()?,
         }))?;
@@ -548,7 +548,7 @@ mod tests {
             block_offset: Some(120),
             operation_id: 2,
             entity_id: "et1".to_string(),
-            trt: TraitBuilder::new(schema.clone(), "exocore", "contact")?
+            trt: TraitBuilder::new(&schema, "exocore", "contact")?
                 .set("id", "trt1".to_string())
                 .build()?,
         }))?;
@@ -558,7 +558,7 @@ mod tests {
             block_offset: Some(9999),
             operation_id: 3,
             entity_id: "et1".to_string(),
-            trt: TraitBuilder::new(schema.clone(), "exocore", "contact")?
+            trt: TraitBuilder::new(&schema, "exocore", "contact")?
                 .set("id", "trt1".to_string())
                 .build()?,
         }))?;
@@ -577,7 +577,7 @@ mod tests {
             block_offset: None,
             operation_id: 1234,
             entity_id: "entity_id1".to_string(),
-            trt: TraitBuilder::new(schema.clone(), "exocore", "contact")?
+            trt: TraitBuilder::new(&schema, "exocore", "contact")?
                 .set("id", "trudeau1".to_string())
                 .set("name", "Justin Trudeau")
                 .set("email", "justin.trudeau@gov.ca")
@@ -608,7 +608,7 @@ mod tests {
             block_offset: None,
             operation_id: 1234,
             entity_id: "entity_id1".to_string(),
-            trt: TraitBuilder::new(schema.clone(), "exocore", "contact")?
+            trt: TraitBuilder::new(&schema, "exocore", "contact")?
                 .set("id", "trudeau1".to_string())
                 .set("name", "Justin Trudeau")
                 .set("email", "justin.trudeau@gov.ca")
@@ -644,7 +644,7 @@ mod tests {
             block_offset: None,
             operation_id: 2345,
             entity_id: "entity_id2".to_string(),
-            trt: TraitBuilder::new(schema.clone(), "exocore", "contact")?
+            trt: TraitBuilder::new(&schema, "exocore", "contact")?
                 .set("id", "trudeau2".to_string())
                 .set("name", "Justin Trudeau")
                 .set("email", "justin.trudeau@gov.ca")
