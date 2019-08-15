@@ -29,9 +29,9 @@ pub struct Entity {
 }
 
 impl Entity {
-    pub fn new(id: EntityId) -> Entity {
+    pub fn new<I: Into<EntityId>>(id: I) -> Entity {
         Entity {
-            id,
+            id: id.into(),
             traits: Vec::new(),
         }
     }
@@ -99,6 +99,10 @@ pub trait Record: Sized {
     }
 
     fn get_int(&self, field_name: &str) -> Result<i64, Error> {
+        self.get(field_name)
+    }
+
+    fn get_bool(&self, field_name: &str) -> Result<bool, Error> {
         self.get(field_name)
     }
 
@@ -179,6 +183,32 @@ pub trait RecordBuilder: Sized {
         }
         str_fmt.finish()
     }
+}
+
+fn check_and_default_record_values<S: RecordSchema>(
+    schema: &Arc<S>,
+    values: &mut HashMap<SchemaFieldId, FieldValue>,
+) -> Result<(), Error> {
+    for field in schema.fields() {
+        let value = values.get(&field.id);
+
+        match value {
+            Some(val) => {
+                field.validate_value_type(val)?;
+            }
+            None => match field.default_value() {
+                Some(value) => {
+                    values.insert(field.id, value);
+                }
+                None if !field.optional => {
+                    return Err(Error::FieldEmptyValue(field.name.clone()));
+                }
+                _ => {}
+            },
+        }
+    }
+
+    Ok(())
 }
 
 ///
@@ -313,10 +343,10 @@ impl TraitBuilder {
     pub fn build(mut self) -> Result<Trait, Error> {
         let trait_id = self.generate_id()?;
 
-        // TODO: Validate non-optional values
-
         self.values
             .insert(TraitSchema::TRAIT_ID_FIELD, trait_id.clone().into());
+
+        check_and_default_record_values(&self.trait_schema, &mut self.values)?;
 
         Ok(Trait {
             schema: self.schema,
@@ -458,8 +488,8 @@ impl StructBuilder {
         Self::new(schema, ns_name, struct_name)
     }
 
-    pub fn build(self) -> Result<Struct, Error> {
-        // TODO: Validate non-optional values
+    pub fn build(mut self) -> Result<Struct, Error> {
+        check_and_default_record_values(&self.struct_schema, &mut self.values)?;
 
         Ok(Struct {
             schema: self.schema,
@@ -552,6 +582,7 @@ impl PartialEq for Struct {
 pub enum FieldValue {
     String(String),
     Int(i64),
+    Bool(bool),
     DateTime(DateTime<Utc>),
     Struct(Struct),
     Map(HashMap<String, FieldValue>),
@@ -615,6 +646,20 @@ impl TryFrom<&FieldValue> for i64 {
     }
 }
 
+impl TryFrom<&FieldValue> for bool {
+    type Error = Error;
+
+    fn try_from(value: &FieldValue) -> Result<Self, Error> {
+        match value {
+            FieldValue::Bool(value) => Ok(*value),
+            other => Err(Error::FieldType(format!(
+                "Field was not an bool, but was '{:?}'",
+                other
+            ))),
+        }
+    }
+}
+
 impl<'s> TryFrom<&'s FieldValue> for &'s DateTime<Utc> {
     type Error = Error;
 
@@ -647,6 +692,8 @@ impl<'s> TryFrom<&'s FieldValue> for &'s Struct {
 mod tests {
     use super::*;
     use crate::domain::schema::tests::create_test_schema;
+    use failure::_core::time::Duration;
+    use wasm_timer::SystemTime;
 
     #[test]
     fn string_field_value() -> Result<(), failure::Error> {
@@ -740,6 +787,65 @@ mod tests {
         // collection has static id
         let collection = TraitBuilder::new(&schema, "exocore", "collection")?.build()?;
         assert_eq!(collection.id(), "collection_id");
+
+        Ok(())
+    }
+
+    #[test]
+    fn entity_build() -> Result<(), failure::Error> {
+        let schema = create_test_schema();
+
+        let entity = Entity::new("entity_id").with_trait(
+            TraitBuilder::new(&schema, "exocore", "email")?
+                .set_id("email_id")
+                .set("subject", "Some title")
+                .set("body", "Some body")
+                .build()?,
+        );
+
+        assert_eq!(entity.traits.len(), 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn field_default_value() -> Result<(), failure::Error> {
+        let schema = Arc::new(Schema::parse(
+            r#"
+        namespaces:
+          - name: test
+            traits:
+              - id: 0
+                name: test
+                id_field: generated
+                fields:
+                  - id: 0
+                    name: str_value
+                    type: string
+                    default: hello world
+                  - id: 1
+                    name: int_value
+                    type: int
+                    default: 1234
+                  - id: 2
+                    name: bool_value
+                    type: bool
+                    default: true
+                  - id: 3
+                    name: date_value
+                    type: date_time
+                    default: now
+        "#,
+        )?);
+
+        let trt = TraitBuilder::new(&schema, "test", "test")?.build()?;
+
+        assert_eq!(trt.get_string("str_value")?, "hello world");
+        assert_eq!(trt.get_int("int_value")?, 1234);
+        assert_eq!(trt.get_bool("bool_value")?, true);
+
+        let date_time = SystemTime::from(*trt.get_datetime("date_value")?);
+        assert!(date_time.elapsed()? <= Duration::from_millis(100));
 
         Ok(())
     }

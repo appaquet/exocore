@@ -3,8 +3,9 @@ use std::sync::Arc;
 
 use serde_derive::{Deserialize, Serialize};
 
-use crate::domain::entity::TraitId;
+use crate::domain::entity::{FieldValue, TraitId};
 use crate::error::Error;
+use chrono::Utc;
 
 pub type SchemaRecordId = u16;
 pub type SchemaTraitId = SchemaRecordId;
@@ -385,20 +386,23 @@ impl TraitSchema {
                 typ: FieldType::String,
                 indexed: false, // special case, it's indexed & stored in another way
                 optional: false,
+                default: Some("now".to_owned()),
             },
             FieldSchema {
                 id: Self::CREATION_DATE_FIELD,
                 name: Self::CREATION_DATE_FIELD_NAME.to_owned(),
-                typ: FieldType::Int, // TODO: date
-                indexed: true,
+                typ: FieldType::DateTime,
+                indexed: false, // TODO: Switch back
                 optional: false,
+                default: Some("now".to_owned()),
             },
             FieldSchema {
                 id: Self::MODIFICATION_DATE_FIELD,
                 name: Self::MODIFICATION_DATE_FIELD_NAME.to_owned(),
-                typ: FieldType::Int, // TODO: date
-                indexed: true,
+                typ: FieldType::DateTime,
+                indexed: false, // TODO: Switch back
                 optional: false,
+                default: Some("now".to_owned()),
             },
         ]
     }
@@ -495,11 +499,45 @@ pub struct FieldSchema {
     pub indexed: bool,
     #[serde(rename = "type")]
     pub typ: FieldType,
+    #[serde(rename = "default")]
+    pub default: Option<String>,
 }
 
 impl FieldSchema {
     fn is_special(&self) -> bool {
         self.id >= 65400
+    }
+
+    pub fn validate_value_type(&self, value: &FieldValue) -> Result<(), Error> {
+        match (value, &self.typ) {
+            (FieldValue::String(_), FieldType::String) => Ok(()),
+            (FieldValue::Int(_), FieldType::Int) => Ok(()),
+            (FieldValue::Bool(_), FieldType::Bool) => Ok(()),
+            (FieldValue::Struct(_), FieldType::Struct(_)) => Ok(()),
+            (FieldValue::DateTime(_), FieldType::DateTime) => Ok(()),
+            (_, _) => Err(Error::FieldType(self.name.clone())),
+        }
+    }
+
+    pub fn default_value(&self) -> Option<FieldValue> {
+        match &self.typ {
+            FieldType::String => self.default.as_ref().map(|s| FieldValue::String(s.clone())),
+            FieldType::Int => self
+                .default
+                .as_ref()
+                .and_then(|s| s.parse::<i64>().ok())
+                .map(FieldValue::Int),
+            FieldType::Bool => match self.default.as_ref().map(|s| s.as_str()) {
+                Some("true") => Some(FieldValue::Bool(true)),
+                Some("false") => Some(FieldValue::Bool(false)),
+                _ => None,
+            },
+            FieldType::Struct(_) => None,
+            FieldType::DateTime => match self.default.as_ref().map(|s| s.as_str()) {
+                Some("now") => Some(FieldValue::DateTime(Utc::now())),
+                _ => None,
+            },
+        }
     }
 }
 
@@ -511,8 +549,6 @@ pub enum FieldType {
     Bool,
     Struct(SchemaStructId),
     DateTime,
-    // TODO: Date time
-    // TODO: Consistent timestamp
 }
 
 fn default_false() -> bool {
@@ -607,7 +643,7 @@ pub mod tests {
                       struct: 0
         "#,
         )
-        .unwrap();
+            .unwrap();
         assert_eq!("ns1", ns.name);
 
         let trt = ns.trait_by_name("trait2").unwrap();
@@ -797,7 +833,7 @@ pub mod tests {
                     indexed: true
           "#,
         )
-        .unwrap();
+            .unwrap();
 
         Namespace::parse(
             r#"
@@ -814,8 +850,8 @@ pub mod tests {
                     indexed: true
           "#,
         )
-        .err()
-        .unwrap();
+            .err()
+            .unwrap();
 
         Namespace::parse(
             r#"
@@ -838,7 +874,7 @@ pub mod tests {
                     indexed: true
           "#,
         )
-        .unwrap();
+            .unwrap();
 
         Namespace::parse(
             r#"
@@ -861,8 +897,8 @@ pub mod tests {
                     indexed: true
           "#,
         )
-        .err()
-        .unwrap();
+            .err()
+            .unwrap();
     }
 
     pub fn create_test_schema() -> Arc<Schema> {
@@ -950,7 +986,7 @@ pub mod tests {
 
         "#,
             )
-            .unwrap(),
+                .unwrap(),
         )
     }
 }

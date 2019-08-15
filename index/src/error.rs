@@ -17,10 +17,10 @@ pub enum Error {
     Field(String),
 
     #[fail(display = "Record field {} didn't have a value", _0)]
-    FieldEmptyValue(String), // TODO: Should have Arc<Namespace> and Arc<SchemaField>
+    FieldEmptyValue(String),
 
     #[fail(display = "Record field type error: {}", _0)]
-    FieldType(String), // TODO: Should have expected and found FieldType
+    FieldType(String),
 
     #[fail(display = "Field named {} was not in schema", _0)]
     NamedFieldNotInSchema(String),

@@ -73,6 +73,7 @@ impl Serialize for FieldValue {
         match self {
             FieldValue::String(v) => v.serialize(serializer),
             FieldValue::Struct(v) => v.serialize(serializer),
+            FieldValue::Bool(v) => v.serialize(serializer),
             FieldValue::Int(v) => v.serialize(serializer),
             FieldValue::DateTime(v) => v.serialize(serializer),
             FieldValue::Map(v) => v.serialize(serializer),
