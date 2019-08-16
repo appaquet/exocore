@@ -9,7 +9,9 @@ OUTPUT=${1:-Html}
 ## See https://github.com/mozilla/grcov#grcov-with-travis
 ##
 
-find $CUR_DIR/../target -name "*.gc*" -delete
+if [[ -d $CUR_DIR/../target ]]; then
+  find $CUR_DIR/../target -name "*.gc*" -delete
+fi
 
 export CARGO_OPTIONS="--all --all-features --exclude=exocore-cli --exclude=exocore-client-wasm --exclude=exocore-client-android"
 export CARGO_INCREMENTAL=0
