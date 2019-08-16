@@ -515,7 +515,7 @@ impl FieldSchema {
             (FieldValue::Bool(_), FieldType::Bool) => Ok(()),
             (FieldValue::Struct(_), FieldType::Struct(_)) => Ok(()),
             (FieldValue::DateTime(_), FieldType::DateTime) => Ok(()),
-            (_, _) => Err(Error::FieldType(self.name.clone())),
+            (_, _) => Err(Error::FieldInvalidType(self.name.clone())),
         }
     }
 
@@ -643,7 +643,7 @@ pub mod tests {
                       struct: 0
         "#,
         )
-            .unwrap();
+        .unwrap();
         assert_eq!("ns1", ns.name);
 
         let trt = ns.trait_by_name("trait2").unwrap();
@@ -833,7 +833,7 @@ pub mod tests {
                     indexed: true
           "#,
         )
-            .unwrap();
+        .unwrap();
 
         Namespace::parse(
             r#"
@@ -850,8 +850,8 @@ pub mod tests {
                     indexed: true
           "#,
         )
-            .err()
-            .unwrap();
+        .err()
+        .unwrap();
 
         Namespace::parse(
             r#"
@@ -874,7 +874,7 @@ pub mod tests {
                     indexed: true
           "#,
         )
-            .unwrap();
+        .unwrap();
 
         Namespace::parse(
             r#"
@@ -897,8 +897,8 @@ pub mod tests {
                     indexed: true
           "#,
         )
-            .err()
-            .unwrap();
+        .err()
+        .unwrap();
     }
 
     pub fn create_test_schema() -> Arc<Schema> {
@@ -971,6 +971,21 @@ pub mod tests {
                     name: name
                     type: string
                     indexed: true
+              - id: 5
+                name: combined_id
+                id_field:
+                    fields:
+                      - 0
+                      - 1
+                fields:
+                  - id: 0
+                    name: id1
+                    type: string
+                    indexed: true
+                  - id: 1
+                    name: id2
+                    type: string
+                    indexed: true
             structs:
               - id: 0
                 name: email_contact
@@ -986,7 +1001,7 @@ pub mod tests {
 
         "#,
             )
-                .unwrap(),
+            .unwrap(),
         )
     }
 }

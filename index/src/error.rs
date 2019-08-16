@@ -1,3 +1,4 @@
+use crate::domain::schema::{SchemaFieldId, SchemaRecordId};
 use exocore_common::capnp;
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,14 +14,11 @@ pub enum Error {
     #[fail(display = "Data integrity error: {}", _0)]
     DataIntegrity(String),
 
-    #[fail(display = "Record field error: {}", _0)]
-    Field(String),
+    #[fail(display = "Field id {} of record id {} didn't have a value", _0, _1)]
+    FieldEmptyValue(SchemaRecordId, SchemaFieldId),
 
-    #[fail(display = "Record field {} didn't have a value", _0)]
-    FieldEmptyValue(String),
-
-    #[fail(display = "Record field type error: {}", _0)]
-    FieldType(String),
+    #[fail(display = "Record field invalid type error: {}", _0)]
+    FieldInvalidType(String),
 
     #[fail(display = "Field named {} was not in schema", _0)]
     NamedFieldNotInSchema(String),

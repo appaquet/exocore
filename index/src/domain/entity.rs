@@ -43,7 +43,7 @@ impl Entity {
 }
 
 ///
-/// Common (Rust) trait between `Struct` and `Trait`, since both are a collection of fields.
+/// Common trait between `Struct` and `Trait`, since both are a collection of fields.
 ///
 pub trait Record: Sized {
     type SchemaType: RecordSchema;
@@ -68,28 +68,19 @@ pub trait Record: Sized {
         self.values().get(&field.id)
     }
 
-    fn get_by_id(&self, id: SchemaFieldId) -> Option<&FieldValue> {
-        self.values().get(&id)
-    }
-
-    fn get_value(&self, field_name: &str) -> Option<&FieldValue> {
-        let field = self.record_schema().field_by_name(field_name)?;
-        self.values().get(&field.id)
-    }
-
     fn get<'s, T: TryFrom<&'s FieldValue, Error = Error>>(
         &'s self,
         field_name: &str,
     ) -> Result<T, Error> {
-        let field = self
-            .record_schema()
+        let schema = self.record_schema();
+        let field = schema
             .field_by_name(field_name)
             .ok_or_else(|| Error::NamedFieldNotInSchema(field_name.to_owned()))?;
 
         let value = self
             .values()
             .get(&field.id)
-            .ok_or_else(|| Error::FieldEmptyValue(field_name.to_owned()))?;
+            .ok_or_else(|| Error::FieldEmptyValue(field.id, schema.id()))?;
 
         T::try_from(value)
     }
@@ -169,20 +160,6 @@ pub trait RecordBuilder: Sized {
         self.values_mut().insert(field_id, value.into());
         self
     }
-
-    fn debug_fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        let record_schema = self.record_schema();
-        let name = self.full_name();
-        let mut str_fmt = f.debug_struct(&name);
-        for (field_id, value) in self.values() {
-            let field = record_schema
-                .field_by_id(*field_id)
-                .map(|f| f.name.to_string())
-                .unwrap_or_else(|| format!("_{}", field_id));
-            str_fmt.field(&field, value);
-        }
-        str_fmt.finish()
-    }
 }
 
 fn check_and_default_record_values<S: RecordSchema>(
@@ -201,7 +178,7 @@ fn check_and_default_record_values<S: RecordSchema>(
                     values.insert(field.id, value);
                 }
                 None if !field.optional => {
-                    return Err(Error::FieldEmptyValue(field.name.clone()));
+                    return Err(Error::FieldEmptyValue(field.id, schema.id()));
                 }
                 _ => {}
             },
@@ -385,21 +362,25 @@ impl TraitBuilder {
             TraitIdValue::Static(id) => {
                 Ok(id.clone())
             }
-            TraitIdValue::Field(id) => {
-                match self.values.get(&id) {
-                    Some(FieldValue::String(str_id)) => Ok(str_id.clone()),
-                    value => {
-                        Err(Error::DataIntegrity(format!(
-                            "Trait with schema_trait_id={} didn't have a valid value for id with field {}: value={:?}",
-                            self.trait_schema.id(), id, value,
-                        )))
-                    }
-                }
+            TraitIdValue::Field(id) => self.generate_id_from_field(*id),
+            TraitIdValue::Fields(ids) => {
+                Ok(ids.iter()
+                    .map(|id| self.generate_id_from_field(*id))
+                    .collect::<Result<Vec<String>, Error>>()?
+                    .join("_"))
             }
-            TraitIdValue::Fields(_ids) => {
-                // TODO: To implement
-                unimplemented!()
-            }
+        }
+    }
+
+    fn generate_id_from_field(&self, id: u16) -> Result<String, Error> {
+        let value = self.values.get(&id);
+        if let Some(id_value) = value.and_then(|v| v.to_id_string()) {
+            Ok(id_value)
+        } else {
+            Err(Error::DataIntegrity(format!(
+                "Trait with schema_trait_id={} didn't have a valid value for id with field {}: value={:?}",
+                self.trait_schema.id(), id, value,
+            )))
         }
     }
 }
@@ -588,6 +569,16 @@ pub enum FieldValue {
     Map(HashMap<String, FieldValue>),
 }
 
+impl FieldValue {
+    fn to_id_string(&self) -> Option<String> {
+        match self {
+            FieldValue::String(v) => Some(v.to_owned()),
+            FieldValue::Int(v) => Some(format!("{}", v)),
+            _ => None,
+        }
+    }
+}
+
 impl From<&str> for FieldValue {
     fn from(v: &str) -> FieldValue {
         FieldValue::String(v.to_string())
@@ -624,7 +615,7 @@ impl<'s> TryFrom<&'s FieldValue> for &'s str {
     fn try_from(value: &'s FieldValue) -> Result<Self, Error> {
         match value {
             FieldValue::String(value) => Ok(value),
-            other => Err(Error::FieldType(format!(
+            other => Err(Error::FieldInvalidType(format!(
                 "Field was not a string, but was '{:?}'",
                 other
             ))),
@@ -638,7 +629,7 @@ impl TryFrom<&FieldValue> for i64 {
     fn try_from(value: &FieldValue) -> Result<Self, Error> {
         match value {
             FieldValue::Int(value) => Ok(*value),
-            other => Err(Error::FieldType(format!(
+            other => Err(Error::FieldInvalidType(format!(
                 "Field was not an int, but was '{:?}'",
                 other
             ))),
@@ -652,7 +643,7 @@ impl TryFrom<&FieldValue> for bool {
     fn try_from(value: &FieldValue) -> Result<Self, Error> {
         match value {
             FieldValue::Bool(value) => Ok(*value),
-            other => Err(Error::FieldType(format!(
+            other => Err(Error::FieldInvalidType(format!(
                 "Field was not an bool, but was '{:?}'",
                 other
             ))),
@@ -666,7 +657,7 @@ impl<'s> TryFrom<&'s FieldValue> for &'s DateTime<Utc> {
     fn try_from(value: &'s FieldValue) -> Result<Self, Error> {
         match value {
             FieldValue::DateTime(value) => Ok(value),
-            other => Err(Error::FieldType(format!(
+            other => Err(Error::FieldInvalidType(format!(
                 "Field was not a DateTime, but was '{:?}'",
                 other
             ))),
@@ -680,7 +671,7 @@ impl<'s> TryFrom<&'s FieldValue> for &'s Struct {
     fn try_from(value: &'s FieldValue) -> Result<Self, Error> {
         match value {
             FieldValue::Struct(value) => Ok(value),
-            other => Err(Error::FieldType(format!(
+            other => Err(Error::FieldInvalidType(format!(
                 "Field was not a struct, but was '{:?}'",
                 other
             ))),
@@ -783,6 +774,16 @@ mod tests {
 
         let contact_res = TraitBuilder::new(&schema, "exocore", "contact")?.build();
         assert!(contact_res.is_err());
+
+        // contact id is based on multiple fields
+        let comb = TraitBuilder::new(&schema, "exocore", "combined_id")?
+            .set("id1", "abc")
+            .set("id2", "dfe")
+            .build()?;
+        assert_eq!(comb.id(), "abc_dfe");
+
+        let comb_res = TraitBuilder::new(&schema, "exocore", "combined_id")?.build();
+        assert!(comb_res.is_err());
 
         // collection has static id
         let collection = TraitBuilder::new(&schema, "exocore", "collection")?.build()?;

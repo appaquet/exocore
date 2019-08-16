@@ -110,7 +110,6 @@ impl<'de> Deserialize<'de> for Trait {
                 maybe_remap_value(field_record, value)
             } else {
                 value
-                // TODO: Else support for named values
             };
             trait_builder = trait_builder.set(&field_name, remapped_value);
         }
@@ -200,7 +199,6 @@ fn struct_from_values<'de, D: Deserializer<'de>>(
                 maybe_remap_value(field_record, value)
             } else {
                 value
-                // TODO: Else support for named values
             };
         struct_builder = struct_builder.set(&field_name, remapped_value);
     }

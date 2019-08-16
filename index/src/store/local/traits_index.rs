@@ -468,7 +468,7 @@ mod tests {
             operation_id: 2345,
             entity_id: "entity_id1".to_string(),
             trt: TraitBuilder::new(&schema, "exocore", "contact")?
-                .set("id", "trudeau1".to_string())
+                .set("id", "trudeau1")
                 .set("name", "Justin Trudeau")
                 .set("email", "justin.trudeau@gov.ca")
                 .build()?,
@@ -539,7 +539,7 @@ mod tests {
             operation_id: 1,
             entity_id: "et1".to_string(),
             trt: TraitBuilder::new(&schema, "exocore", "contact")?
-                .set("id", "trt1".to_string())
+                .set("id", "trt1")
                 .build()?,
         }))?;
         assert_eq!(index.highest_indexed_block()?, Some(1234));
@@ -549,7 +549,7 @@ mod tests {
             operation_id: 2,
             entity_id: "et1".to_string(),
             trt: TraitBuilder::new(&schema, "exocore", "contact")?
-                .set("id", "trt1".to_string())
+                .set("id", "trt1")
                 .build()?,
         }))?;
         assert_eq!(index.highest_indexed_block()?, Some(1234));
@@ -559,7 +559,7 @@ mod tests {
             operation_id: 3,
             entity_id: "et1".to_string(),
             trt: TraitBuilder::new(&schema, "exocore", "contact")?
-                .set("id", "trt1".to_string())
+                .set("id", "trt1")
                 .build()?,
         }))?;
         assert_eq!(index.highest_indexed_block()?, Some(9999));
@@ -578,7 +578,7 @@ mod tests {
             operation_id: 1234,
             entity_id: "entity_id1".to_string(),
             trt: TraitBuilder::new(&schema, "exocore", "contact")?
-                .set("id", "trudeau1".to_string())
+                .set("id", "trudeau1")
                 .set("name", "Justin Trudeau")
                 .set("email", "justin.trudeau@gov.ca")
                 .build()?,
@@ -609,7 +609,7 @@ mod tests {
             operation_id: 1234,
             entity_id: "entity_id1".to_string(),
             trt: TraitBuilder::new(&schema, "exocore", "contact")?
-                .set("id", "trudeau1".to_string())
+                .set("id", "trudeau1")
                 .set("name", "Justin Trudeau")
                 .set("email", "justin.trudeau@gov.ca")
                 .build()?,
@@ -645,7 +645,7 @@ mod tests {
             operation_id: 2345,
             entity_id: "entity_id2".to_string(),
             trt: TraitBuilder::new(&schema, "exocore", "contact")?
-                .set("id", "trudeau2".to_string())
+                .set("id", "trudeau2")
                 .set("name", "Justin Trudeau")
                 .set("email", "justin.trudeau@gov.ca")
                 .build()?,
