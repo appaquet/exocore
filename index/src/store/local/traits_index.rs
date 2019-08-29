@@ -9,14 +9,14 @@ use std::ops::Deref;
 use std::path::Path;
 use std::result::Result;
 use std::sync::{Arc, Mutex};
-use tantivy::collector::TopDocs;
+use tantivy::collector::{Collector, TopDocs};
 use tantivy::directory::MmapDirectory;
 use tantivy::query::{AllQuery, QueryParser, TermQuery};
 use tantivy::schema::{
     Field, IndexRecordOption, Schema as TantivySchema, SchemaBuilder, FAST, INDEXED, STORED,
     STRING, TEXT,
 };
-use tantivy::{Document, Index as TantivyIndex, IndexReader, IndexWriter, Searcher, Term};
+use tantivy::{Document, Index as TantivyIndex, IndexReader, IndexWriter, Searcher, Term, DocAddress};
 
 ///
 /// Traits index configuration
@@ -181,16 +181,18 @@ impl TraitsIndex {
     /// The actual data of the traits is stored in the chain.
     pub fn search(&self, query: &Query, limit: usize) -> Result<Vec<TraitResult>, Error> {
         let searcher = self.index_reader.searcher();
-        let res = match query {
-            Query::WithTrait(inner_query) => {
+        let res = match &query.inner {
+            InnerQuery::WithTrait(inner_query) => {
                 self.search_with_trait(searcher, inner_query, limit)?
             }
-            Query::Match(inner_query) => self.search_matches(searcher, inner_query, limit)?,
-            Query::IdEqual(inner_query) => self.search_entity_id(searcher, inner_query, limit)?,
-            Query::Conjunction(_inner_query) => unimplemented!(),
+            InnerQuery::Match(inner_query) => self.search_matches(searcher, inner_query, limit)?,
+            InnerQuery::IdEqual(inner_query) => {
+                self.search_entity_id(searcher, inner_query, limit)?
+            }
+            InnerQuery::Conjunction(_inner_query) => unimplemented!(),
 
             #[cfg(test)]
-            Query::TestFail(_query) => {
+            InnerQuery::TestFail(_query) => {
                 return Err(Error::Other("Query failed for tests".to_string()))
             }
         };
@@ -213,6 +215,15 @@ impl TraitsIndex {
         if let Some(block_offset) = mutation.block_offset {
             doc.add_u64(self.fields.block_offset, block_offset);
         }
+
+        doc.add_u64(
+            self.fields.creation_date,
+            mutation.trt.creation_date().timestamp_millis() as u64,
+        );
+        doc.add_u64(
+            self.fields.modification_date,
+            mutation.trt.modification_date().timestamp_millis() as u64,
+        );
 
         let indexeds = record_schema.fields().iter().filter(|f| f.indexed);
         for field in indexeds {
@@ -257,14 +268,14 @@ impl TraitsIndex {
     fn search_with_trait<S>(
         &self,
         searcher: S,
-        query: &WithTraitQuery,
+        inner_query: &WithTraitQuery,
         limit: usize,
     ) -> Result<Vec<TraitResult>, Error>
     where
         S: Deref<Target = Searcher>,
     {
         let trait_schema =
-            if let Some(trait_schema) = self.schema.trait_by_full_name(&query.trait_name) {
+            if let Some(trait_schema) = self.schema.trait_by_full_name(&inner_query.trait_name) {
                 trait_schema
             } else {
                 return Ok(vec![]);
@@ -273,50 +284,69 @@ impl TraitsIndex {
         let term = Term::from_field_u64(self.fields.trait_type, u64::from(trait_schema.id()));
         let query = TermQuery::new(term, IndexRecordOption::Basic);
 
-        self.execute_tantivy_query(searcher, &query, limit)
+        let top_collector =
+            TopDocs::with_limit(limit).order_by_u64_field(self.fields.modification_date);
+        let score_extractor = |mod_date| {
+            mod_date
+        };
+
+        self.execute_tantivy_query(searcher, &query, top_collector, score_extractor)
     }
 
     /// Execute a search by text query
     fn search_matches<S>(
         &self,
         searcher: S,
-        query: &MatchQuery,
+        inner_query: &MatchQuery,
         limit: usize,
     ) -> Result<Vec<TraitResult>, Error>
     where
         S: Deref<Target = Searcher>,
     {
         let query_parser = QueryParser::for_index(&self.index, vec![self.fields.text]);
-        let query = query_parser.parse_query(&query.query)?;
-        self.execute_tantivy_query(searcher, &query, limit)
+        let query = query_parser.parse_query(&inner_query.query)?;
+        let top_collector = TopDocs::with_limit(limit);
+        let score_extractor = |score| {
+            (score * 1_000_000.0) as u64
+        };
+
+        self.execute_tantivy_query(searcher, &query, top_collector, score_extractor)
     }
 
     /// Execute a search by entity id query
     fn search_entity_id<S>(
         &self,
         searcher: S,
-        query: &IdEqualQuery,
+        inner_query: &IdEqualQuery,
         limit: usize,
     ) -> Result<Vec<TraitResult>, Error>
     where
         S: Deref<Target = Searcher>,
     {
-        let term = Term::from_field_text(self.fields.entity_id, &query.entity_id);
+        let term = Term::from_field_text(self.fields.entity_id, &inner_query.entity_id);
         let query = TermQuery::new(term, IndexRecordOption::Basic);
-        self.execute_tantivy_query(searcher, &query, limit)
+        let top_collector = TopDocs::with_limit(limit);
+        let score_extractor = |score| {
+            (score * 1_000_000.0) as u64
+        };
+
+        self.execute_tantivy_query(searcher, &query, top_collector, score_extractor)
     }
 
     /// Execute query on Tantivy index and build trait result
-    fn execute_tantivy_query<S>(
+    fn execute_tantivy_query<S, C, SC, FS>(
         &self,
         searcher: S,
         query: &dyn tantivy::query::Query,
-        limit: usize,
+        top_collector: C,
+        score_extractor: FS,
     ) -> Result<Vec<TraitResult>, Error>
     where
         S: Deref<Target = Searcher>,
+        C: Collector<Fruit = Vec<(SC, DocAddress)>>,
+        SC: Send + 'static,
+        FS: Fn(SC) -> u64,
     {
-        let top_collector = TopDocs::with_limit(limit);
         let search_results = searcher.search(query, &top_collector)?;
 
         let mut results = Vec::new();
@@ -336,7 +366,7 @@ impl TraitsIndex {
                 entity_id,
                 trait_id,
                 tombstone,
-                score,
+                score: score_extractor(score),
             };
             results.push(result);
         }
@@ -378,6 +408,8 @@ impl TraitsIndex {
         schema_builder.add_u64_field("block_offset", STORED | FAST);
         schema_builder.add_u64_field("operation_id", INDEXED | STORED);
         schema_builder.add_u64_field("tombstone", STORED);
+        schema_builder.add_u64_field("creation_date", STORED | FAST);
+        schema_builder.add_u64_field("modification_date", STORED | FAST);
         schema_builder.add_text_field("text", TEXT);
         let schema = schema_builder.build();
 
@@ -389,6 +421,8 @@ impl TraitsIndex {
             block_offset: schema.get_field("block_offset").unwrap(),
             operation_id: schema.get_field("operation_id").unwrap(),
             tombstone: schema.get_field("tombstone").unwrap(),
+            creation_date: schema.get_field("creation_date").unwrap(),
+            modification_date: schema.get_field("modification_date").unwrap(),
             text: schema.get_field("text").unwrap(),
         };
 
@@ -407,6 +441,8 @@ struct Fields {
     block_offset: Field,
     operation_id: Field,
     tombstone: Field,
+    creation_date: Field,
+    modification_date: Field,
     text: Field,
 }
 
@@ -453,7 +489,7 @@ pub struct TraitResult {
     pub entity_id: EntityId,
     pub trait_id: TraitId,
     pub tombstone: bool,
-    pub score: f32,
+    pub score: u64,
 }
 
 #[cfg(test)]
@@ -468,26 +504,43 @@ mod tests {
         let config = TraitsIndexConfig::default();
         let mut indexer = TraitsIndex::create_in_memory(config, schema.clone())?;
 
-        let contact_mutation = IndexMutation::PutTrait(PutTraitMutation {
-            block_offset: Some(1234),
-            operation_id: 2345,
+        let contact1 = IndexMutation::PutTrait(PutTraitMutation {
+            block_offset: Some(1),
+            operation_id: 10,
             entity_id: "entity_id1".to_string(),
             trt: TraitBuilder::new(&schema, "exocore", "contact")?
                 .set("id", "trudeau1")
-                .set("name", "Justin Trudeau")
+                .set("name", "Justin Justin Justin Justin Trudeau")
                 .set("email", "justin.trudeau@gov.ca")
                 .build()?,
         });
+        indexer.apply_mutation(contact1)?;
 
-        indexer.apply_mutation(contact_mutation)?;
+        let contact2 = IndexMutation::PutTrait(PutTraitMutation {
+            block_offset: Some(2),
+            operation_id: 20,
+            entity_id: "entity_id2".to_string(),
+            trt: TraitBuilder::new(&schema, "exocore", "contact")?
+                .set("id", "trudeau2")
+                .set("name", "Justin Trudeau Trudeau Trudeau Trudeau")
+                .set("email", "justin.trudeau@gov.ca")
+                .build()?,
+        });
+        indexer.apply_mutation(contact2)?;
 
         let query = Query::match_text("justin");
         let results = indexer.search(&query, 10)?;
-        assert_eq!(results.len(), 1);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].operation_id, 10); // justin is more often in document 1, hence score higher
+
+        let query = Query::match_text("trudeau");
+        let results = indexer.search(&query, 10)?;
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].operation_id, 20); // trudeau is more often in document 2, hence score higher
 
         let result = find_trait_result(&results, "trudeau1").unwrap();
-        assert_eq!(result.block_offset, Some(1234));
-        assert_eq!(result.operation_id, 2345);
+        assert_eq!(result.block_offset, Some(1));
+        assert_eq!(result.operation_id, 10);
         assert_eq!(result.entity_id, "entity_id1");
         assert_eq!(result.trait_id, "trudeau1");
 

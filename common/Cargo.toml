@@ -32,7 +32,7 @@ capnpc = "0.10"
 [dev-dependencies]
 tempdir = "0.3"
 log4rs = "0.8"
-criterion_bencher_compat = "0.2"
+criterion_bencher_compat = "0.3"
 tokio = { version = "0.1", features = ["rt-full"] }
 
 [[bench]]

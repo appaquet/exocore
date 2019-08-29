@@ -9,41 +9,61 @@ use std::sync::Arc;
 
 pub type QueryId = ConsistentTimestamp;
 
+#[serde(rename_all = "snake_case")]
+#[derive(Serialize, Deserialize)]
+pub struct Query {
+    #[serde(flatten)]
+    pub inner: InnerQuery,
+
+    pub paging: Option<QueryPaging>,
+}
+
 #[serde(rename_all = "snake_case", tag = "type")]
 #[derive(Serialize, Deserialize)]
-pub enum Query {
+pub enum InnerQuery {
     WithTrait(WithTraitQuery),
     Conjunction(ConjunctionQuery),
     Match(MatchQuery),
     IdEqual(IdEqualQuery),
-
     #[cfg(test)]
     TestFail(TestFailQuery),
 }
 
 impl Query {
     pub fn match_text<S: Into<String>>(query: S) -> Query {
-        Query::Match(MatchQuery {
-            query: query.into(),
-        })
+        Query {
+            inner: InnerQuery::Match(MatchQuery {
+                query: query.into(),
+            }),
+            paging: None,
+        }
     }
 
     pub fn with_trait<S: Into<String>>(trait_name: S) -> Query {
-        Query::WithTrait(WithTraitQuery {
-            trait_name: trait_name.into(),
-            trait_query: None,
-        })
+        Query {
+            inner: InnerQuery::WithTrait(WithTraitQuery {
+                trait_name: trait_name.into(),
+                trait_query: None,
+            }),
+            paging: None,
+        }
     }
 
     pub fn with_entity_id<S: Into<String>>(entity_id: S) -> Query {
-        Query::IdEqual(IdEqualQuery {
-            entity_id: entity_id.into(),
-        })
+        Query {
+            inner: InnerQuery::IdEqual(IdEqualQuery {
+                entity_id: entity_id.into(),
+            }),
+            paging: None,
+        }
     }
 
     #[cfg(test)]
     pub fn test_fail() -> Query {
-        Query::TestFail(TestFailQuery {})
+        Query {
+            inner: InnerQuery::TestFail(TestFailQuery {}),
+            paging: None,
+        }
     }
 
     pub fn to_query_request_frame(
@@ -105,10 +125,6 @@ pub struct TestFailQuery {}
 
 #[serde(rename_all = "snake_case")]
 #[derive(Serialize, Deserialize, Debug)]
-pub struct SortToken(pub String);
-
-#[serde(rename_all = "snake_case")]
-#[derive(Serialize, Deserialize, Debug)]
 pub struct QueryPaging {
     pub from_token: Option<SortToken>,
     pub to_token: Option<SortToken>,
@@ -124,6 +140,10 @@ impl QueryPaging {
         }
     }
 }
+
+#[serde(rename_all = "snake_case")]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SortToken(pub String);
 
 ///
 /// Result of the query executed on index
