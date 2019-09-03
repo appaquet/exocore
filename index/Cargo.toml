@@ -20,6 +20,7 @@ maplit = "1"
 tokio = { version = "0.1", features = ["io"], default-features = false }
 log = "0.4"
 wasm-timer = "0.1"
+radix = "0.5"
 
 # Schema
 serde = "1.0"

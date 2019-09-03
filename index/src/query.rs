@@ -22,7 +22,6 @@ pub struct Query {
 #[derive(Serialize, Deserialize)]
 pub enum InnerQuery {
     WithTrait(WithTraitQuery),
-    Conjunction(ConjunctionQuery),
     Match(MatchQuery),
     IdEqual(IdEqualQuery),
     #[cfg(test)]
@@ -64,6 +63,15 @@ impl Query {
             inner: InnerQuery::TestFail(TestFailQuery {}),
             paging: None,
         }
+    }
+
+    pub fn with_paging(mut self, paging: QueryPaging) -> Self {
+        self.paging = Some(paging);
+        self
+    }
+
+    pub fn paging_or_default(&self) -> &QueryPaging {
+        self.paging.as_ref().unwrap_or(&QueryPaging::DEFAULT_PAGING)
     }
 
     pub fn to_query_request_frame(
@@ -132,18 +140,67 @@ pub struct QueryPaging {
 }
 
 impl QueryPaging {
-    pub fn empty() -> QueryPaging {
+    pub const DEFAULT_PAGING: QueryPaging = QueryPaging {
+        from_token: None,
+        to_token: None,
+        count: 10,
+    };
+
+    pub fn new(count: u32) -> QueryPaging {
         QueryPaging {
             from_token: None,
             to_token: None,
-            count: 0,
+            count,
         }
+    }
+
+    pub fn with_from_token(mut self, token: SortToken) -> Self {
+        self.from_token = Some(token);
+        self
+    }
+
+    pub fn with_to_token(mut self, token: SortToken) -> Self {
+        self.to_token = Some(token);
+        self
     }
 }
 
 #[serde(rename_all = "snake_case")]
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SortToken(pub String);
+
+impl SortToken {
+    pub fn from_u64(value: u64) -> SortToken {
+        let value_radix = radix::RadixNum::from(value)
+            .with_radix(36)
+            .expect("Couldn't convert u64 to radix 36");
+        format!("{:0>32}", value_radix.as_str()).into()
+    }
+
+    pub fn to_u64(&self) -> Result<u64, Error> {
+        let trimmed = self.0.trim_start_matches('0');
+        if trimmed.is_empty() {
+            Ok(0)
+        } else {
+            radix::RadixNum::from_str(trimmed, 36)
+                .and_then(|num| num.as_decimal())
+                .map(|num| num as u64)
+                .map_err(|err| {
+                    Error::QueryParsing(format!("Couldn't parse sort token from radix 36: {}", err))
+                })
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for SortToken {
+    fn from(value: String) -> Self {
+        SortToken(value)
+    }
+}
 
 ///
 /// Result of the query executed on index
@@ -163,7 +220,7 @@ impl QueryResult {
         QueryResult {
             results: vec![],
             total_estimated: 0,
-            current_page: QueryPaging::empty(),
+            current_page: QueryPaging::new(0),
             next_page: None,
         }
     }
@@ -219,4 +276,20 @@ pub struct EntityResult {
 pub enum EntityResultSource {
     Pending,
     Chain,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sort_token_score_conversation() -> Result<(), failure::Error> {
+        assert_eq!(
+            SortToken::from_u64(1).as_str(),
+            "00000000000000000000000000000001"
+        );
+        assert_eq!(SortToken::from_u64(0).to_u64()?, 0);
+        assert_eq!(SortToken::from_u64(1234).to_u64()?, 1234);
+        Ok(())
+    }
 }
