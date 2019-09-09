@@ -1,4 +1,5 @@
 use crate::node::Node;
+pub use chrono::prelude::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -154,6 +155,7 @@ enum Source {
     Mocked(std::sync::Arc<std::sync::RwLock<Option<Instant>>>),
 }
 
+// TODO: Should be a struct & fit nano structure
 pub fn consistent_timestamp_from_context(
     duration: Duration,
     counter: u64,
@@ -171,7 +173,11 @@ pub fn consistent_timestamp_from_duration(duration: Duration) -> ConsistentTimes
 }
 
 pub fn consistent_timestamp_to_duration(timestamp: ConsistentTimestamp) -> Duration {
-    Duration::from_millis(timestamp / 100 / 100)
+    Duration::from_nanos(timestamp * 100)
+}
+
+pub fn consistent_timestamp_to_datetime(timestamp: ConsistentTimestamp) -> DateTime<Utc> {
+    Utc.timestamp_nanos(timestamp as i64 * 100)
 }
 
 #[cfg(test)]
@@ -267,6 +273,15 @@ mod tests {
         let consistent = consistent_timestamp_from_duration(dur);
         let dur_after = consistent_timestamp_to_duration(consistent);
         assert_eq!(dur, dur_after);
+    }
+
+    #[test]
+    fn consistent_time_to_chrono() {
+        let now: DateTime<Utc> = Utc::now();
+        let elaps = Duration::from_nanos(now.timestamp_nanos() as u64);
+        let consistent = consistent_timestamp_from_duration(elaps);
+        let consistent_now = consistent_timestamp_to_datetime(consistent);
+        assert_eq!(now.timestamp_millis(), consistent_now.timestamp_millis());
     }
 
     #[test]

@@ -25,6 +25,7 @@ futures = "0.1"
 libp2p-core = "0.12"
 wasm-timer = "0.1"
 log4rs = { version = "0.8", optional = true }
+chrono = "0.4"
 
 [build-dependencies]
 capnpc = "0.10"

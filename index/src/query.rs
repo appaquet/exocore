@@ -1,4 +1,5 @@
 use crate::error::Error;
+use chrono::{DateTime, Utc};
 use exocore_common::framing::{CapnpFrameBuilder, FrameReader, TypedCapnpFrame};
 use exocore_common::protos::index_transport_capnp::{query_request, query_response};
 use exocore_common::time::ConsistentTimestamp;
@@ -10,7 +11,7 @@ use std::sync::Arc;
 pub type QueryId = ConsistentTimestamp;
 
 #[serde(rename_all = "snake_case")]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Query {
     #[serde(flatten)]
     pub inner: InnerQuery,
@@ -19,7 +20,7 @@ pub struct Query {
 }
 
 #[serde(rename_all = "snake_case", tag = "type")]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub enum InnerQuery {
     WithTrait(WithTraitQuery),
     Match(MatchQuery),
@@ -102,65 +103,65 @@ impl Query {
 }
 
 #[serde(rename_all = "snake_case")]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct WithTraitQuery {
     pub trait_name: String,
     pub trait_query: Option<Box<Query>>,
 }
 
 #[serde(rename_all = "snake_case")]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct ConjunctionQuery {
     pub queries: Vec<Query>,
 }
 
 #[serde(rename_all = "snake_case")]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct MatchQuery {
     pub query: String,
 }
 
 #[serde(rename_all = "snake_case")]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct IdEqualQuery {
     pub entity_id: EntityId,
 }
 
 #[cfg(test)]
 #[serde(rename_all = "snake_case")]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct TestFailQuery {}
 
 #[serde(rename_all = "snake_case")]
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct QueryPaging {
-    pub from_token: Option<SortToken>,
-    pub to_token: Option<SortToken>,
+    pub after_token: Option<SortToken>,
+    pub before_token: Option<SortToken>,
     pub count: u32,
 }
 
 impl QueryPaging {
     pub const DEFAULT_PAGING: QueryPaging = QueryPaging {
-        from_token: None,
-        to_token: None,
+        after_token: None,
+        before_token: None,
         count: 10,
     };
 
     pub fn new(count: u32) -> QueryPaging {
         QueryPaging {
-            from_token: None,
-            to_token: None,
+            after_token: None,
+            before_token: None,
             count,
         }
     }
 
     pub fn with_from_token(mut self, token: SortToken) -> Self {
-        self.from_token = Some(token);
+        self.after_token = Some(token);
         self
     }
 
     pub fn with_to_token(mut self, token: SortToken) -> Self {
-        self.to_token = Some(token);
+        self.before_token = Some(token);
         self
     }
 }
@@ -171,10 +172,7 @@ pub struct SortToken(pub String);
 
 impl SortToken {
     pub fn from_u64(value: u64) -> SortToken {
-        let value_radix = radix::RadixNum::from(value)
-            .with_radix(36)
-            .expect("Couldn't convert u64 to radix 36");
-        format!("{:0>32}", value_radix.as_str()).into()
+        format!("{:0>32x}", value).into()
     }
 
     pub fn to_u64(&self) -> Result<u64, Error> {
@@ -182,13 +180,14 @@ impl SortToken {
         if trimmed.is_empty() {
             Ok(0)
         } else {
-            radix::RadixNum::from_str(trimmed, 36)
-                .and_then(|num| num.as_decimal())
-                .map(|num| num as u64)
-                .map_err(|err| {
-                    Error::QueryParsing(format!("Couldn't parse sort token from radix 36: {}", err))
-                })
+            u64::from_str_radix(&self.0, 16).map_err(|err| {
+                Error::QueryParsing(format!("Couldn't parse sort token from radix 36: {}", err))
+            })
         }
+    }
+
+    pub fn from_datetime(value: DateTime<Utc>) -> SortToken {
+        Self::from_u64(value.timestamp_nanos() as u64)
     }
 
     pub fn as_str(&self) -> &str {
