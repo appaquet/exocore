@@ -721,7 +721,7 @@ mod tests {
     use super::*;
     use chrono::{DateTime, Utc};
     use exocore_common::node::LocalNode;
-    use exocore_common::time::{consistent_timestamp_to_datetime, Clock};
+    use exocore_common::time::Clock;
     use exocore_schema::entity::{RecordBuilder, TraitBuilder};
     use exocore_schema::tests_utils::create_test_schema;
     use itertools::Itertools;
@@ -852,7 +852,7 @@ mod tests {
         let node = LocalNode::generate();
 
         let contacts = (0..30).map(|i| {
-            let op_id = clock.consistent_time(node.node());
+            let op_id = clock.consistent_time(node.node()).into();
             IndexMutation::PutTrait(PutTraitMutation {
                 block_offset: Some(i),
                 operation_id: op_id,
@@ -1005,17 +1005,17 @@ mod tests {
         let node = LocalNode::generate();
 
         let contacts = (0..30).map(|i| {
-            let op_id = clock.consistent_time(node.node());
+            let now = clock.consistent_time(node.node());
             IndexMutation::PutTrait(PutTraitMutation {
                 block_offset: Some(i),
-                operation_id: op_id,
+                operation_id: now.into(),
                 entity_id: format!("entity_id{}", i),
                 trt: TraitBuilder::new(&schema, "exocore", "contact")
                     .unwrap()
                     .set("id", format!("entity_id{}", i))
                     .set("name", "Justin Trudeau")
                     .set("email", "justin.trudeau@gov.ca")
-                    .set_modification_date(consistent_timestamp_to_datetime(op_id))
+                    .set_modification_date(now.to_datetime())
                     .build()
                     .unwrap(),
             })
