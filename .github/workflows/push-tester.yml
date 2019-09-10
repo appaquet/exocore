@@ -1,0 +1,32 @@
+name: Push tester
+
+on: [push]
+
+jobs:
+  test_and_check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v1
+      - name: Install Rust
+        run: |
+          set -e
+
+          curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable
+          export PATH=$PATH:$HOME/.cargo/bin:/usr/local/cargo/bin
+          rustc --version && cargo --version
+          rustup component add rustfmt
+          rustup component add clippy
+
+      - name: Check & test
+        run: |
+          set -e
+          export PATH=$PATH:$HOME/.cargo/bin:/usr/local/cargo/bin
+
+          cargo fmt --all -- --check
+          cargo check --all
+          cargo clean -p exocore-common
+          cargo clippy --all -- -D clippy::all
+
+          cargo test --all --all-features
+
