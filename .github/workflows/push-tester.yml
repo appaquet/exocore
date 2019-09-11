@@ -22,7 +22,7 @@ jobs:
 
       - name: Check & test
         run: |
-          cd /github/workspace
+          cd $GITHUB_WORKSPACE
           cargo fmt --all -- --check
           cargo check --all
           cargo clean -p exocore-common
