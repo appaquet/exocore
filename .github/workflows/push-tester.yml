@@ -26,7 +26,7 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE
 
-          ln -s /cache/target
+          cp -r /cache/target .
 
           cargo fmt --all -- --check
           cargo check --all
