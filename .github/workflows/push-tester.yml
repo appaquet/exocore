@@ -20,6 +20,8 @@ jobs:
 #          rustup component add rustfmt
 #          rustup component add clippy
 
+      - uses: actions/checkout@v1
+
       - name: Check & test
         run: |
           cd $GITHUB_WORKSPACE
