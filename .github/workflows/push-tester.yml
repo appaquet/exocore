@@ -4,7 +4,7 @@ on: [push]
 
 jobs:
   test_and_check:
-    runs-on: docker://appaquet/exocore-build-cache
+    runs-on: appaquet/exocore-build-cache
 
     steps:
       - name: Check & test
