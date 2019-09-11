@@ -7,41 +7,49 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check & test
-        uses: docker://appaquet/exocore-build-cache
+      - uses: actions/checkout@v1
+      - name: Install Rust & Tools
         run: |
-          # Link to target cached in the Docker image
-          ln -s /cache/target
+          set -e
 
-          # Make sure code is formatted
+          curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable
+          export PATH=$PATH:$HOME/.cargo/bin:/usr/local/cargo/bin
+          rustc --version && cargo --version
+          rustup component add rustfmt
+          rustup component add clippy
+
+      - name: Check & test
+        run: |
+          set -e
+          export PATH=$PATH:$HOME/.cargo/bin:/usr/local/cargo/bin
+
           cargo fmt --all -- --check
-
-          # On change here, also change in Dockerfile.cache for faster build
           cargo check --all
           cargo clean -p exocore-common
           cargo clippy --all -- -D clippy::all
+
           cargo test --all --all-features
 
-#  coverage:
-#    runs-on: ubuntu-latest
-#
-#    steps:
-#      - uses: actions/checkout@v1
-#      - name: Install Rust & Dependencies
-#        run: |
-#          set -e
-#          curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable
-#          export PATH=$PATH:$HOME/.cargo/bin:/usr/local/cargo/bin
-#          rustc --version && cargo --version
-#          rustup toolchain install nightly
-#
-#      - name: Check & test
-#        run: |
-#          set -e
-#          curl -L https://github.com/mozilla/grcov/releases/latest/download/grcov-linux-x86_64.tar.bz2 | tar jxf -
-#          export PATH=$PATH:`pwd`
-#          ./utils/coverage.sh codecov_io
-#
-#          export CODECOV_TOKEN=${{ secrets.CODECOV_TOKEN }}
-#          bash <(curl -s https://codecov.io/bash)
-#
+  coverage:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v1
+      - name: Install Rust & Dependencies
+        run: |
+          set -e
+          curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable
+          export PATH=$PATH:$HOME/.cargo/bin:/usr/local/cargo/bin
+          rustc --version && cargo --version
+          rustup toolchain install nightly
+
+      - name: Check & test
+        run: |
+          set -e
+          curl -L https://github.com/mozilla/grcov/releases/latest/download/grcov-linux-x86_64.tar.bz2 | tar jxf -
+          export PATH=$PATH:`pwd`
+          ./utils/coverage.sh codecov_io
+
+          export CODECOV_TOKEN=${{ secrets.CODECOV_TOKEN }}
+          bash <(curl -s https://codecov.io/bash)
+
