@@ -25,6 +25,9 @@ jobs:
       - name: Check & test
         run: |
           cd $GITHUB_WORKSPACE
+
+          ln -s /cache/target
+
           cargo fmt --all -- --check
           cargo check --all
           cargo clean -p exocore-common
