@@ -1,0 +1,25 @@
+FROM rust:1.37-slim
+
+RUN apt update && apt install -y apt-utils libssl-dev pkg-config
+
+RUN rustup component add rustfmt
+RUN rustup component add clippy
+
+# Force download of cargo index
+RUN cargo search exocore
+
+COPY . /opt/exocore/
+WORKDIR /opt/exocore
+
+RUN rm -rf /opt/exocore/cache && mkdir -p /cache/target && ln -s /cache/target /opt/exocore/cache
+
+RUN cd schema && cargo check
+RUN cd common && cargo check
+RUN cd transport && cargo check
+RUN cd data && cargo check
+RUN cd index && cargo check
+
+RUN cargo check --all
+RUN cargo test --all
+RUN cargo clippy --all -- -D clippy::all
+RUN cargo test --all --all-features
