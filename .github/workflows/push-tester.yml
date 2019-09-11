@@ -4,10 +4,11 @@ on: [push]
 
 jobs:
   test_and_check:
-    runs-on: appaquet/exocore-build-cache
+    runs-on: ubuntu-latest
 
     steps:
       - name: Check & test
+        uses: docker://appaquet/exocore-build-cache
         run: |
           # Link to target cached in the Docker image
           ln -s /cache/target
