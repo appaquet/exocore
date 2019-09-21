@@ -190,6 +190,16 @@ impl SortToken {
         Self::from_u64(value.timestamp_nanos() as u64)
     }
 
+    pub fn from_f32(value: f32) -> SortToken {
+        format!("{}", value).into()
+    }
+
+    pub fn to_f32(&self) -> Result<f32, Error> {
+        self.0.parse::<f32>().map_err(|err| {
+            Error::QueryParsing(format!("Couldn't parse sort token to f32: {}", err))
+        })
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -289,6 +299,9 @@ mod tests {
         );
         assert_eq!(SortToken::from_u64(0).to_u64()?, 0);
         assert_eq!(SortToken::from_u64(1234).to_u64()?, 1234);
+
+        assert!(SortToken::from_f32(2.233_112).to_f32()? - 2.233_112 < std::f32::EPSILON);
+
         Ok(())
     }
 }

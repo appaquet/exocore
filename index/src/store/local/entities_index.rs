@@ -13,7 +13,7 @@ use exocore_data::{EngineHandle, EngineOperationStatus};
 use crate::error::Error;
 use crate::mutation::Mutation;
 use crate::query::*;
-use exocore_schema::entity::{Entity, EntityId, EntityIdRef};
+use exocore_schema::entity::{Entity, EntityId, Trait};
 use exocore_schema::schema;
 use exocore_schema::schema::Schema;
 
@@ -174,57 +174,52 @@ where
 
     /// Execute a search query on the indices, and returning all entities matching the query.
     pub fn search(&self, query: &Query) -> Result<QueryResult, Error> {
-        let chain_results = self
-            .chain_index
-            .search(query)?
-            .results
-            .into_iter()
-            .map(|res| (res, EntityResultSource::Chain));
-        let pending_results = self
-            .pending_index
-            .search(query)?
-            .results
-            .into_iter()
-            .map(|res| (res, EntityResultSource::Pending));
-        debug!(
-            "Found {} from chain, {} from pending",
-            chain_results.len(),
-            pending_results.len()
-        );
-        let combined_results = chain_results.chain(pending_results).collect_vec();
+        let chain_results = self.chain_index.search_all(query)?;
+        let pending_results = self.pending_index.search_all(query)?;
 
-        // accumulate traits found for each entities
-        let mut entities_traits: HashMap<EntityId, Vec<(&TraitResult, EntityResultSource)>> =
-            HashMap::new();
-        for (trait_result, source) in &combined_results {
-            if let Some(traits) = entities_traits.get_mut(&trait_result.entity_id) {
-                traits.push((trait_result, *source));
-            } else {
-                entities_traits.insert(
-                    trait_result.entity_id.clone(),
-                    vec![(trait_result, *source)],
-                );
-            }
-        }
+        let total_estimated = chain_results.total_results + pending_results.total_results;
+        debug!(
+            "Found approximately {} from chain, {} from pending, for total of {}",
+            chain_results.total_results, pending_results.total_results, total_estimated
+        );
+
+        // TODO: Should have a "merge" iterator to return based on score from pending / chain
+        let chain_results = chain_results.map(|res| (res, EntityResultSource::Chain));
+        let pending_results = pending_results.map(|res| (res, EntityResultSource::Pending));
+        let combined_results = chain_results.chain(pending_results);
 
         // iterate through results and returning the first N entities
-        let mut included_entities = HashSet::new();
+        let mut matched_entities = HashSet::new();
         let results = combined_results
-            .iter()
             .flat_map(|(trait_result, source)| {
-                if included_entities.contains(&trait_result.entity_id) {
+                // TODO: then rerank but only rescore negatively, not positively
+                // TODO: take while we are not in the paging
+                // TODO: better error handling...
+
+                if matched_entities.contains(&trait_result.entity_id) {
+                    return None;
+                } else {
+                    matched_entities.insert(trait_result.entity_id.clone());
+                }
+
+                let traits_results = self
+                    .fetch_entity_traits_results(&trait_result.entity_id)
+                    .ok()?;
+                if traits_results.is_empty() {
+                    // no traits remaining means that entity is now deleted
+                    // TODO: To test
                     return None;
                 }
 
-                let entity = self.fetch_entity(&trait_result.entity_id).ok()?;
-                included_entities.insert(trait_result.entity_id.clone());
+                let traits_data = self.fetch_entity_traits_data(traits_results.values());
+                let entity = Entity {
+                    id: trait_result.entity_id.clone(),
+                    traits: traits_data,
+                };
 
-                Some(EntityResult {
-                    entity,
-                    source: *source,
-                })
+                Some(EntityResult { entity, source })
             })
-            .take(100)
+            .take(100) // TODO: create a top collector
             .collect();
 
         Ok(QueryResult {
@@ -236,7 +231,7 @@ where
                 after_token: None,
                 before_token: None,
             },
-            total_estimated: combined_results.len() as u32, // TODO: https://github.com/appaquet/exocore/issues/105
+            total_estimated: total_estimated as u32,
         })
     }
 
@@ -261,11 +256,26 @@ where
 
     /// Fetch an entity and all its traits from indices and the data layer. Traits returned
     /// follow mutations in order of operation id.
-    fn fetch_entity(&self, entity_id: &EntityIdRef) -> Result<Entity, Error> {
-        let entity_query = Query::with_entity_id(entity_id);
+    #[cfg(test)]
+    fn fetch_entity(
+        &self,
+        entity_id: &exocore_schema::entity::EntityIdRef,
+    ) -> Result<Entity, Error> {
+        let traits_results = self.fetch_entity_traits_results(entity_id)?;
+        let full_traits = self.fetch_entity_traits_data(traits_results.values());
+        Ok(Entity {
+            id: entity_id.to_string(),
+            traits: full_traits,
+        })
+    }
 
-        let pending_results = self.pending_index.search(&entity_query)?;
-        let chain_results = self.chain_index.search(&entity_query)?;
+    /// Fetch traits metadata from pending and chain indices for this entity id, and merge them.
+    fn fetch_entity_traits_results(
+        &self,
+        entity_id: &str,
+    ) -> Result<HashMap<String, TraitResult>, Error> {
+        let pending_results = self.pending_index.search_entity_id(entity_id)?;
+        let chain_results = self.chain_index.search_entity_id(entity_id)?;
         let ordered_traits = pending_results
             .results
             .into_iter()
@@ -281,9 +291,15 @@ where
             traits.insert(trait_result.trait_id.clone(), trait_result);
         }
 
-        // for remaining traits, fetch operations from data layer
-        let final_traits = traits
-            .values()
+        Ok(traits)
+    }
+
+    /// Fetch traits data from data layer
+    fn fetch_entity_traits_data<'r, I>(&self, traits: I) -> Vec<Trait>
+    where
+        I: Iterator<Item = &'r TraitResult>,
+    {
+        traits
             .flat_map(|trait_result| {
                 let mutation = match self.fetch_trait_mutation_operation(
                     trait_result.operation_id,
@@ -310,12 +326,7 @@ where
                     Mutation::TestFail(_) => None,
                 }
             })
-            .collect();
-
-        Ok(Entity {
-            id: entity_id.to_string(),
-            traits: final_traits,
-        })
+            .collect()
     }
 
     /// Fetch an operation from the data layer by the given operation id and optional block
@@ -744,10 +755,7 @@ mod tests {
         let entity = test_index.index.fetch_entity("entity1")?;
         assert_eq!(entity.traits.len(), 1);
 
-        let pending_res = test_index
-            .index
-            .pending_index
-            .search(&Query::with_entity_id("entity1"))?;
+        let pending_res = test_index.index.pending_index.search_entity_id("entity1")?;
         assert!(pending_res.results.iter().any(|r| r.tombstone));
 
         // now bury the deletion under 1 block, which should delete for real the trait
@@ -758,15 +766,9 @@ mod tests {
         // tombstone should have been deleted, and only 1 trait left in chain index
         let entity = test_index.index.fetch_entity("entity1")?;
         assert_eq!(entity.traits.len(), 1);
-        let pending_res = test_index
-            .index
-            .pending_index
-            .search(&Query::with_entity_id("entity1"))?;
+        let pending_res = test_index.index.pending_index.search_entity_id("entity1")?;
         assert!(pending_res.results.is_empty());
-        let chain_res = test_index
-            .index
-            .chain_index
-            .search(&Query::with_entity_id("entity1"))?;
+        let chain_res = test_index.index.chain_index.search_entity_id("entity1")?;
         assert_eq!(chain_res.results.len(), 1);
 
         Ok(())
