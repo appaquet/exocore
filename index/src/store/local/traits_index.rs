@@ -716,7 +716,7 @@ pub struct TraitResult {
 #[serde(rename_all = "snake_case")]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TraitPaging {
-    pub after_token: Option<SortToken>,
+    pub after_token: Option<SortToken>, // TODO: should be u64
     pub before_token: Option<SortToken>,
     pub count: usize,
 }

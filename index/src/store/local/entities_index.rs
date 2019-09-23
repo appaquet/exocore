@@ -20,6 +20,7 @@ use exocore_schema::schema::Schema;
 use super::traits_index::{
     IndexMutation, PutTraitMutation, PutTraitTombstone, TraitResult, TraitsIndex, TraitsIndexConfig,
 };
+use crate::store::local::top_results_iter::RescoredTopResultsIterable;
 
 ///
 /// Configuration of the entities index
@@ -183,17 +184,21 @@ where
             chain_results.total_results, pending_results.total_results, total_estimated
         );
 
-        // TODO: Should have a "merge" iterator to return based on score from pending / chain
         let chain_results = chain_results.map(|res| (res, EntityResultSource::Chain));
         let pending_results = pending_results.map(|res| (res, EntityResultSource::Pending));
-        let combined_results = chain_results.chain(pending_results);
+
+        // create merged iterator, returning results from both underlying in order
+        let combined_results = chain_results
+            .merge_by(pending_results, |(res1, _src1), (res2, _src2)| {
+                res1.score <= res2.score
+            });
 
         // iterate through results and returning the first N entities
         let mut matched_entities = HashSet::new();
         let results = combined_results
+            // iterate through results, starting with best scores
             .flat_map(|(trait_result, source)| {
-                // TODO: then rerank but only rescore negatively, not positively
-                // TODO: take while we are not in the paging
+                // TODO: exclure if we're out of paging...
                 // TODO: better error handling...
 
                 if matched_entities.contains(&trait_result.entity_id) {
@@ -202,24 +207,36 @@ where
                     matched_entities.insert(trait_result.entity_id.clone());
                 }
 
-                let traits_results = self
+                let indexed_traits = self
                     .fetch_entity_traits_results(&trait_result.entity_id)
                     .ok()?;
-                if traits_results.is_empty() {
+                if indexed_traits.is_empty() {
                     // no traits remaining means that entity is now deleted
                     // TODO: To test
                     return None;
                 }
 
-                let traits_data = self.fetch_entity_traits_data(traits_results.values());
+                // TODO: Rescore here + exclude if not in page
+
+                Some((trait_result, indexed_traits, source))
+            })
+            // this steps consumes the results up until we reach the best 10 results based on the score
+            // of the highest matching trait, but re-scored negatively based on other traits
+            .top_negatively_rescored_results(10, |(trait_result, _traits, _source)| {
+                (trait_result.score, trait_result.score)
+            })
+            // take the best results and fetch the entities data
+            .flat_map(|(trait_result, indexed_traits, source)| {
+                // TODO: maybe just summary ?
+                let traits_data = self.fetch_entity_traits_data(indexed_traits.values());
                 let entity = Entity {
                     id: trait_result.entity_id.clone(),
                     traits: traits_data,
                 };
 
+                // TODO: Score + token
                 Some(EntityResult { entity, source })
             })
-            .take(100) // TODO: create a top collector
             .collect();
 
         Ok(QueryResult {
