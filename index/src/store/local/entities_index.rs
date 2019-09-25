@@ -814,10 +814,7 @@ mod tests {
 
     #[test]
     fn delete_entity() -> Result<(), failure::Error> {
-        let config = EntitiesIndexConfig {
-            chain_index_min_depth: 1, // index in chain as soon as another block is after
-            ..TestEntitiesIndex::create_test_config()
-        };
+        let config = TestEntitiesIndex::create_test_config();
         let mut test_index = TestEntitiesIndex::new_with_config(config)?;
 
         let op1 = test_index.put_contact_trait("entity1", "trait1", "name1")?;
