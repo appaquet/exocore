@@ -304,8 +304,8 @@ impl TraitsIndex {
     ) -> Result<TraitResults, Error> {
         let searcher = self.index_reader.searcher();
         let paging = paging.unwrap_or_else(|| TraitPaging {
-            after_token: None,
-            before_token: None,
+            after_score: None,
+            before_score: None,
             count: self.config.iterator_page_size,
         });
 
@@ -322,17 +322,9 @@ impl TraitsIndex {
         let term = Term::from_field_u64(self.fields.trait_type, u64::from(trait_schema.id()));
         let query = TermQuery::new(term, IndexRecordOption::Basic);
 
-        let after_date = paging
-            .after_token
-            .as_ref()
-            .map(|token| token.to_u64().map(|value| value))
-            .unwrap_or(Ok(0))?;
+        let after_date = paging.after_score.unwrap_or(0);
 
-        let before_date = paging
-            .before_token
-            .as_ref()
-            .map(|token| token.to_u64().map(|value| value))
-            .unwrap_or(Ok(std::u64::MAX))?;
+        let before_date = paging.before_score.unwrap_or(std::u64::MAX);
 
         let total_count = Arc::new(AtomicUsize::new(0));
         let matching_count = Arc::new(AtomicUsize::new(0));
@@ -380,7 +372,7 @@ impl TraitsIndex {
             .checked_sub(results.len())
             .unwrap_or(0);
         let next_page = if remaining_results > 0 {
-            Some(Self::extract_next_page_token(&paging, &results))
+            Some(Self::extract_next_page(&paging, &results))
         } else {
             None
         };
@@ -401,25 +393,20 @@ impl TraitsIndex {
     ) -> Result<TraitResults, Error> {
         let searcher = self.index_reader.searcher();
         let paging = paging.unwrap_or_else(|| TraitPaging {
-            after_token: None,
-            before_token: None,
+            after_score: None,
+            before_score: None,
             count: self.config.iterator_page_size,
         });
 
         let query_parser = QueryParser::for_index(&self.index, vec![self.fields.text]);
         let query = query_parser.parse_query(query)?;
 
-        let after_score = paging
-            .after_token
-            .as_ref()
-            .map(sort_token_to_score)
-            .unwrap_or(Ok(0.0))?;
+        let after_score = paging.after_score.map(score_from_u64).unwrap_or(0.0);
 
         let before_score = paging
-            .before_token
-            .as_ref()
-            .map(sort_token_to_score)
-            .unwrap_or(Ok(std::f32::MAX))?;
+            .before_score
+            .map(score_from_u64)
+            .unwrap_or(std::f32::MAX);
 
         let total_count = Arc::new(AtomicUsize::new(0));
         let matching_count = Arc::new(AtomicUsize::new(0));
@@ -471,7 +458,7 @@ impl TraitsIndex {
             .checked_sub(results.len())
             .unwrap_or(0);
         let next_page = if remaining_results > 0 {
-            Some(Self::extract_next_page_token(&paging, &results))
+            Some(Self::extract_next_page(&paging, &results))
         } else {
             None
         };
@@ -547,15 +534,11 @@ impl TraitsIndex {
         Ok(results)
     }
 
-    fn extract_next_page_token(
-        previous_page: &TraitPaging,
-        results: &[TraitResult],
-    ) -> TraitPaging {
+    fn extract_next_page(previous_page: &TraitPaging, results: &[TraitResult]) -> TraitPaging {
         let last_result = results.last().expect("Should had results, but got none");
-        let last_token = SortToken::from_u64(last_result.score);
         TraitPaging {
-            after_token: None,
-            before_token: Some(last_token),
+            after_score: None,
+            before_score: Some(last_result.score),
             count: previous_page.count,
         }
     }
@@ -716,13 +699,13 @@ pub struct TraitResult {
 #[serde(rename_all = "snake_case")]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TraitPaging {
-    pub after_token: Option<SortToken>, // TODO: should be u64
-    pub before_token: Option<SortToken>,
+    pub after_score: Option<u64>,
+    pub before_score: Option<u64>,
     pub count: usize,
 }
 
 ///
-/// Iterates through all results matching a given initial query using the next_page token
+/// Iterates through all results matching a given initial query using the next_page score
 /// when a page got emptied.
 ///
 pub struct TraitResultsIterator<'i, 'q> {
@@ -754,22 +737,14 @@ impl<'i, 'q> Iterator for TraitResultsIterator<'i, 'q> {
     }
 }
 
-/// Convert SortToken string to Tantivy f32 score
-fn sort_token_to_score(token: &SortToken) -> Result<f32, Error> {
-    token
-        .to_u64()
-        .map(|score| score as f32 / SCORE_TO_U64_MULTIPLIER)
-}
-
-/// Convert Tantivy f32 score to SortToken string
-#[cfg(test)]
-fn score_to_sort_token(score: f32) -> SortToken {
-    SortToken::from_u64(score_to_u64(score))
-}
-
 /// Convert Tantivy f32 score to u64
 fn score_to_u64(score: f32) -> u64 {
     (score * SCORE_TO_U64_MULTIPLIER) as u64
+}
+
+/// Convert u64 score to Tantivy f32
+fn score_from_u64(value: u64) -> f32 {
+    value as f32 / SCORE_TO_U64_MULTIPLIER
 }
 
 #[cfg(test)]
@@ -888,8 +863,8 @@ mod tests {
 
         // with limit
         let paging = TraitPaging {
-            after_token: None,
-            before_token: None,
+            after_score: None,
+            before_score: None,
             count: 1,
         };
         let results = indexer.search_matches("trudeau", Some(paging))?;
@@ -899,8 +874,8 @@ mod tests {
 
         // only results from given score
         let paging = TraitPaging {
-            after_token: Some(score_to_sort_token(0.30)),
-            before_token: None,
+            after_score: Some(score_to_u64(0.30)),
+            before_score: None,
             count: 10,
         };
         let results = indexer.search_matches("trudeau", Some(paging))?;
@@ -911,8 +886,8 @@ mod tests {
 
         // only results before given score
         let paging = TraitPaging {
-            after_token: None,
-            before_token: Some(score_to_sort_token(0.30)),
+            after_score: None,
+            before_score: Some(score_to_u64(0.30)),
             count: 10,
         };
         let results = indexer.search_matches("trudeau", Some(paging))?;
@@ -950,8 +925,8 @@ mod tests {
         indexer.apply_mutations(contacts)?;
 
         let paging = TraitPaging {
-            after_token: None,
-            before_token: None,
+            after_score: None,
+            before_score: None,
             count: 10,
         };
         let results1 = indexer.search_matches("trudeau", Some(paging))?;
@@ -1057,8 +1032,8 @@ mod tests {
 
         // with limit
         let paging = TraitPaging {
-            after_token: None,
-            before_token: None,
+            after_score: None,
+            before_score: None,
             count: 1,
         };
         let results = index.search_with_trait("exocore.email", Some(paging))?;
@@ -1066,9 +1041,10 @@ mod tests {
 
         // only results after given modification date
         let date_token = SortToken::from_datetime("2019-09-02T11:59:00Z".parse::<DateTime<Utc>>()?);
+        let date_value = date_token.to_u64()?;
         let paging = TraitPaging {
-            after_token: Some(date_token.clone()),
-            before_token: None,
+            after_score: Some(date_value),
+            before_score: None,
             count: 10,
         };
         let results = index.search_with_trait("exocore.email", Some(paging))?;
@@ -1081,8 +1057,8 @@ mod tests {
 
         // only results before given modification date
         let paging = TraitPaging {
-            after_token: None,
-            before_token: Some(date_token),
+            after_score: None,
+            before_score: Some(date_value),
             count: 10,
         };
         let results = index.search_with_trait("exocore.email", Some(paging))?;
@@ -1123,8 +1099,8 @@ mod tests {
         indexer.apply_mutations(contacts)?;
 
         let paging = TraitPaging {
-            after_token: None,
-            before_token: None,
+            after_score: None,
+            before_score: None,
             count: 10,
         };
 
