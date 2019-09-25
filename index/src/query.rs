@@ -71,6 +71,15 @@ impl Query {
         self
     }
 
+    pub fn with_count(mut self, count: u32) -> Self {
+        match self.paging.as_mut() {
+            Some(paging) => paging.count = count,
+            None => self.paging = Some(QueryPaging::new(count)),
+        }
+
+        self
+    }
+
     pub fn paging_or_default(&self) -> &QueryPaging {
         self.paging.as_ref().unwrap_or(&QueryPaging::DEFAULT_PAGING)
     }
@@ -155,19 +164,35 @@ impl QueryPaging {
         }
     }
 
-    pub fn with_from_token(mut self, token: SortToken) -> Self {
+    pub fn with_after_token(mut self, token: SortToken) -> Self {
         self.after_token = Some(token);
         self
     }
 
-    pub fn with_to_token(mut self, token: SortToken) -> Self {
+    pub fn with_before_token(mut self, token: SortToken) -> Self {
         self.before_token = Some(token);
         self
+    }
+
+    pub fn is_sort_token_in_bound(&self, token: &SortToken) -> bool {
+        if let Some(after_token) = self.after_token.as_ref() {
+            if token <= after_token {
+                return false;
+            }
+        }
+
+        if let Some(before_token) = self.before_token.as_ref() {
+            if token >= before_token {
+                return false;
+            }
+        }
+
+        true
     }
 }
 
 #[serde(rename_all = "snake_case")]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct SortToken(pub String);
 
 impl SortToken {
@@ -277,7 +302,7 @@ impl QueryResult {
 pub struct EntityResult {
     pub entity: Entity,
     pub source: EntityResultSource,
-    // TODO: sortToken:
+    pub sort_token: SortToken,
 }
 
 #[serde(rename_all = "snake_case")]
