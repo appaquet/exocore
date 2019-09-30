@@ -161,6 +161,7 @@ where
         );
 
         self.start_notifier.complete(Ok(()));
+        info!("Index local store started");
 
         Ok(())
     }

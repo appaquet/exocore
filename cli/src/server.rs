@@ -75,7 +75,7 @@ pub fn start(
         rt.spawn(
             engine
                 .map(move |_| {
-                    info!("Engine for cell {:?} is done", cell_id1);
+                    info!("Engine for cell {:?} has stopped", cell_id1);
                 })
                 .map_err(move |err| {
                     error!("Engine for cell {} has failed: {}", cell_id2, err);
@@ -130,11 +130,21 @@ pub fn start(
                     entities_index,
                 )?;
             };
+        } else {
+            info!("Local node is not an index node. Not starting local store index.")
         }
     }
 
     // start transport
-    rt.spawn(transport.map(|_| ()).map_err(|_| ()));
+    rt.spawn(
+        transport
+            .map(|_| {
+                info!("Libp2p transport has stopped");
+            })
+            .map_err(|err| {
+                error!("Libp2p transport stopped with error: {}", err);
+            }),
+    );
 
     // wait for runtime to finish all its task
     tokio::run(rt.shutdown_on_idle());

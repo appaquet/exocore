@@ -5,7 +5,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::entity::{FieldValue, TraitId};
 use crate::error::Error;
-use chrono::Utc;
+use chrono::{Utc, TimeZone};
 
 pub type SchemaRecordId = u16;
 pub type SchemaTraitId = SchemaRecordId;
@@ -534,7 +534,13 @@ impl FieldSchema {
             },
             FieldType::Struct(_) => None,
             FieldType::DateTime => match self.default.as_ref().map(|s| s.as_str()) {
-                Some("now") => Some(FieldValue::DateTime(Utc::now())),
+                Some("now") => {
+                    let unix_elapsed = wasm_timer::SystemTime::now()
+                        .duration_since(wasm_timer::UNIX_EPOCH)
+                        .unwrap();
+                    let now = Utc.timestamp_nanos(unix_elapsed.as_nanos() as i64);
+                    Some(FieldValue::DateTime(now))
+                },
                 _ => None,
             },
         }

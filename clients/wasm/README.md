@@ -9,7 +9,7 @@
     * On MacOS: 
         * Unfortunately, clang installed by Xcode isn't recent enough to compile to WASM. Follow instructions on 
           [this page](https://00f.net/2019/04/07/compiling-to-webassembly-with-llvm-and-clang/)
-          to instal LLVM 8 from HomeBrew.
+          to install LLVM 9 from HomeBrew.
             * `brew install llvm`
             * Use LLVM from HomeBrew:
                 * Bash `export PATH=/usr/local/opt/llvm/bin:$PATH`

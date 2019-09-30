@@ -19,7 +19,6 @@ use futures::Future;
 use log::Level;
 use std::fmt::Display;
 use std::sync::Arc;
-use stdweb;
 use wasm_bindgen::prelude::*;
 
 mod ws;
@@ -36,8 +35,6 @@ pub struct ExocoreClient {
 impl ExocoreClient {
     #[wasm_bindgen(constructor)]
     pub fn new(url: &str) -> Result<ExocoreClient, JsValue> {
-        stdweb::initialize();
-
         console_log::init_with_level(Level::Debug).expect("Couldn't init level");
 
         // TODO: To be cleaned up when cell management will be ironed out: https://github.com/appaquet/exocore/issues/80
