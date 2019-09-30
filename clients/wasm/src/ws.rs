@@ -2,12 +2,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
-use futures::MapErr;
 use futures::prelude::*;
 use futures::sync::mpsc;
+use futures::MapErr;
 use js_sys::{ArrayBuffer, Uint8Array};
-use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 use wasm_timer::Instant;
 use web_sys::{BinaryType, ErrorEvent, MessageEvent, WebSocket};
 
@@ -18,8 +18,8 @@ use exocore_common::protos::common_capnp::envelope;
 use exocore_common::utils::completion_notifier::{
     CompletionError, CompletionListener, CompletionNotifier,
 };
-use exocore_transport::{Error, InMessage, OutMessage, TransportHandle, TransportLayer};
 use exocore_transport::transport::{MpscHandleSink, MpscHandleStream};
+use exocore_transport::{Error, InMessage, OutMessage, TransportHandle, TransportLayer};
 
 ///
 /// Client for `exocore_transport` WebSocket transport for browser

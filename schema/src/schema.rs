@@ -5,7 +5,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::entity::{FieldValue, TraitId};
 use crate::error::Error;
-use chrono::{Utc, TimeZone};
+use chrono::{TimeZone, Utc};
 
 pub type SchemaRecordId = u16;
 pub type SchemaTraitId = SchemaRecordId;
@@ -540,7 +540,7 @@ impl FieldSchema {
                         .unwrap();
                     let now = Utc.timestamp_nanos(unix_elapsed.as_nanos() as i64);
                     Some(FieldValue::DateTime(now))
-                },
+                }
                 _ => None,
             },
         }
