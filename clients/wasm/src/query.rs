@@ -6,8 +6,8 @@ use futures::Future;
 use wasm_bindgen::prelude::*;
 
 use exocore_index::query::Query;
-use exocore_index::store::AsyncStore;
 use exocore_index::store::remote::StoreHandle;
+use exocore_index::store::AsyncStore;
 use exocore_schema::schema::Schema;
 use exocore_schema::serialization::with_schema;
 

@@ -5,8 +5,8 @@ use wasm_bindgen::__rt::std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
 use exocore_index::mutation::Mutation;
-use exocore_index::store::AsyncStore;
 use exocore_index::store::remote::StoreHandle;
+use exocore_index::store::AsyncStore;
 use exocore_schema::entity::{FieldValue, RecordBuilder, TraitBuilder};
 use exocore_schema::schema::Schema;
 use exocore_schema::serialization::with_schema;

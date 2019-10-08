@@ -19,10 +19,7 @@ pub enum Mutation {
 
 impl Mutation {
     pub fn put_trait(entity_id: EntityId, trt: Trait) -> Mutation {
-        Mutation::PutTrait(PutTraitMutation {
-            entity_id,
-            trt,
-        })
+        Mutation::PutTrait(PutTraitMutation { entity_id, trt })
     }
 
     pub fn delete_trait(entity_id: EntityId, trait_id: TraitId) -> Mutation {
@@ -60,8 +57,8 @@ impl Mutation {
         schema: &Arc<Schema>,
         frame: TypedCapnpFrame<I, mutation_request::Owned>,
     ) -> Result<Mutation, Error>
-        where
-            I: FrameReader,
+    where
+        I: FrameReader,
     {
         let reader = frame.get_reader()?;
         let data = reader.get_request()?;
@@ -124,8 +121,8 @@ impl MutationResult {
         schema: &Arc<Schema>,
         frame: TypedCapnpFrame<I, mutation_response::Owned>,
     ) -> Result<MutationResult, Error>
-        where
-            I: FrameReader,
+    where
+        I: FrameReader,
     {
         let reader = frame.get_reader()?;
         if reader.has_error() {
