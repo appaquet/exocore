@@ -18,6 +18,20 @@ pub enum Mutation {
 }
 
 impl Mutation {
+    pub fn put_trait(entity_id: EntityId, trt: Trait) -> Mutation {
+        Mutation::PutTrait(PutTraitMutation {
+            entity_id,
+            trt,
+        })
+    }
+
+    pub fn delete_trait(entity_id: EntityId, trait_id: TraitId) -> Mutation {
+        Mutation::DeleteTrait(DeleteTraitMutation {
+            entity_id,
+            trait_id,
+        })
+    }
+
     pub fn from_json_slice(schema: Arc<Schema>, json_bytes: &[u8]) -> Result<Mutation, Error> {
         with_schema(&schema, || {
             serde_json::from_slice(json_bytes).map_err(|err| err.into())
@@ -46,8 +60,8 @@ impl Mutation {
         schema: &Arc<Schema>,
         frame: TypedCapnpFrame<I, mutation_request::Owned>,
     ) -> Result<Mutation, Error>
-    where
-        I: FrameReader,
+        where
+            I: FrameReader,
     {
         let reader = frame.get_reader()?;
         let data = reader.get_request()?;
@@ -110,8 +124,8 @@ impl MutationResult {
         schema: &Arc<Schema>,
         frame: TypedCapnpFrame<I, mutation_response::Owned>,
     ) -> Result<MutationResult, Error>
-    where
-        I: FrameReader,
+        where
+            I: FrameReader,
     {
         let reader = frame.get_reader()?;
         if reader.has_error() {

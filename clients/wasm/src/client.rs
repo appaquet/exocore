@@ -1,25 +1,24 @@
-use crate::ws::BrowserTransportClient;
+use std::sync::Arc;
+
+use futures::Future;
+use log::Level;
+use wasm_bindgen::prelude::*;
+
 use exocore_common::cell::Cell;
 use exocore_common::crypto::keys::PublicKey;
 use exocore_common::node::{LocalNode, Node};
 use exocore_common::time::Clock;
-use exocore_index::mutation::Mutation;
 use exocore_index::store::remote::{RemoteStore, StoreConfiguration, StoreHandle};
-use exocore_index::store::AsyncStore;
 use exocore_schema::schema::Schema;
-use exocore_schema::serialization::with_schema;
 use exocore_transport::TransportLayer;
-use failure::err_msg;
-use futures::Future;
-use log::Level;
-use std::fmt::Display;
-use std::sync::Arc;
-use wasm_bindgen::prelude::*;
+
+use crate::js::{create_test_schema, js_future_spawner};
+use crate::ws::BrowserTransportClient;
 
 #[wasm_bindgen]
 pub struct ExocoreClient {
     _transport: BrowserTransportClient,
-    store_handle: StoreHandle,
+    store_handle: Arc<StoreHandle>,
     schema: Arc<Schema>,
 }
 
@@ -78,45 +77,19 @@ impl ExocoreClient {
 
         Ok(ExocoreClient {
             _transport: transport,
-            store_handle,
+            store_handle: Arc::new(store_handle),
             schema,
         })
     }
 
     #[wasm_bindgen]
-    pub fn mutate(&mut self, query_json: &JsValue) -> js_sys::Promise {
-        let mutation = with_schema(&self.schema, || query_json.into_serde::<Mutation>());
-        let mutation = match mutation {
-            Ok(mutation) => mutation,
-            Err(err) => {
-                return wasm_bindgen_futures::future_to_promise(futures::failed(into_js_error(
-                    err_msg(format!("Couldn't parse mutation: {}", err)),
-                )));
-            }
-        };
-
-        let schema = self.schema.clone();
-        let fut_result = self
-            .store_handle
-            .mutate(mutation)
-            .map(move |res| {
-                with_schema(&schema, || JsValue::from_serde(&res)).unwrap_or_else(into_js_error)
-            })
-            .map_err(into_js_error);
-        wasm_bindgen_futures::future_to_promise(fut_result)
+    pub fn query(&self) -> crate::query::QueryBuilder {
+        crate::query::QueryBuilder::new(self.schema.clone(), self.store_handle.clone())
     }
 
     #[wasm_bindgen]
-    pub fn query(&mut self, query: crate::query::Query) -> js_sys::Promise {
-        let schema = self.schema.clone();
-        let fut_result = self
-            .store_handle
-            .query(query.inner)
-            .map(move |res| {
-                with_schema(&schema, || JsValue::from_serde(&res)).unwrap_or_else(into_js_error)
-            })
-            .map_err(into_js_error);
-        wasm_bindgen_futures::future_to_promise(fut_result)
+    pub fn mutate(&self) -> crate::mutation::MutationBuilder {
+        crate::mutation::MutationBuilder::new(self.schema.clone(), self.store_handle.clone())
     }
 }
 
@@ -124,50 +97,4 @@ impl Drop for ExocoreClient {
     fn drop(&mut self) {
         info!("Got dropped");
     }
-}
-
-fn into_js_error<E: Display>(err: E) -> JsValue {
-    let js_error = js_sys::Error::new(&format!("Error executing query: {}", err));
-    JsValue::from(js_error)
-}
-
-// TODO: To be moved https://github.com/appaquet/exocore/issues/123
-fn js_future_spawner(future: Box<dyn Future<Item = (), Error = ()> + Send>) {
-    wasm_bindgen_futures::spawn_local(future);
-}
-
-// TODO: To be cleaned up in https://github.com/appaquet/exocore/issues/104
-pub fn create_test_schema() -> Arc<Schema> {
-    Arc::new(
-        Schema::parse(
-            r#"
-        namespaces:
-            - name: exocore
-              traits:
-                - id: 0
-                  name: contact
-                  fields:
-                    - id: 0
-                      name: name
-                      type: string
-                      indexed: true
-                    - id: 1
-                      name: email
-                      type: string
-                      indexed: true
-                - id: 1
-                  name: email
-                  fields:
-                    - id: 0
-                      name: subject
-                      type: string
-                      indexed: true
-                    - id: 1
-                      name: body
-                      type: string
-                      indexed: true
-        "#,
-        )
-        .unwrap(),
-    )
 }

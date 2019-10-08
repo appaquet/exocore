@@ -16,7 +16,9 @@
     "html-webpack-plugin": "^3.2.0",
     "webpack": "^4.36.1",
     "webpack-cli": "^3.3.6",
-    "webpack-dev-server": "^3.7.2",
-    "exocore-clients-wasm": "files:../../clients/wasm/pkg"
+    "webpack-dev-server": "^3.7.2"
+  },
+  "dependencies": {
+    "exocore-client-wasm": "file:./../../clients/wasm/pkg"
   }
 }
