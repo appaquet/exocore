@@ -82,12 +82,12 @@ impl ExocoreClient {
         })
     }
 
-    #[wasm_bindgen]
+    #[wasm_bindgen(getter)]
     pub fn query(&self) -> crate::query::QueryBuilder {
         crate::query::QueryBuilder::new(self.schema.clone(), self.store_handle.clone())
     }
 
-    #[wasm_bindgen]
+    #[wasm_bindgen(getter)]
     pub fn mutate(&self) -> crate::mutation::MutationBuilder {
         crate::mutation::MutationBuilder::new(self.schema.clone(), self.store_handle.clone())
     }

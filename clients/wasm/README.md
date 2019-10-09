@@ -14,7 +14,9 @@
             * Use LLVM from HomeBrew:
                 * Bash `export PATH=/usr/local/opt/llvm/bin:$PATH`
                 * Fish `set -g fish_user_paths "/usr/local/opt/llvm/bin" $fish_user_paths`
+
 * Install [Node & NPM](https://github.com/nodesource/distributions/blob/master/README.md#debinstall)
+
 * Install [`wasm-pack`](https://github.com/rustwasm/wasm-pack) to build and package WASM as NPM package
     * `cargo install wasm-pack`
 

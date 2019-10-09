@@ -20,7 +20,7 @@ A cell consists of:
 ## Development status
 * **Data storage and replication layer**: Proof of concept
 * **Transport layer**: Proof of concept
-* **Index layer:** In development
+* **Index layer:** Proof of concept
 * **SDKs**: In development
 * **Security**: In development
 * **Applications layer**: Not yet started
