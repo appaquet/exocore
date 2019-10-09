@@ -93,7 +93,7 @@ pub fn start(
             let full_cell = opt_full_cell.ok_or_else(|| {
                 err_msg("Tried to start a local index, but node doesn't have full cell access (not private key)")
             })?;
-            let schema = create_test_schema();
+            let schema = exocore_schema::test_schema::create();
 
             let mut index_dir = cell_config.data_directory.clone();
             index_dir.push("index");
@@ -200,40 +200,4 @@ fn create_local_store<T: TransportHandle>(
     );
 
     Ok(())
-}
-
-// TODO: To be cleaned up in https://github.com/appaquet/exocore/issues/104
-pub fn create_test_schema() -> Arc<Schema> {
-    Arc::new(
-        Schema::parse(
-            r#"
-        namespaces:
-            - name: exocore
-              traits:
-                - id: 0
-                  name: contact
-                  fields:
-                    - id: 0
-                      name: name
-                      type: string
-                      indexed: true
-                    - id: 1
-                      name: email
-                      type: string
-                      indexed: true
-                - id: 1
-                  name: email
-                  fields:
-                    - id: 0
-                      name: subject
-                      type: string
-                      indexed: true
-                    - id: 1
-                      name: body
-                      type: string
-                      indexed: true
-        "#,
-        )
-        .unwrap(),
-    )
 }

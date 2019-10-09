@@ -624,7 +624,6 @@ mod tests {
 
     use crate::mutation::{DeleteTraitMutation, PutTraitMutation};
     use exocore_schema::entity::{RecordBuilder, TraitBuilder, TraitId};
-    use exocore_schema::tests_utils::create_test_schema;
 
     use super::*;
 
@@ -948,7 +947,7 @@ mod tests {
         fn new_with_config(
             config: EntitiesIndexConfig,
         ) -> Result<TestEntitiesIndex, failure::Error> {
-            let schema = create_test_schema();
+            let schema = exocore_schema::test_schema::create();
             let cluster = DataTestCluster::new_single_and_start()?;
 
             let temp_dir = tempdir::TempDir::new("entities_index")?;

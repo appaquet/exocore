@@ -12,7 +12,7 @@ use exocore_index::store::remote::{RemoteStore, StoreConfiguration, StoreHandle}
 use exocore_schema::schema::Schema;
 use exocore_transport::TransportLayer;
 
-use crate::js::{create_test_schema, js_future_spawner};
+use crate::js::js_future_spawner;
 use crate::ws::BrowserTransportClient;
 
 #[wasm_bindgen]
@@ -35,7 +35,7 @@ impl ExocoreClient {
                 .expect("Couldn't decode cell publickey");
         let cell = Cell::new(cell_pk, local_node.clone());
         let clock = Clock::new();
-        let schema = create_test_schema();
+        let schema = exocore_schema::test_schema::create();
 
         let remote_node_pk =
             PublicKey::decode_base58_string("pe5ZG43uAcfLxYSGaQgj1w8hQT4GBchEVg5mS2b1EfXcMb")
