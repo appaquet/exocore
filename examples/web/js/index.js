@@ -1,3 +1,6 @@
+import "core-js/stable";
+import "regenerator-runtime/runtime";
+
 import React from 'react';
 import ReactDOM from 'react-dom';
 import List from './list.js';
@@ -8,9 +11,13 @@ class App extends React.Component {
 
         this.state = { exocore: null };
         import("../../../clients/wasm/pkg").then(module => {
-            this.setState({
-                exocore: new module.ExocoreClient("ws://127.0.0.1:3340")
-            });
+            // fix issue where not yet connected until we support transport status
+            let client = new module.ExocoreClient("ws://127.0.0.1:3340");
+            setTimeout(() => {
+                this.setState({
+                    exocore: client
+                });
+            }, 500);
         })
     }
 

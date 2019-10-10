@@ -40,6 +40,10 @@ impl Entity {
         self.traits.push(trt);
         self
     }
+
+    pub fn generate_random_id() -> EntityId {
+        Uuid::new_v4().to_string()
+    }
 }
 
 ///

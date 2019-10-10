@@ -191,7 +191,7 @@ where
         let pending_results = pending_results.map(|res| (res, EntityResultSource::Pending));
         let combined_results = chain_results
             .merge_by(pending_results, |(res1, _src1), (res2, _src2)| {
-                res1.score <= res2.score
+                res1.score >= res2.score
             });
 
         // iterate through results and returning the first N entities
@@ -849,7 +849,19 @@ mod tests {
         let config = TestEntitiesIndex::create_test_config();
         let mut test_index = TestEntitiesIndex::new_with_config(config)?;
 
-        let ops_id = test_index.put_contact_traits(0..30)?;
+        // add traits in 3 batch so that we have pending & chain items
+        let ops_id = test_index.put_contact_traits(0..10)?;
+        test_index.cluster.wait_operations_emitted(0, &ops_id);
+        test_index.handle_engine_events()?;
+        test_index
+            .cluster
+            .wait_operations_committed(0, &ops_id[0..10]);
+
+        let ops_id = test_index.put_contact_traits(10..20)?;
+        test_index.cluster.wait_operations_emitted(0, &ops_id);
+        test_index.handle_engine_events()?;
+
+        let ops_id = test_index.put_contact_traits(20..30)?;
         test_index.cluster.wait_operations_emitted(0, &ops_id);
         test_index.handle_engine_events()?;
 

@@ -7,7 +7,7 @@ use wasm_bindgen::prelude::*;
 use exocore_index::mutation::Mutation;
 use exocore_index::store::remote::StoreHandle;
 use exocore_index::store::AsyncStore;
-use exocore_schema::entity::{FieldValue, RecordBuilder, TraitBuilder};
+use exocore_schema::entity::{Entity, FieldValue, RecordBuilder, TraitBuilder};
 use exocore_schema::schema::Schema;
 use exocore_schema::serialization::with_schema;
 
@@ -35,21 +35,12 @@ impl MutationBuilder {
     pub fn put_trait(
         mut self,
         entity_id: String,
-        namespace: &str,
         trait_type: &str,
         data: JsValue,
     ) -> MutationBuilder {
-        let dict: HashMap<String, FieldValue> = data.into_serde().expect("Couldn't parse data");
-
-        let mut trait_builder = TraitBuilder::new(&self.schema, namespace, trait_type)
-            .expect("Couldn't create TraitBuilder");
-        for (name, value) in dict {
-            trait_builder = trait_builder.set(&name, value);
-        }
+        let trait_builder = self.jsdata_to_trait_builder(trait_type, data);
         let trt = trait_builder.build().expect("Couldn't build trait");
-
         self.inner = Some(Mutation::put_trait(entity_id, trt));
-
         self
     }
 
@@ -57,6 +48,12 @@ impl MutationBuilder {
     pub fn delete_trait(mut self, entity_id: String, trait_id: String) -> MutationBuilder {
         self.inner = Some(Mutation::delete_trait(entity_id, trait_id));
         self
+    }
+
+    #[wasm_bindgen]
+    pub fn create_entity(self, trait_type: &str, data: JsValue) -> MutationBuilder {
+        let entity_id = Entity::generate_random_id();
+        self.put_trait(entity_id, trait_type, data)
     }
 
     #[wasm_bindgen]
@@ -73,5 +70,17 @@ impl MutationBuilder {
             .map_err(into_js_error);
 
         wasm_bindgen_futures::future_to_promise(fut_result)
+    }
+
+    fn jsdata_to_trait_builder(&self, trait_type: &str, data: JsValue) -> TraitBuilder {
+        let dict: HashMap<String, FieldValue> = data.into_serde().expect("Couldn't parse data");
+
+        let mut trait_builder = TraitBuilder::new_full_name(&self.schema, trait_type)
+            .expect("Couldn't create TraitBuilder");
+        for (name, value) in dict {
+            trait_builder = trait_builder.set(&name, value);
+        }
+
+        trait_builder
     }
 }
