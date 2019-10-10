@@ -21,5 +21,5 @@
     * `cargo install wasm-pack`
 
 * Launch the [sample project](../../examples/web) 
-    * `npm run start`
+    * `npm install && npm run start`
     * Navigate to [http://localhost:8080](http://localhost:8080)

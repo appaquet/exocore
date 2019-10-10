@@ -31,12 +31,12 @@ module.exports = {
     plugins: [
         new HtmlWebpackPlugin({
             template: 'index.html'
-        })
+        }),
 
-        /*new WasmPackPlugin({
+        new WasmPackPlugin({
           crateDirectory: path.resolve(__dirname, "../../clients/wasm"),
           // WasmPackPlugin defaults to compiling in "dev" profile. To change that, use forceMode: 'release':
           forceMode: 'release'
-        })*/
+        })
     ]
 };
