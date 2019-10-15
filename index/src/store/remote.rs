@@ -295,6 +295,7 @@ impl Inner {
         let message =
             OutMessage::from_framed_message(&self.cell, TransportLayer::Index, request_frame)?
                 .with_to_node(self.index_node.clone())
+                .with_expiration(Some(Instant::now() + self.config.mutation_timeout))
                 .with_follow_id(request_id);
         self.send_message(message)?;
 
@@ -321,6 +322,7 @@ impl Inner {
         let message =
             OutMessage::from_framed_message(&self.cell, TransportLayer::Index, request_frame)?
                 .with_to_node(self.index_node.clone())
+                .with_expiration(Some(Instant::now() + self.config.query_timeout))
                 .with_follow_id(request_id);
         self.send_message(message)?;
 

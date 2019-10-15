@@ -34,6 +34,21 @@ struct Peer {
     status: PeerStatus,
 }
 
+impl Peer {
+    fn cleanup_expired(&mut self) {
+        if !self.temp_queue.is_empty() {
+            let mut old_queue = VecDeque::new();
+            std::mem::swap(&mut self.temp_queue, &mut old_queue);
+
+            for event in old_queue {
+                if !event.has_expired() {
+                    self.temp_queue.push_back(event)
+                }
+            }
+        }
+    }
+}
+
 #[derive(Copy, Clone, PartialEq)]
 enum PeerStatus {
     Connected,
@@ -164,14 +179,13 @@ where
     }
 
     fn inject_disconnected(&mut self, peer_id: &PeerId, _endpoint: ConnectedPoint) {
-        debug!(
-            "{}: Disconnected from {}. Trying to reconnect...",
-            self.local_node, peer_id,
-        );
+        debug!("{}: Disconnected from {}", self.local_node, peer_id,);
 
         if let Some(peer) = self.peers.get_mut(&peer_id) {
             peer.status = PeerStatus::Disconnected;
 
+            // check if we need to reconnect
+            peer.cleanup_expired();
             if !peer.temp_queue.is_empty() {
                 self.dial_peer(peer_id.clone());
             }
@@ -197,6 +211,8 @@ where
         debug!("{}: Failed to connect to {}", self.local_node, peer_id);
 
         if let Some(peer) = self.peers.get_mut(&peer_id) {
+            // check if we need to reconnect
+            peer.cleanup_expired();
             if !peer.temp_queue.is_empty() {
                 self.dial_peer(peer_id.clone());
             }

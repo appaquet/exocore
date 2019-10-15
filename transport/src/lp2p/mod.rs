@@ -235,23 +235,23 @@ impl Libp2pTransport {
             while let Async::Ready(Some(msg)) = out_receiver
                 .poll()
                 .expect("Couldn't poll behaviour channel")
-                {
-                    let frame_data = msg.envelope_builder.as_bytes();
+            {
+                let frame_data = msg.envelope_builder.as_bytes();
 
-                    // prevent cloning frame if we only send to 1 node
-                    if msg.to.len() == 1 {
-                        let to_node = msg.to.first().unwrap();
-                        swarm.send_message(to_node.peer_id().clone(), msg.expiration, frame_data);
-                    } else {
-                        for to_node in msg.to {
-                            swarm.send_message(
-                                to_node.peer_id().clone(),
-                                msg.expiration,
-                                frame_data.clone(),
-                            );
-                        }
+                // prevent cloning frame if we only send to 1 node
+                if msg.to.len() == 1 {
+                    let to_node = msg.to.first().unwrap();
+                    swarm.send_message(to_node.peer_id().clone(), msg.expiration, frame_data);
+                } else {
+                    for to_node in msg.to {
+                        swarm.send_message(
+                            to_node.peer_id().clone(),
+                            msg.expiration,
+                            frame_data.clone(),
+                        );
                     }
                 }
+            }
 
             // we poll the behaviour for incoming messages to be dispatched to handles
             while let Async::Ready(Some(data)) = swarm.poll().expect("Couldn't poll swarm") {
@@ -428,12 +428,12 @@ mod tests {
     use super::*;
     use exocore_common::cell::FullCell;
     use exocore_common::framing::CapnpFrameBuilder;
+    use exocore_common::node::Node;
     use exocore_common::protos::data_chain_capnp::block_operation_header;
     use exocore_common::tests_utils::expect_eventually;
+    use exocore_common::time::{ConsistentTimestamp, Instant};
     use std::sync::Mutex;
     use tokio::runtime::Runtime;
-    use exocore_common::node::Node;
-    use exocore_common::time::{ConsistentTimestamp, Instant};
 
     #[test]
     fn test_integration() -> Result<(), failure::Error> {
@@ -571,11 +571,11 @@ mod tests {
         // send 1 to 2, but with expired message, which shouldn't be delivered
         let mut frame_builder = CapnpFrameBuilder::<block_operation_header::Owned>::new();
         let _builder = frame_builder.get_builder();
-        let msg =
-            OutMessage::from_framed_message(&node1_cell, TransportLayer::Data, frame_builder).unwrap()
-                .with_expiration(Some(Instant::now() - Duration::from_secs(5)))
-                .with_follow_id(ConsistentTimestamp(2))
-                .with_to_nodes(vec![node2.node().clone()]);
+        let msg = OutMessage::from_framed_message(&node1_cell, TransportLayer::Data, frame_builder)
+            .unwrap()
+            .with_expiration(Some(Instant::now() - Duration::from_secs(5)))
+            .with_follow_id(ConsistentTimestamp(2))
+            .with_to_nodes(vec![node2.node().clone()]);
         handle1_tester.send_message(msg);
 
         // we create second node
@@ -590,7 +590,9 @@ mod tests {
 
         // should receive 1 & 3, but not 2 since it had expired
         expect_eventually(|| {
-            handle2_tester.check_received(1) && !handle2_tester.check_received(2) && handle2_tester.check_received(3)
+            handle2_tester.check_received(1)
+                && !handle2_tester.check_received(2)
+                && handle2_tester.check_received(3)
         });
 
         Ok(())
@@ -604,7 +606,11 @@ mod tests {
     }
 
     impl TransportHandleTester {
-        fn new(rt: &mut Runtime, mut handle: Libp2pTransportHandle, cell: FullCell) -> TransportHandleTester {
+        fn new(
+            rt: &mut Runtime,
+            mut handle: Libp2pTransportHandle,
+            cell: FullCell,
+        ) -> TransportHandleTester {
             let (sender, receiver) = mpsc::unbounded();
             rt.spawn(
                 receiver
@@ -639,7 +645,8 @@ mod tests {
             let mut frame_builder = CapnpFrameBuilder::<block_operation_header::Owned>::new();
             let _builder = frame_builder.get_builder();
             let msg =
-                OutMessage::from_framed_message(&self.cell, TransportLayer::Data, frame_builder).unwrap()
+                OutMessage::from_framed_message(&self.cell, TransportLayer::Data, frame_builder)
+                    .unwrap()
                     .with_follow_id(ConsistentTimestamp(memo))
                     .with_to_nodes(to_nodes);
 
@@ -657,7 +664,9 @@ mod tests {
 
         fn check_received(&self, memo: u64) -> bool {
             let received = self.received();
-            received.iter().any(|msg| msg.follow_id == Some(ConsistentTimestamp(memo)))
+            received
+                .iter()
+                .any(|msg| msg.follow_id == Some(ConsistentTimestamp(memo)))
         }
     }
 }
