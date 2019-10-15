@@ -5,11 +5,12 @@ use exocore_common::protos::MessageType;
 use crate::{Error, TransportLayer};
 use exocore_common::cell::{Cell, CellId};
 use exocore_common::framing::{CapnpFrameBuilder, FrameBuilder, FrameReader, TypedCapnpFrame};
-use exocore_common::time::ConsistentTimestamp;
+use exocore_common::time::{ConsistentTimestamp, Instant};
 
 /// Message to be sent to one or more other nodes
 pub struct OutMessage {
     pub to: Vec<Node>,
+    pub expiration: Option<Instant>,
     pub envelope_builder: CapnpFrameBuilder<envelope::Owned>,
 }
 
@@ -32,6 +33,7 @@ impl OutMessage {
 
         Ok(OutMessage {
             to: vec![],
+            expiration: None,
             envelope_builder: envelope_frame_builder,
         })
     }
@@ -46,10 +48,16 @@ impl OutMessage {
         self
     }
 
+    // TODO: Should be renamed
     pub fn with_follow_id(mut self, follow_id: ConsistentTimestamp) -> Self {
         let mut envelope_message_builder = self.envelope_builder.get_builder();
         envelope_message_builder.set_follow_id(follow_id.into());
 
+        self
+    }
+
+    pub fn with_expiration(mut self, expiration: Option<Instant>) -> Self {
+        self.expiration = expiration;
         self
     }
 }
