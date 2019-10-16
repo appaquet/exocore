@@ -191,8 +191,8 @@ where
         let inner = weak_inner.upgrade().ok_or(Error::InnerUpgrade)?;
         let mut inner = inner.write()?;
 
-        let request_id = if let Some(follow_id) = in_message.follow_id {
-            follow_id
+        let request_id = if let Some(rendez_vous_id) = in_message.rendez_vous_id {
+            rendez_vous_id
         } else {
             return Err(Error::Other(format!(
                 "Got an InMessage without a follow id (type={:?} from={:?})",
@@ -296,7 +296,7 @@ impl Inner {
             OutMessage::from_framed_message(&self.cell, TransportLayer::Index, request_frame)?
                 .with_to_node(self.index_node.clone())
                 .with_expiration(Some(Instant::now() + self.config.mutation_timeout))
-                .with_follow_id(request_id);
+                .with_rendez_vous_id(request_id);
         self.send_message(message)?;
 
         self.pending_mutations.insert(
@@ -323,7 +323,7 @@ impl Inner {
             OutMessage::from_framed_message(&self.cell, TransportLayer::Index, request_frame)?
                 .with_to_node(self.index_node.clone())
                 .with_expiration(Some(Instant::now() + self.config.query_timeout))
-                .with_follow_id(request_id);
+                .with_rendez_vous_id(request_id);
         self.send_message(message)?;
 
         self.pending_queries.insert(

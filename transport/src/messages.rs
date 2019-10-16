@@ -48,10 +48,9 @@ impl OutMessage {
         self
     }
 
-    // TODO: Should be renamed
-    pub fn with_follow_id(mut self, follow_id: ConsistentTimestamp) -> Self {
+    pub fn with_rendez_vous_id(mut self, rendez_vous_id: ConsistentTimestamp) -> Self {
         let mut envelope_message_builder = self.envelope_builder.get_builder();
-        envelope_message_builder.set_follow_id(follow_id.into());
+        envelope_message_builder.set_rendez_vous_id(rendez_vous_id.into());
 
         self
     }
@@ -68,7 +67,7 @@ pub struct InMessage {
     pub from: Node,
     pub cell_id: CellId,
     pub layer: TransportLayer,
-    pub follow_id: Option<ConsistentTimestamp>,
+    pub rendez_vous_id: Option<ConsistentTimestamp>,
     pub message_type: u16,
     pub envelope: TypedCapnpFrame<Vec<u8>, envelope::Owned>,
 }
@@ -79,8 +78,8 @@ impl InMessage {
         envelope: TypedCapnpFrame<I, envelope::Owned>,
     ) -> Result<InMessage, Error> {
         let envelope_reader = envelope.get_reader()?;
-        let follow_id = if envelope_reader.get_follow_id() != 0 {
-            Some(envelope_reader.get_follow_id().into())
+        let rendez_vous_id = if envelope_reader.get_rendez_vous_id() != 0 {
+            Some(envelope_reader.get_rendez_vous_id().into())
         } else {
             None
         };
@@ -97,7 +96,7 @@ impl InMessage {
             from,
             cell_id,
             layer,
-            follow_id,
+            rendez_vous_id,
             message_type,
             envelope: envelope.to_owned(),
         })
@@ -132,13 +131,13 @@ impl InMessage {
         let out_message = OutMessage::from_framed_message(cell, self.layer, frame)?
             .with_to_node(self.from.clone());
 
-        let follow_id = self.follow_id.ok_or_else(|| {
+        let rendez_vous_id = self.rendez_vous_id.ok_or_else(|| {
             Error::Other(format!(
                 "Tried to respond to an InMessage without a follow id (message_type={} layer={:?})",
                 self.message_type, self.layer
             ))
         })?;
 
-        Ok(out_message.with_follow_id(follow_id))
+        Ok(out_message.with_rendez_vous_id(rendez_vous_id))
     }
 }

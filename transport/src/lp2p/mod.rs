@@ -574,9 +574,12 @@ mod tests {
         let msg = OutMessage::from_framed_message(&node1_cell, TransportLayer::Data, frame_builder)
             .unwrap()
             .with_expiration(Some(Instant::now() - Duration::from_secs(5)))
-            .with_follow_id(ConsistentTimestamp(2))
+            .with_rendez_vous_id(ConsistentTimestamp(2))
             .with_to_nodes(vec![node2.node().clone()]);
         handle1_tester.send_message(msg);
+
+        // leave some time for first messages to arrive
+        std::thread::sleep(Duration::from_millis(500));
 
         // we create second node
         let mut transport2 = Libp2pTransport::new(node2.clone(), Libp2pTransportConfig::default());
@@ -647,7 +650,7 @@ mod tests {
             let msg =
                 OutMessage::from_framed_message(&self.cell, TransportLayer::Data, frame_builder)
                     .unwrap()
-                    .with_follow_id(ConsistentTimestamp(memo))
+                    .with_rendez_vous_id(ConsistentTimestamp(memo))
                     .with_to_nodes(to_nodes);
 
             self.send_message(msg);
@@ -666,7 +669,7 @@ mod tests {
             let received = self.received();
             received
                 .iter()
-                .any(|msg| msg.follow_id == Some(ConsistentTimestamp(memo)))
+                .any(|msg| msg.rendez_vous_id == Some(ConsistentTimestamp(memo)))
         }
     }
 }
