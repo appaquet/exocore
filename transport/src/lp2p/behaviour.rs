@@ -93,6 +93,7 @@ where
             if peer.status == PeerStatus::Connected {
                 self.events.push_back(event);
             } else {
+                debug!("Peer {} not connected. Queuing message.", peer_id);
                 // Node is disconnected, push the event to a queue and try to connect
                 peer.temp_queue
                     .push_back(QueuedPeerEvent { event, expiration });
@@ -209,14 +210,6 @@ where
 
     fn inject_dial_failure(&mut self, peer_id: &PeerId) {
         debug!("{}: Failed to connect to {}", self.local_node, peer_id);
-
-        if let Some(peer) = self.peers.get_mut(&peer_id) {
-            // check if we need to reconnect
-            peer.cleanup_expired();
-            if !peer.temp_queue.is_empty() {
-                self.dial_peer(peer_id.clone());
-            }
-        }
     }
 
     fn poll(

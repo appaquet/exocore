@@ -463,7 +463,7 @@ mod tests {
         rt.block_on(handle2_tester.handle.on_start())?;
 
         // give time for nodes to connect to each others
-        std::thread::sleep(Duration::from_millis(500));
+        std::thread::sleep(Duration::from_millis(100));
 
         // send 1 to 2
         handle1_tester.send(vec![node2.node().clone()], 123);
@@ -579,7 +579,7 @@ mod tests {
         handle1_tester.send_message(msg);
 
         // leave some time for first messages to arrive
-        std::thread::sleep(Duration::from_millis(500));
+        std::thread::sleep(Duration::from_millis(100));
 
         // we create second node
         let mut transport2 = Libp2pTransport::new(node2.clone(), Libp2pTransportConfig::default());
