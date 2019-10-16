@@ -588,6 +588,9 @@ mod tests {
         rt.spawn(transport2.map(|_| ()).map_err(|_| ()));
         rt.block_on(handle2_tester.handle.on_start())?;
 
+        // leave some time to start listening and connect
+        std::thread::sleep(Duration::from_millis(100));
+
         // send another message to force redial
         handle1_tester.send(vec![node2.node().clone()], 3);
 
