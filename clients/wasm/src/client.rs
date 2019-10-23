@@ -8,12 +8,12 @@ use exocore_common::node::{LocalNode, Node};
 use exocore_common::time::Clock;
 use exocore_index::store::remote::{RemoteStore, StoreConfiguration, StoreHandle};
 use exocore_schema::schema::Schema;
-use exocore_transport::{TransportLayer, TransportHandle, InEvent};
+use exocore_transport::{InEvent, TransportHandle, TransportLayer};
 
 use crate::js::js_future_spawner;
 use crate::ws::BrowserTransportClient;
-use std::sync::Arc;
 use exocore_transport::transport::ConnectionStatus;
+use std::sync::Arc;
 
 #[wasm_bindgen]
 pub struct ExocoreClient {
@@ -22,9 +22,8 @@ pub struct ExocoreClient {
     schema: Arc<Schema>,
 }
 
-
 #[wasm_bindgen]
-extern {
+extern "C" {
     pub fn exocore_client_status(s: &str);
 }
 
@@ -59,7 +58,7 @@ impl ExocoreClient {
             remote_node.clone(),
             Box::new(js_future_spawner),
         )
-            .expect("Couldn't create index");
+        .expect("Couldn't create index");
 
         let store_handle = remote_store
             .get_handle()
@@ -79,7 +78,8 @@ impl ExocoreClient {
                 .map_err(|_err| ()),
         ));
 
-        let mut client_transport_handle = transport.get_handle(cell.clone(), TransportLayer::Client);
+        let mut client_transport_handle =
+            transport.get_handle(cell.clone(), TransportLayer::Client);
         js_future_spawner(Box::new(
             client_transport_handle
                 .get_stream()
@@ -99,7 +99,7 @@ impl ExocoreClient {
 
                     Ok(())
                 })
-                .map_err(|_| ())
+                .map_err(|_| ()),
         ));
 
         transport.start();
