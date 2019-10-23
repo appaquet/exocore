@@ -84,17 +84,14 @@ impl ExocoreClient {
             client_transport_handle
                 .get_stream()
                 .for_each(move |event| {
-                    match event {
-                        InEvent::NodeStatus(_, status) => {
-                            let str_status = match status {
-                                ConnectionStatus::Connecting => "connecting",
-                                ConnectionStatus::Connected => "connected",
-                                ConnectionStatus::Disconnected => "disconnected",
-                            };
+                    if let InEvent::NodeStatus(_, status) = event {
+                        let str_status = match status {
+                            ConnectionStatus::Connecting => "connecting",
+                            ConnectionStatus::Connected => "connected",
+                            ConnectionStatus::Disconnected => "disconnected",
+                        };
 
-                            exocore_client_status(str_status);
-                        }
-                        _ => {}
+                        exocore_client_status(str_status);
                     }
 
                     Ok(())
