@@ -1,6 +1,4 @@
-use std::sync::Arc;
-
-use futures::Future;
+use futures::{Future, Stream};
 use log::Level;
 use wasm_bindgen::prelude::*;
 
@@ -10,16 +8,24 @@ use exocore_common::node::{LocalNode, Node};
 use exocore_common::time::Clock;
 use exocore_index::store::remote::{RemoteStore, StoreConfiguration, StoreHandle};
 use exocore_schema::schema::Schema;
-use exocore_transport::TransportLayer;
+use exocore_transport::{TransportLayer, TransportHandle, InEvent};
 
 use crate::js::js_future_spawner;
 use crate::ws::BrowserTransportClient;
+use std::sync::Arc;
+use exocore_transport::transport::ConnectionStatus;
 
 #[wasm_bindgen]
 pub struct ExocoreClient {
     _transport: BrowserTransportClient,
     store_handle: Arc<StoreHandle>,
     schema: Arc<Schema>,
+}
+
+
+#[wasm_bindgen]
+extern {
+    pub fn exocore_client_status(s: &str);
 }
 
 #[wasm_bindgen]
@@ -46,14 +52,14 @@ impl ExocoreClient {
         let index_handle = transport.get_handle(cell.clone(), TransportLayer::Index);
         let remote_store = RemoteStore::new(
             StoreConfiguration::default(),
-            cell,
+            cell.clone(),
             clock,
             schema.clone(),
             index_handle,
             remote_node.clone(),
             Box::new(js_future_spawner),
         )
-        .expect("Couldn't create index");
+            .expect("Couldn't create index");
 
         let store_handle = remote_store
             .get_handle()
@@ -71,6 +77,29 @@ impl ExocoreClient {
                     Ok(())
                 })
                 .map_err(|_err| ()),
+        ));
+
+        let mut client_transport_handle = transport.get_handle(cell.clone(), TransportLayer::Client);
+        js_future_spawner(Box::new(
+            client_transport_handle
+                .get_stream()
+                .for_each(move |event| {
+                    match event {
+                        InEvent::NodeStatus(_, status) => {
+                            let str_status = match status {
+                                ConnectionStatus::Connecting => "connecting",
+                                ConnectionStatus::Connected => "connected",
+                                ConnectionStatus::Disconnected => "disconnected",
+                            };
+
+                            exocore_client_status(str_status);
+                        }
+                        _ => {}
+                    }
+
+                    Ok(())
+                })
+                .map_err(|_| ())
         ));
 
         transport.start();
