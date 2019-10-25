@@ -687,7 +687,7 @@ mod tests {
         test_index.index.reindex_chain()?;
 
         // reopen index, make sure data is still in there
-        let test_index = test_index.with_reopened_index()?;
+        let test_index = test_index.with_restarted_node()?;
         // traits should still be indexed
         let res = test_index
             .index
@@ -721,8 +721,7 @@ mod tests {
 
             // restart node, which will clear pending
             // reopening index should re-index first block in pending
-            test_index.cluster.restart_node(0)?;
-            test_index = test_index.with_reopened_index()?;
+            test_index = test_index.with_restarted_node()?;
 
             // traits should still be indexed
             let res = test_index.index.search(&query)?;
@@ -1022,16 +1021,18 @@ mod tests {
             })
         }
 
-        fn with_reopened_index(self) -> Result<TestEntitiesIndex, failure::Error> {
+        fn with_restarted_node(self) -> Result<TestEntitiesIndex, failure::Error> {
             // deconstruct so that we can drop index and close the index properly before reopening
             let TestEntitiesIndex {
                 schema,
-                cluster,
+                mut cluster,
                 config,
                 index,
                 temp_dir,
             } = self;
             drop(index);
+
+            cluster.restart_node(0)?;
 
             let index = EntitiesIndex::<DirectoryChainStore, MemoryPendingStore>::open_or_create(
                 temp_dir.path(),
