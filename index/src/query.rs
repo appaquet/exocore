@@ -8,7 +8,7 @@ use exocore_schema::schema::Schema;
 use exocore_schema::serialization::with_schema;
 use std::sync::Arc;
 
-pub type QueryId = ConsistentTimestamp;
+pub type WatchToken = ConsistentTimestamp;
 
 #[serde(rename_all = "snake_case")]
 #[derive(Serialize, Deserialize, Clone)]
@@ -17,6 +17,8 @@ pub struct Query {
     pub inner: InnerQuery,
 
     pub paging: Option<QueryPaging>,
+
+    pub token: Option<WatchToken>,
 }
 
 #[serde(rename_all = "snake_case", tag = "type")]
@@ -36,6 +38,7 @@ impl Query {
                 query: query.into(),
             }),
             paging: None,
+            token: None,
         }
     }
 
@@ -46,6 +49,7 @@ impl Query {
                 trait_query: None,
             }),
             paging: None,
+            token: None,
         }
     }
 
@@ -55,6 +59,7 @@ impl Query {
                 entity_id: entity_id.into(),
             }),
             paging: None,
+            token: None,
         }
     }
 
@@ -63,6 +68,7 @@ impl Query {
         Query {
             inner: InnerQuery::TestFail(TestFailQuery {}),
             paging: None,
+            token: None,
         }
     }
 
@@ -246,7 +252,7 @@ pub struct QueryResult {
     pub total_estimated: u32,
     pub current_page: QueryPaging,
     pub next_page: Option<QueryPaging>,
-    // TODO: currentPage, nextPage, queryToken
+    pub token: Option<WatchToken>,
 }
 
 impl QueryResult {
@@ -256,6 +262,7 @@ impl QueryResult {
             total_estimated: 0,
             current_page: QueryPaging::new(0),
             next_page: None,
+            token: None,
         }
     }
 

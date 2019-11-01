@@ -6,6 +6,7 @@ use crate::store::{AsyncResult, AsyncStore};
 use exocore_common::cell::FullCell;
 use exocore_common::protos::index_transport_capnp::{mutation_request, query_request};
 use exocore_common::protos::MessageType;
+use exocore_common::time::ConsistentTimestamp;
 use exocore_common::utils::completion_notifier::{
     CompletionError, CompletionListener, CompletionNotifier,
 };
@@ -467,6 +468,11 @@ where
     fn query(&self, query: Query) -> AsyncResult<QueryResult> {
         let weak_inner = self.inner.clone();
         Box::new(Inner::execute_query_async(weak_inner, query))
+    }
+
+    fn query_unwatch(&self, token: ConsistentTimestamp) -> AsyncResult<()> {
+        // TODO:
+        unimplemented!()
     }
 }
 

@@ -273,6 +273,7 @@ where
             next_page,
             current_page: current_page.clone(),
             total_estimated: total_estimated as u32,
+            token: query.token,
         })
     }
 

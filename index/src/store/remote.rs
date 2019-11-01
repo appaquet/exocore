@@ -507,6 +507,11 @@ impl AsyncStore for StoreHandle {
             Err(err) => Box::new(futures::failed(err)),
         }
     }
+
+    fn query_unwatch(&self, token: ConsistentTimestamp) -> AsyncResult<()> {
+        // TODO:
+        unimplemented!()
+    }
 }
 
 #[cfg(test)]
