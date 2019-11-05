@@ -2,14 +2,15 @@ use super::entities_index::EntitiesIndex;
 use crate::error::Error;
 use crate::mutation::{Mutation, MutationResult};
 use crate::query::{Query, QueryResult};
-use crate::store::{AsyncResult, AsyncStore};
+use crate::store::local::watched_queries::WatchedQueries;
+use crate::store::{AsyncResult, AsyncStore, ResultStream};
 use exocore_common::cell::FullCell;
 use exocore_common::protos::index_transport_capnp::{mutation_request, query_request};
 use exocore_common::protos::MessageType;
-use exocore_common::time::ConsistentTimestamp;
 use exocore_common::utils::completion_notifier::{
     CompletionError, CompletionListener, CompletionNotifier,
 };
+use exocore_common::utils::futures::spawn_future;
 use exocore_schema::schema::Schema;
 use exocore_transport::{InEvent, InMessage, OutEvent, OutMessage, TransportHandle};
 use futures::prelude::*;
@@ -50,10 +51,13 @@ where
         let (stop_notifier, stop_listener) = CompletionNotifier::new_with_listener();
         let start_notifier = CompletionNotifier::new();
 
+        let watched = WatchedQueries::new();
+
         let inner = Arc::new(RwLock::new(Inner {
             cell,
             schema,
             index,
+            watched,
             data_handle,
             transport_out: None,
             stop_notifier,
@@ -89,7 +93,7 @@ where
 
         // send outgoing messages to transport
         let (out_sender, out_receiver) = mpsc::unbounded();
-        tokio::spawn(
+        spawn_future(
             out_receiver
                 .forward(transport_handle.get_sink().sink_map_err(|_err| ()))
                 .map(|_| ()),
@@ -99,7 +103,7 @@ where
         // handle incoming messages
         let weak_inner1 = Arc::downgrade(&self.inner);
         let weak_inner2 = Arc::downgrade(&self.inner);
-        tokio::spawn(
+        spawn_future(
             transport_handle
                 .get_stream()
                 .map_err(|err| Error::Fatal(format!("Error in incoming transport stream: {}", err)))
@@ -131,7 +135,7 @@ where
         // schedule transport handle
         let weak_inner1 = Arc::downgrade(&self.inner);
         let weak_inner2 = Arc::downgrade(&self.inner);
-        tokio::spawn(
+        spawn_future(
             transport_handle
                 .map(move |_| {
                     info!("Transport is done");
@@ -146,7 +150,7 @@ where
         let weak_inner1 = Arc::downgrade(&self.inner);
         let weak_inner2 = Arc::downgrade(&self.inner);
         let weak_inner3 = Arc::downgrade(&self.inner);
-        tokio::spawn(
+        spawn_future(
             inner
                 .data_handle
                 .take_events_stream()?
@@ -159,6 +163,8 @@ where
                             error!("Error handling data engine event: {}", err);
                         }
                     }
+
+                    // TODO: Check for queries
                     Ok(())
                 })
                 .map(move |_| {
@@ -201,7 +207,8 @@ where
     ) -> Result<(), Error> {
         let weak_inner1 = weak_inner.clone();
         let weak_inner2 = weak_inner.clone();
-        tokio::spawn(
+
+        spawn_future(
             Inner::execute_query_async(weak_inner1, query)
                 .then(move |result| {
                     let inner = weak_inner2.upgrade().ok_or(Error::InnerUpgrade)?;
@@ -290,6 +297,7 @@ where
     cell: FullCell,
     schema: Arc<Schema>,
     index: EntitiesIndex<CS, PS>,
+    watched: WatchedQueries,
     data_handle: exocore_data::engine::EngineHandle<CS, PS>,
     transport_out: Option<mpsc::UnboundedSender<OutEvent>>,
     stop_notifier: CompletionNotifier<(), Error>,
@@ -310,19 +318,11 @@ where
             Err(err) => error!("Got an error in future {}: {}", future_name, err),
         }
 
-        let locked_inner = if let Some(locked_inner) = weak_inner.upgrade() {
-            locked_inner
-        } else {
-            return;
+        if let Some(locked_inner) = weak_inner.upgrade() {
+            if let Ok(inner) = locked_inner.read() {
+                inner.stop_notifier.complete(res);
+            }
         };
-
-        let inner = if let Ok(inner) = locked_inner.read() {
-            inner
-        } else {
-            return;
-        };
-
-        inner.stop_notifier.complete(res);
     }
 
     fn write_mutation_weak(
@@ -359,8 +359,8 @@ where
             future::poll_fn(move || {
                 let inner = weak_inner.upgrade().ok_or(Error::InnerUpgrade)?;
                 let inner = inner.read()?;
-                let res = tokio_threadpool::blocking(|| inner.index.search(&query));
 
+                let res = tokio_threadpool::blocking(|| inner.index.search(&query));
                 match res {
                     Ok(Async::Ready(Ok(results))) => Ok(Async::Ready(results)),
                     Ok(Async::Ready(Err(err))) => Err(err),
@@ -470,7 +470,7 @@ where
         Box::new(Inner::execute_query_async(weak_inner, query))
     }
 
-    fn query_unwatch(&self, token: ConsistentTimestamp) -> AsyncResult<()> {
+    fn watched_query(&self, _query: Query) -> ResultStream<QueryResult> {
         // TODO:
         unimplemented!()
     }

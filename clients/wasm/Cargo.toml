@@ -15,7 +15,7 @@ exocore-schema = { path = "../../schema" }
 tokio = { version = "0.1", features = ["io"], default-features = false }
 futures = "0.1"
 failure = "0.1"
-wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
+wasm-bindgen = { version = "0.2", features = ["serde-serialize"] } # serde for serialization from JsValue
 wasm-bindgen-futures = "0.3"
 wasm-timer = "0.1"
 web-sys = { version = "0.3", features = ["ErrorEvent", "MessageEvent", "WebSocket", "BinaryType"] }

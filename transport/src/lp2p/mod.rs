@@ -14,6 +14,7 @@ use exocore_common::protos::common_capnp::envelope;
 use exocore_common::utils::completion_notifier::{
     CompletionError, CompletionListener, CompletionNotifier,
 };
+use exocore_common::utils::futures::spawn_future;
 use futures::prelude::*;
 use futures::sync::mpsc;
 use futures::MapErr;
@@ -208,7 +209,7 @@ impl Libp2pTransport {
         let mut nodes_update_interval =
             Interval::new_interval(self.config.swarm_nodes_update_interval);
 
-        tokio::spawn(futures::future::poll_fn(move || -> Result<_, ()> {
+        spawn_future(futures::future::poll_fn(move || -> Result<_, ()> {
             {
                 // check if we should still be running
                 if let Ok(inner) = inner.read() {
@@ -286,7 +287,7 @@ impl Libp2pTransport {
                     .take()
                     .expect("Out receiver of one layer was already consummed");
 
-                tokio::spawn(
+                spawn_future(
                     out_receiver
                         .forward(out_sender.clone().sink_map_err(|_| ()))
                         .map(|_| ()),

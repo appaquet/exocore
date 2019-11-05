@@ -6,9 +6,11 @@ use exocore_common::time::ConsistentTimestamp;
 use exocore_schema::entity::{Entity, EntityId};
 use exocore_schema::schema::Schema;
 use exocore_schema::serialization::with_schema;
+use std::collections::hash_map::DefaultHasher;
 use std::sync::Arc;
 
 pub type WatchToken = ConsistentTimestamp;
+pub type ResultHash = u64;
 
 #[serde(rename_all = "snake_case")]
 #[derive(Serialize, Deserialize, Clone)]
@@ -18,7 +20,15 @@ pub struct Query {
 
     pub paging: Option<QueryPaging>,
 
+    /// Watching token used to uniquely identify the query
     pub token: Option<WatchToken>,
+
+    /// If true, only return summary
+    pub summary: bool,
+
+    /// If specified, if results from server matches this hash, only a summary will be returned.
+    #[serde(skip)]
+    pub result_hash: Option<ResultHash>,
 }
 
 #[serde(rename_all = "snake_case", tag = "type")]
@@ -39,6 +49,8 @@ impl Query {
             }),
             paging: None,
             token: None,
+            summary: false,
+            result_hash: None,
         }
     }
 
@@ -50,6 +62,8 @@ impl Query {
             }),
             paging: None,
             token: None,
+            summary: false,
+            result_hash: None,
         }
     }
 
@@ -60,6 +74,8 @@ impl Query {
             }),
             paging: None,
             token: None,
+            summary: false,
+            result_hash: None,
         }
     }
 
@@ -69,6 +85,8 @@ impl Query {
             inner: InnerQuery::TestFail(TestFailQuery {}),
             paging: None,
             token: None,
+            summary: false,
+            result_hash: None,
         }
     }
 
@@ -83,6 +101,16 @@ impl Query {
             None => self.paging = Some(QueryPaging::new(count)),
         }
 
+        self
+    }
+
+    pub fn only_summary(mut self) -> Self {
+        self.summary = true;
+        self
+    }
+
+    pub fn only_summary_if_equals(mut self, result_hash: ResultHash) -> Self {
+        self.result_hash = Some(result_hash);
         self
     }
 
@@ -249,20 +277,24 @@ impl From<String> for SortToken {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct QueryResult {
     pub results: Vec<EntityResult>,
+    pub summary: bool,
     pub total_estimated: u32,
     pub current_page: QueryPaging,
     pub next_page: Option<QueryPaging>,
     pub token: Option<WatchToken>,
+    pub hash: ResultHash,
 }
 
 impl QueryResult {
     pub fn empty() -> QueryResult {
         QueryResult {
             results: vec![],
+            summary: false,
             total_estimated: 0,
             current_page: QueryPaging::new(0),
             next_page: None,
             token: None,
+            hash: 0,
         }
     }
 
@@ -317,6 +349,11 @@ pub struct EntityResult {
 pub enum EntityResultSource {
     Pending,
     Chain,
+}
+
+pub(crate) fn result_hasher() -> impl std::hash::Hasher {
+    // TODO: Switch to a guaranteed deterministic lightweight hasher
+    DefaultHasher::new()
 }
 
 #[cfg(test)]

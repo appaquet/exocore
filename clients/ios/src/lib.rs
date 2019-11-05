@@ -79,7 +79,6 @@ impl Context {
             schema.clone(),
             store_transport,
             remote_node,
-            Box::new(tokio_future_spawner),
         )
         .expect("Couldn't start remote store");
 
@@ -153,9 +152,4 @@ pub extern "C" fn exocore_send_query(ctx: *mut Context, _query: *const libc::c_c
         }
         Err(err) => println!("got err: {}", err),
     }
-}
-
-// TODO: To be moved https://github.com/appaquet/exocore/issues/123
-fn tokio_future_spawner(future: Box<dyn Future<Item = (), Error = ()> + Send>) {
-    tokio::spawn(future);
 }

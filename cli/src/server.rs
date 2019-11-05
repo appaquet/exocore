@@ -6,8 +6,7 @@ use exocore_data::{
     DirectoryChainStore, DirectoryChainStoreConfig, Engine, EngineConfig, EngineHandle,
     MemoryPendingStore,
 };
-use exocore_index::store::local::entities_index::{EntitiesIndex, EntitiesIndexConfig};
-use exocore_index::store::local::store::LocalStore;
+use exocore_index::store::local::{EntitiesIndex, EntitiesIndexConfig, LocalStore};
 use exocore_schema::schema::Schema;
 use exocore_transport::either::EitherTransportHandle;
 use exocore_transport::lp2p::Libp2pTransportConfig;

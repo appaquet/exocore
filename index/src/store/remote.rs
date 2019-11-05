@@ -1,7 +1,7 @@
 use crate::error::Error;
 use crate::mutation::{Mutation, MutationResult};
 use crate::query::{Query, QueryResult};
-use crate::store::{AsyncResult, AsyncStore};
+use crate::store::{AsyncResult, AsyncStore, ResultStream};
 use exocore_common::cell::Cell;
 use exocore_common::node::Node;
 use exocore_common::protos::index_transport_capnp::{mutation_response, query_response};
@@ -11,6 +11,7 @@ use exocore_common::time::{Clock, ConsistentTimestamp};
 use exocore_common::utils::completion_notifier::{
     CompletionError, CompletionListener, CompletionNotifier,
 };
+use exocore_common::utils::futures::spawn_future;
 use exocore_schema::schema::Schema;
 use exocore_transport::{
     InEvent, InMessage, OutEvent, OutMessage, TransportHandle, TransportLayer,
@@ -20,9 +21,6 @@ use futures::sync::{mpsc, oneshot};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Weak};
 use std::time::Duration;
-
-// TODO: To be moved https://github.com/appaquet/exocore/issues/123
-pub type FutureSpawner = Box<dyn Fn(Box<dyn Future<Item = (), Error = ()> + Send>) + Send>;
 
 ///
 /// Configuration for remote store
@@ -58,7 +56,6 @@ where
     T: TransportHandle,
 {
     config: StoreConfiguration,
-    future_spawner: FutureSpawner,
     start_notifier: CompletionNotifier<(), Error>,
     started: bool,
     inner: Arc<RwLock<Inner>>,
@@ -77,7 +74,6 @@ where
         schema: Arc<Schema>,
         transport_handle: T,
         index_node: Node,
-        future_spawner: FutureSpawner,
     ) -> Result<RemoteStore<T>, Error> {
         let (stop_notifier, stop_listener) = CompletionNotifier::new_with_listener();
         let start_notifier = CompletionNotifier::new();
@@ -96,7 +92,6 @@ where
 
         Ok(RemoteStore {
             config,
-            future_spawner,
             start_notifier,
             started: false,
             inner,
@@ -126,17 +121,17 @@ where
 
         // send outgoing messages to transport
         let (out_sender, out_receiver) = mpsc::unbounded();
-        (self.future_spawner)(Box::new(
+        spawn_future(
             out_receiver
                 .forward(transport_handle.get_sink().sink_map_err(|_err| ()))
                 .map(|_| ()),
-        ));
+        );
         inner.transport_out = Some(out_sender);
 
         // handle incoming messages
         let weak_inner1 = Arc::downgrade(&self.inner);
         let weak_inner2 = Arc::downgrade(&self.inner);
-        (self.future_spawner)(Box::new(
+        spawn_future(
             transport_handle
                 .get_stream()
                 .map_err(|err| Error::Fatal(format!("Error in incoming transport stream: {}", err)))
@@ -161,12 +156,12 @@ where
                 .map_err(move |err| {
                     Inner::notify_stop("incoming transport stream", &weak_inner2, Err(err));
                 }),
-        ));
+        );
 
         // schedule transport handle
         let weak_inner1 = Arc::downgrade(&self.inner);
         let weak_inner2 = Arc::downgrade(&self.inner);
-        (self.future_spawner)(Box::new(
+        spawn_future(
             transport_handle
                 .map(move |_| {
                     info!("Transport is done");
@@ -175,19 +170,19 @@ where
                 .map_err(move |err| {
                     Inner::notify_stop("transport error", &weak_inner2, Err(err.into()));
                 }),
-        ));
+        );
 
         // schedule query & mutation requests timeout checker
         let weak_inner1 = Arc::downgrade(&self.inner);
         let weak_inner2 = Arc::downgrade(&self.inner);
-        (self.future_spawner)(Box::new(
+        spawn_future(
             wasm_timer::Interval::new_interval(self.config.timeout_check_interval)
                 .map_err(|err| Error::Fatal(format!("Timer error: {}", err)))
                 .for_each(move |_| Self::check_requests_timout(&weak_inner1))
                 .map_err(move |err| {
                     Inner::notify_stop("timeout check error", &weak_inner2, Err(err));
                 }),
-        ));
+        );
 
         self.start_notifier.complete(Ok(()));
         Ok(())
@@ -412,6 +407,7 @@ enum IncomingMessage {
     MutationResponse(MutationResult),
     QueryResponse(QueryResult),
 }
+
 impl IncomingMessage {
     fn parse_incoming_message(
         in_message: &InMessage,
@@ -508,7 +504,7 @@ impl AsyncStore for StoreHandle {
         }
     }
 
-    fn query_unwatch(&self, token: ConsistentTimestamp) -> AsyncResult<()> {
+    fn watched_query(&self, _query: Query) -> ResultStream<QueryResult> {
         // TODO:
         unimplemented!()
     }
@@ -518,7 +514,7 @@ impl AsyncStore for StoreHandle {
 mod tests {
     use super::*;
     use crate::mutation::TestFailMutation;
-    use crate::store::local::store::tests::TestLocalStore;
+    use crate::store::local::TestLocalStore;
     use exocore_common::node::LocalNode;
     use exocore_common::tests_utils::expect_eventually;
     use exocore_transport::mock::MockTransportHandle;
@@ -642,7 +638,6 @@ mod tests {
                     .transport_hub
                     .get_transport(local_node, TransportLayer::Index),
                 local_store.cluster.nodes[0].node().clone(),
-                Box::new(tokio_future_spawner),
             )?;
 
             let remote_handle = remote_store.get_handle()?;
@@ -690,9 +685,5 @@ mod tests {
                 .runtime
                 .block_on(self.remote_handle.query(query))
         }
-    }
-
-    fn tokio_future_spawner(future: Box<dyn Future<Item = (), Error = ()> + Send>) {
-        tokio::spawn(future);
     }
 }
