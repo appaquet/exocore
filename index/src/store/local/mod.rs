@@ -8,4 +8,7 @@ pub use entities_index::{EntitiesIndex, EntitiesIndexConfig};
 pub use store::LocalStore;
 
 #[cfg(test)]
-pub use store::tests::TestLocalStore;
+mod test_store;
+
+#[cfg(test)]
+pub use test_store::TestLocalStore;

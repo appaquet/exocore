@@ -192,7 +192,7 @@ where
         weak_inner: &Weak<RwLock<Inner>>,
         in_message: Box<InMessage>,
     ) -> Result<(), Error> {
-        let inner = weak_inner.upgrade().ok_or(Error::InnerUpgrade)?;
+        let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
         let mut inner = inner.write()?;
 
         let request_id = if let Some(rendez_vous_id) = in_message.rendez_vous_id {
@@ -238,7 +238,7 @@ where
     }
 
     fn check_requests_timout(weak_inner: &Weak<RwLock<Inner>>) -> Result<(), Error> {
-        let inner = weak_inner.upgrade().ok_or(Error::InnerUpgrade)?;
+        let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
         let mut inner = inner.write()?;
 
         let query_timeout = inner.config.query_timeout;
@@ -467,7 +467,7 @@ impl AsyncStore for StoreHandle {
     fn mutate(&self, mutation: Mutation) -> AsyncResult<MutationResult> {
         let inner = match self.inner.upgrade() {
             Some(inner) => inner,
-            None => return Box::new(futures::failed(Error::InnerUpgrade)),
+            None => return Box::new(futures::failed(Error::Dropped)),
         };
         let mut inner = match inner.write() {
             Ok(inner) => inner,
@@ -487,7 +487,7 @@ impl AsyncStore for StoreHandle {
     fn query(&self, query: Query) -> AsyncResult<QueryResult> {
         let inner = match self.inner.upgrade() {
             Some(inner) => inner,
-            None => return Box::new(futures::failed(Error::InnerUpgrade)),
+            None => return Box::new(futures::failed(Error::Dropped)),
         };
         let mut inner = match inner.write() {
             Ok(inner) => inner,

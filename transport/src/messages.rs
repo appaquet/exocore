@@ -7,6 +7,8 @@ use exocore_common::cell::{Cell, CellId};
 use exocore_common::framing::{CapnpFrameBuilder, FrameBuilder, FrameReader, TypedCapnpFrame};
 use exocore_common::time::{ConsistentTimestamp, Instant};
 
+pub type RendezVousId = ConsistentTimestamp;
+
 /// Message to be sent to one or more other nodes
 pub struct OutMessage {
     pub to: Vec<Node>,
@@ -48,7 +50,7 @@ impl OutMessage {
         self
     }
 
-    pub fn with_rendez_vous_id(mut self, rendez_vous_id: ConsistentTimestamp) -> Self {
+    pub fn with_rendez_vous_id(mut self, rendez_vous_id: RendezVousId) -> Self {
         let mut envelope_message_builder = self.envelope_builder.get_builder();
         envelope_message_builder.set_rendez_vous_id(rendez_vous_id.into());
 
@@ -67,7 +69,7 @@ pub struct InMessage {
     pub from: Node,
     pub cell_id: CellId,
     pub layer: TransportLayer,
-    pub rendez_vous_id: Option<ConsistentTimestamp>,
+    pub rendez_vous_id: Option<RendezVousId>,
     pub message_type: u16,
     pub envelope: TypedCapnpFrame<Vec<u8>, envelope::Owned>,
 }

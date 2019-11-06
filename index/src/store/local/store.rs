@@ -1,9 +1,9 @@
-use super::entities_index::EntitiesIndex;
-use crate::error::Error;
-use crate::mutation::{Mutation, MutationResult};
-use crate::query::{Query, QueryResult};
-use crate::store::local::watched_queries::WatchedQueries;
-use crate::store::{AsyncResult, AsyncStore, ResultStream};
+use std::sync::{Arc, RwLock, Weak};
+
+use futures::prelude::*;
+use futures::sync::mpsc;
+use tokio::prelude::*;
+
 use exocore_common::cell::FullCell;
 use exocore_common::protos::index_transport_capnp::{mutation_request, query_request};
 use exocore_common::protos::MessageType;
@@ -12,11 +12,21 @@ use exocore_common::utils::completion_notifier::{
 };
 use exocore_common::utils::futures::spawn_future;
 use exocore_schema::schema::Schema;
-use exocore_transport::{InEvent, InMessage, OutEvent, OutMessage, TransportHandle};
-use futures::prelude::*;
-use futures::sync::mpsc;
-use std::sync::{Arc, RwLock, Weak};
-use tokio::prelude::*;
+use exocore_transport::{
+    InEvent, InMessage, OutEvent, OutMessage, TransportHandle, TransportLayer,
+};
+
+use crate::error::Error;
+use crate::mutation::{Mutation, MutationResult};
+use crate::query::{Query, QueryResult};
+use crate::store::local::watched_queries::{Consumer, WatchedQueries};
+use crate::store::{AsyncResult, AsyncStore, ResultStream};
+
+use super::entities_index::EntitiesIndex;
+
+// TODO: remove all the remote aspect of this
+
+const QUERY_WATCHING_CHANNEL_SIZE: usize = 100;
 
 ///
 /// Locally persisted store. It uses a data engine handle and entities index to
@@ -57,7 +67,7 @@ where
             cell,
             schema,
             index,
-            watched,
+            watched_queries: watched,
             data_handle,
             transport_out: None,
             stop_notifier,
@@ -146,6 +156,57 @@ where
                 }),
         );
 
+        // query watching changes
+        let (mut watching_sender, watching_receiver) = mpsc::channel(2);
+        let weak_inner1 = Arc::downgrade(&self.inner);
+        let weak_inner2 = Arc::downgrade(&self.inner);
+        spawn_future(
+            watching_receiver
+                .map_err(|_| Error::Dropped)
+                // TODO: Throttle
+                .for_each(move |_| {
+                    let inner = weak_inner1.upgrade().ok_or(Error::Dropped)?;
+                    let inner = inner.read()?;
+
+                    // TODO: Should mark as blocking
+                    let watched_queries = inner.watched_queries.queries()?;
+                    for watched_query in watched_queries {
+                        let result = inner.index.search(&watched_query.query)?;
+                        if result.hash != watched_query.last_hash {
+                            inner
+                                .watched_queries
+                                .update_query(&watched_query.query, &result)?;
+
+                            match &watched_query.consumer {
+                                Consumer::Local(channel) => {
+                                    // TODO: Should be bounded
+                                    let _ = channel.unbounded_send(result);
+                                }
+                                Consumer::Remote(node, rendez_vous) => {
+                                    let resp_frame = QueryResult::result_to_response_frame(
+                                        &inner.schema,
+                                        Ok(result),
+                                    )?;
+                                    let message = OutMessage::from_framed_message(
+                                        &inner.cell,
+                                        TransportLayer::Index,
+                                        resp_frame,
+                                    )?
+                                    .with_to_node(node.as_ref().clone())
+                                    .with_rendez_vous_id(*rendez_vous);
+                                    inner.send_message(message)?;
+                                }
+                            }
+                        }
+                    }
+
+                    Ok(())
+                })
+                .map_err(move |_| {
+                    Inner::notify_stop("query watching stream", &weak_inner2, Err(Error::Dropped))
+                }),
+        );
+
         // schedule data engine events stream
         let weak_inner1 = Arc::downgrade(&self.inner);
         let weak_inner2 = Arc::downgrade(&self.inner);
@@ -154,6 +215,7 @@ where
             inner
                 .data_handle
                 .take_events_stream()?
+                // TODO: throttled
                 .map_err(|err| err.into())
                 .for_each(move |event| {
                     if let Err(err) = Self::handle_data_engine_event(&weak_inner1, event) {
@@ -164,7 +226,9 @@ where
                         }
                     }
 
-                    // TODO: Check for queries
+                    // notify query watching. if it's full, it's guaranteed that it will catch those changes on next iteration
+                    let _ = watching_sender.try_send(());
+
                     Ok(())
                 })
                 .map(move |_| {
@@ -185,7 +249,7 @@ where
         weak_inner: &Weak<RwLock<Inner<CS, PS>>>,
         in_message: Box<InMessage>,
     ) -> Result<(), Error> {
-        let inner = weak_inner.upgrade().ok_or(Error::InnerUpgrade)?;
+        let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
         let inner = inner.read()?;
 
         match IncomingMessage::parse_incoming_message(&in_message, &inner.schema)? {
@@ -209,13 +273,28 @@ where
         let weak_inner2 = weak_inner.clone();
 
         spawn_future(
-            Inner::execute_query_async(weak_inner1, query)
+            Inner::execute_query_async(weak_inner1, query.clone())
                 .then(move |result| {
-                    let inner = weak_inner2.upgrade().ok_or(Error::InnerUpgrade)?;
+                    let inner = weak_inner2.upgrade().ok_or(Error::Dropped)?;
                     let inner = inner.read()?;
 
                     if let Err(err) = &result {
                         error!("Returning error executing incoming query: {}", err);
+                    }
+
+                    if query.token.is_some() {
+                        if let Ok(result) = &result {
+                            let consumer = Consumer::Remote(
+                                Arc::new(in_message.from.clone()),
+                                in_message.rendez_vous_id.ok_or_else(|| {
+                                    Error::Other(
+                                        "Incoming query message didn't have a rendez-vous id"
+                                            .to_string(),
+                                    )
+                                })?,
+                            );
+                            inner.watched_queries.watch_query(query, consumer, result)?;
+                        }
                     }
 
                     let resp_frame = QueryResult::result_to_response_frame(&inner.schema, result)?;
@@ -237,7 +316,7 @@ where
         in_message: Box<InMessage>,
         mutation: Mutation,
     ) -> Result<(), Error> {
-        let inner = weak_inner.upgrade().ok_or(Error::InnerUpgrade)?;
+        let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
         let inner = inner.read()?;
 
         let result = inner.write_mutation(mutation);
@@ -256,7 +335,7 @@ where
         weak_inner: &Weak<RwLock<Inner<CS, PS>>>,
         event: exocore_data::engine::Event,
     ) -> Result<(), Error> {
-        let inner = weak_inner.upgrade().ok_or(Error::InnerUpgrade)?;
+        let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
         let mut inner = inner.write()?;
         inner.index.handle_data_engine_event(event)?;
         Ok(())
@@ -297,7 +376,7 @@ where
     cell: FullCell,
     schema: Arc<Schema>,
     index: EntitiesIndex<CS, PS>,
-    watched: WatchedQueries,
+    watched_queries: WatchedQueries,
     data_handle: exocore_data::engine::EngineHandle<CS, PS>,
     transport_out: Option<mpsc::UnboundedSender<OutEvent>>,
     stop_notifier: CompletionNotifier<(), Error>,
@@ -329,7 +408,7 @@ where
         weak_inner: &Weak<RwLock<Inner<CS, PS>>>,
         mutation: Mutation,
     ) -> Result<MutationResult, Error> {
-        let inner = weak_inner.upgrade().ok_or(Error::InnerUpgrade)?;
+        let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
         let inner = inner.read()?;
         inner.write_mutation(mutation)
     }
@@ -357,7 +436,7 @@ where
         // TODO: Use a bounded threadpool instead of executing on current executor: https://github.com/appaquet/exocore/issues/113
         future::lazy(|| {
             future::poll_fn(move || {
-                let inner = weak_inner.upgrade().ok_or(Error::InnerUpgrade)?;
+                let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
                 let inner = inner.read()?;
 
                 let res = tokio_threadpool::blocking(|| inner.index.search(&query));
@@ -471,26 +550,56 @@ where
     }
 
     fn watched_query(&self, _query: Query) -> ResultStream<QueryResult> {
-        // TODO:
+        let weak_inner = self.inner.clone();
+
+        // TOOD: Should be bounded
+        let (sender, receiver) = mpsc::unbounded();
+
+        Box::new(LocalWatchedQuery {
+            inner: weak_inner,
+            receiver,
+        })
+    }
+}
+
+pub struct LocalWatchedQuery<CS, PS>
+where
+    CS: exocore_data::chain::ChainStore,
+    PS: exocore_data::pending::PendingStore,
+{
+    inner: Weak<RwLock<Inner<CS, PS>>>,
+    receiver: mpsc::UnboundedReceiver<QueryResult>,
+}
+
+impl<CS, PS> Stream for LocalWatchedQuery<CS, PS>
+where
+    CS: exocore_data::chain::ChainStore,
+    PS: exocore_data::pending::PendingStore,
+{
+    type Item = QueryResult;
+    type Error = Error;
+
+    fn poll(&mut self) -> Result<Async<Option<Self::Item>>, Self::Error> {
         unimplemented!()
+    }
+}
+
+impl<CS, PS> Drop for LocalWatchedQuery<CS, PS>
+where
+    CS: exocore_data::chain::ChainStore,
+    PS: exocore_data::pending::PendingStore,
+{
+    fn drop(&mut self) {
+        // TODO: unregister query
     }
 }
 
 #[cfg(test)]
 pub mod tests {
-    use super::super::entities_index::EntitiesIndexConfig;
-    use super::super::traits_index::TraitsIndexConfig;
+    use crate::mutation::TestFailMutation;
+    use crate::store::local::TestLocalStore;
+
     use super::*;
-    use crate::mutation::{MutationResult, PutTraitMutation, TestFailMutation};
-    use exocore_common::node::LocalNode;
-    use exocore_data::tests_utils::DataTestCluster;
-    use exocore_data::{DirectoryChainStore, MemoryPendingStore};
-    use exocore_schema::entity::{EntityId, RecordBuilder, TraitBuilder, TraitId};
-    use exocore_transport::mock::MockTransportHandle;
-    use exocore_transport::transport::{MpscHandleSink, MpscHandleStream};
-    use exocore_transport::TransportLayer;
-    use failure::err_msg;
-    use tempdir::TempDir;
 
     #[test]
     fn store_mutate_query_via_handle() -> Result<(), failure::Error> {
@@ -554,241 +663,5 @@ pub mod tests {
         assert!(test_store.mutate_via_transport(mutation).is_err());
 
         Ok(())
-    }
-
-    ///
-    /// Utility to test local store
-    ///
-    pub struct TestLocalStore {
-        pub cluster: DataTestCluster,
-        pub schema: Arc<Schema>,
-
-        store: Option<LocalStore<DirectoryChainStore, MemoryPendingStore, MockTransportHandle>>,
-        store_handle: StoreHandle<DirectoryChainStore, MemoryPendingStore>,
-        _temp_dir: TempDir,
-
-        // external node & transport used to communicate with store
-        external_node: LocalNode,
-        external_transport_sink: Option<MpscHandleSink>,
-        external_transport_stream: Option<MpscHandleStream>,
-    }
-
-    impl TestLocalStore {
-        pub fn new() -> Result<TestLocalStore, failure::Error> {
-            let mut cluster = DataTestCluster::new_single_and_start()?;
-
-            let temp_dir = tempdir::TempDir::new("store")?;
-            let schema = exocore_schema::test_schema::create();
-
-            let index_config = EntitiesIndexConfig {
-                pending_index_config: TraitsIndexConfig {
-                    indexer_num_threads: Some(1),
-                    ..TraitsIndexConfig::default()
-                },
-                chain_index_config: TraitsIndexConfig {
-                    indexer_num_threads: Some(1),
-                    ..TraitsIndexConfig::default()
-                },
-                ..EntitiesIndexConfig::default()
-            };
-            let index = EntitiesIndex::<DirectoryChainStore, MemoryPendingStore>::open_or_create(
-                temp_dir.path(),
-                index_config,
-                schema.clone(),
-                cluster.get_handle(0).try_clone()?,
-            )?;
-
-            let transport = cluster
-                .transport_hub
-                .get_transport(cluster.nodes[0].clone(), TransportLayer::Index);
-
-            let store = LocalStore::new(
-                cluster.cells[0].clone(),
-                schema.clone(),
-                cluster.get_new_handle(0),
-                index,
-                transport,
-            )?;
-            let store_handle = store.get_handle()?;
-
-            // external node & transport used to communicate with store
-            let external_node = LocalNode::generate();
-            let mut external_transport_handle = cluster
-                .transport_hub
-                .get_transport(external_node.clone(), TransportLayer::Index);
-            let external_transport_sink = external_transport_handle.get_sink();
-            let external_transport_stream = external_transport_handle.get_stream();
-            cluster.runtime.spawn(
-                external_transport_handle
-                    .map(|_| {
-                        info!("Transport handle completed");
-                    })
-                    .map_err(|err| {
-                        error!("Transport handle error: {}", err);
-                    }),
-            );
-
-            Ok(TestLocalStore {
-                cluster,
-                schema: schema.clone(),
-
-                store: Some(store),
-                store_handle,
-                _temp_dir: temp_dir,
-
-                external_node,
-                external_transport_sink: Some(external_transport_sink),
-                external_transport_stream: Some(external_transport_stream),
-            })
-        }
-
-        pub fn start_store(&mut self) -> Result<(), failure::Error> {
-            let store = self.store.take().unwrap();
-            self.cluster.runtime.spawn(
-                store
-                    .map(|_| {
-                        info!("Test store completed");
-                    })
-                    .map_err(|err| {
-                        error!("Test store future failed: {}", err);
-                    }),
-            );
-            self.cluster
-                .runtime
-                .block_on(self.store_handle.on_start()?)?;
-            Ok(())
-        }
-
-        pub fn mutate_via_handle(
-            &mut self,
-            mutation: Mutation,
-        ) -> Result<MutationResult, failure::Error> {
-            let resp_future = self.store_handle.mutate(mutation);
-            self.cluster
-                .runtime
-                .block_on(resp_future)
-                .map_err(|err| err.into())
-        }
-
-        pub fn mutate_via_transport(
-            &mut self,
-            mutation: Mutation,
-        ) -> Result<MutationResult, failure::Error> {
-            let mutation_frame = mutation.to_mutation_request_frame(&self.schema)?;
-
-            // send message to store
-            let rendez_vous_id = self.cluster.clocks[0].consistent_time(&self.cluster.nodes[0]);
-            let external_cell =
-                self.cluster.cells[0].clone_for_local_node(self.external_node.clone());
-            let out_message = OutMessage::from_framed_message(
-                &external_cell,
-                TransportLayer::Index,
-                mutation_frame,
-            )?
-            .with_to_node(self.cluster.nodes[0].node().clone())
-            .with_rendez_vous_id(rendez_vous_id);
-
-            let sink = self.cluster.runtime.block_on(
-                self.external_transport_sink
-                    .take()
-                    .unwrap()
-                    .send(OutEvent::Message(out_message)),
-            )?;
-            self.external_transport_sink = Some(sink);
-
-            // wait for response from store
-            let msg = self.wait_receive_next_message()?;
-
-            // read response into mutation response
-            let resp_frame = msg.get_data_as_framed_message()?;
-            let response = MutationResult::from_response_frame(&self.schema, resp_frame)?;
-            assert_eq!(msg.rendez_vous_id, Some(rendez_vous_id));
-
-            Ok(response)
-        }
-
-        pub fn query_via_handle(&mut self, query: Query) -> Result<QueryResult, failure::Error> {
-            let resp_future = self.store_handle.query(query);
-            self.cluster
-                .runtime
-                .block_on(resp_future)
-                .map_err(|err| err.into())
-        }
-
-        pub fn query_via_transport(&mut self, query: Query) -> Result<QueryResult, failure::Error> {
-            let query_frame = query.to_query_request_frame(&self.schema)?;
-
-            // send message to store
-            let rendez_vous_id = self.cluster.clocks[0].consistent_time(&self.cluster.nodes[0]);
-            let external_cell =
-                self.cluster.cells[0].clone_for_local_node(self.external_node.clone());
-            let out_message = OutMessage::from_framed_message(
-                &external_cell,
-                TransportLayer::Index,
-                query_frame,
-            )?
-            .with_to_node(self.cluster.nodes[0].node().clone())
-            .with_rendez_vous_id(rendez_vous_id);
-
-            let sink = self.cluster.runtime.block_on(
-                self.external_transport_sink
-                    .take()
-                    .unwrap()
-                    .send(OutEvent::Message(out_message)),
-            )?;
-            self.external_transport_sink = Some(sink);
-
-            // wait for response from store
-            let in_msg = self.wait_receive_next_message()?;
-
-            // read response into a results
-            let resp_frame = in_msg.get_data_as_framed_message()?;
-            let results = QueryResult::from_query_frame(&self.schema, resp_frame)?;
-
-            assert_eq!(in_msg.rendez_vous_id, Some(rendez_vous_id));
-
-            Ok(results)
-        }
-
-        pub fn create_put_contact_mutation<E: Into<EntityId>, T: Into<TraitId>, N: Into<String>>(
-            &self,
-            entity_id: E,
-            trait_id: T,
-            name: N,
-        ) -> Mutation {
-            Mutation::PutTrait(PutTraitMutation {
-                entity_id: entity_id.into(),
-                trt: TraitBuilder::new(&self.schema, "exocore", "contact")
-                    .unwrap()
-                    .set("id", trait_id.into())
-                    .set("name", name.into())
-                    .build()
-                    .unwrap(),
-            })
-        }
-
-        fn wait_receive_next_message(&mut self) -> Result<Box<InMessage>, failure::Error> {
-            loop {
-                let (received, stream) = self.cluster.runtime.block_on(
-                    self.external_transport_stream
-                        .take()
-                        .unwrap()
-                        .into_future()
-                        .map_err(|(err, _stream)| {
-                            err_msg(format!("Error receiving from stream: {}", err))
-                        }),
-                )?;
-                self.external_transport_stream = Some(stream);
-
-                match received {
-                    Some(InEvent::Message(msg)) => {
-                        return Ok(msg);
-                    }
-                    _ => {
-                        continue;
-                    }
-                }
-            }
-        }
     }
 }
