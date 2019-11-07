@@ -26,38 +26,34 @@ use super::entities_index::EntitiesIndex;
 
 // TODO: remove all the remote aspect of this
 
-const QUERY_WATCHING_CHANNEL_SIZE: usize = 100;
-
 ///
 /// Locally persisted store. It uses a data engine handle and entities index to
 /// perform mutations and resolve queries
 ///
-pub struct LocalStore<CS, PS, T>
+pub struct LocalStore<CS, PS>
 where
     CS: exocore_data::chain::ChainStore,
     PS: exocore_data::pending::PendingStore,
-    T: TransportHandle,
 {
     start_notifier: CompletionNotifier<(), Error>,
     started: bool,
     inner: Arc<RwLock<Inner<CS, PS>>>,
-    transport_handle: Option<T>,
+    //    transport_handle: Option<T>,
     stop_listener: CompletionListener<(), Error>,
 }
 
-impl<CS, PS, T> LocalStore<CS, PS, T>
+impl<CS, PS> LocalStore<CS, PS>
 where
     CS: exocore_data::chain::ChainStore,
     PS: exocore_data::pending::PendingStore,
-    T: TransportHandle,
 {
     pub fn new(
         cell: FullCell,
         schema: Arc<Schema>,
         data_handle: exocore_data::engine::EngineHandle<CS, PS>,
         index: EntitiesIndex<CS, PS>,
-        transport_handle: T,
-    ) -> Result<LocalStore<CS, PS, T>, Error> {
+        //        transport_handle: T,
+    ) -> Result<LocalStore<CS, PS>, Error> {
         let (stop_notifier, stop_listener) = CompletionNotifier::new_with_listener();
         let start_notifier = CompletionNotifier::new();
 
@@ -77,7 +73,7 @@ where
             start_notifier,
             started: false,
             inner,
-            transport_handle: Some(transport_handle),
+            //            transport_handle: Some(transport_handle),
             stop_listener,
         })
     }
@@ -94,67 +90,7 @@ where
     }
 
     fn start(&mut self) -> Result<(), Error> {
-        let mut transport_handle = self
-            .transport_handle
-            .take()
-            .expect("Transport handle was already consumed");
-
         let mut inner = self.inner.write()?;
-
-        // send outgoing messages to transport
-        let (out_sender, out_receiver) = mpsc::unbounded();
-        spawn_future(
-            out_receiver
-                .forward(transport_handle.get_sink().sink_map_err(|_err| ()))
-                .map(|_| ()),
-        );
-        inner.transport_out = Some(out_sender);
-
-        // handle incoming messages
-        let weak_inner1 = Arc::downgrade(&self.inner);
-        let weak_inner2 = Arc::downgrade(&self.inner);
-        spawn_future(
-            transport_handle
-                .get_stream()
-                .map_err(|err| Error::Fatal(format!("Error in incoming transport stream: {}", err)))
-                .for_each(move |event| {
-                    debug!("Got an incoming message");
-                    match event {
-                        InEvent::Message(msg) => {
-                            if let Err(err) = Self::handle_incoming_message(&weak_inner1, msg) {
-                                if err.is_fatal() {
-                                    return Err(err);
-                                } else {
-                                    error!("Couldn't process incoming message: {}", err);
-                                }
-                            }
-                        }
-                        InEvent::NodeStatus(_, _) => {
-                            // TODO: Do something
-                        }
-                    }
-
-                    Ok(())
-                })
-                .map(|_| ())
-                .map_err(move |err| {
-                    Inner::notify_stop("incoming transport stream", &weak_inner2, Err(err));
-                }),
-        );
-
-        // schedule transport handle
-        let weak_inner1 = Arc::downgrade(&self.inner);
-        let weak_inner2 = Arc::downgrade(&self.inner);
-        spawn_future(
-            transport_handle
-                .map(move |_| {
-                    info!("Transport is done");
-                    Inner::notify_stop("transport completion", &weak_inner1, Ok(()));
-                })
-                .map_err(move |err| {
-                    Inner::notify_stop("transport error", &weak_inner2, Err(err.into()));
-                }),
-        );
 
         // query watching changes
         let (mut watching_sender, watching_receiver) = mpsc::channel(2);
@@ -181,20 +117,6 @@ where
                                 Consumer::Local(channel) => {
                                     // TODO: Should be bounded
                                     let _ = channel.unbounded_send(result);
-                                }
-                                Consumer::Remote(node, rendez_vous) => {
-                                    let resp_frame = QueryResult::result_to_response_frame(
-                                        &inner.schema,
-                                        Ok(result),
-                                    )?;
-                                    let message = OutMessage::from_framed_message(
-                                        &inner.cell,
-                                        TransportLayer::Index,
-                                        resp_frame,
-                                    )?
-                                    .with_to_node(node.as_ref().clone())
-                                    .with_rendez_vous_id(*rendez_vous);
-                                    inner.send_message(message)?;
                                 }
                             }
                         }
@@ -245,92 +167,6 @@ where
         Ok(())
     }
 
-    fn handle_incoming_message(
-        weak_inner: &Weak<RwLock<Inner<CS, PS>>>,
-        in_message: Box<InMessage>,
-    ) -> Result<(), Error> {
-        let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
-        let inner = inner.read()?;
-
-        match IncomingMessage::parse_incoming_message(&in_message, &inner.schema)? {
-            IncomingMessage::Mutation(mutation) => {
-                Self::handle_incoming_mutation_message(weak_inner, in_message, mutation)?;
-            }
-            IncomingMessage::Query(query) => {
-                Self::handle_incoming_query_message(weak_inner, in_message, query)?;
-            }
-        }
-
-        Ok(())
-    }
-
-    fn handle_incoming_query_message(
-        weak_inner: &Weak<RwLock<Inner<CS, PS>>>,
-        in_message: Box<InMessage>,
-        query: Query,
-    ) -> Result<(), Error> {
-        let weak_inner1 = weak_inner.clone();
-        let weak_inner2 = weak_inner.clone();
-
-        spawn_future(
-            Inner::execute_query_async(weak_inner1, query.clone())
-                .then(move |result| {
-                    let inner = weak_inner2.upgrade().ok_or(Error::Dropped)?;
-                    let inner = inner.read()?;
-
-                    if let Err(err) = &result {
-                        error!("Returning error executing incoming query: {}", err);
-                    }
-
-                    if query.token.is_some() {
-                        if let Ok(result) = &result {
-                            let consumer = Consumer::Remote(
-                                Arc::new(in_message.from.clone()),
-                                in_message.rendez_vous_id.ok_or_else(|| {
-                                    Error::Other(
-                                        "Incoming query message didn't have a rendez-vous id"
-                                            .to_string(),
-                                    )
-                                })?,
-                            );
-                            inner.watched_queries.watch_query(query, consumer, result)?;
-                        }
-                    }
-
-                    let resp_frame = QueryResult::result_to_response_frame(&inner.schema, result)?;
-                    let message = in_message.to_response_message(&inner.cell, resp_frame)?;
-                    inner.send_message(message)?;
-
-                    Ok(())
-                })
-                .map_err(|err: Error| {
-                    error!("Error executing incoming query: {}", err);
-                }),
-        );
-
-        Ok(())
-    }
-
-    fn handle_incoming_mutation_message(
-        weak_inner: &Weak<RwLock<Inner<CS, PS>>>,
-        in_message: Box<InMessage>,
-        mutation: Mutation,
-    ) -> Result<(), Error> {
-        let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
-        let inner = inner.read()?;
-
-        let result = inner.write_mutation(mutation);
-        if let Err(err) = &result {
-            error!("Returning error executing incoming mutation: {}", err);
-        }
-
-        let resp_frame = MutationResult::result_to_response_frame(&inner.schema, result)?;
-        let message = in_message.to_response_message(&inner.cell, resp_frame)?;
-        inner.send_message(message)?;
-
-        Ok(())
-    }
-
     fn handle_data_engine_event(
         weak_inner: &Weak<RwLock<Inner<CS, PS>>>,
         event: exocore_data::engine::Event,
@@ -342,11 +178,10 @@ where
     }
 }
 
-impl<CS, PS, T> Future for LocalStore<CS, PS, T>
+impl<CS, PS> Future for LocalStore<CS, PS>
 where
     CS: exocore_data::chain::ChainStore,
     PS: exocore_data::pending::PendingStore,
-    T: TransportHandle,
 {
     type Item = ();
     type Error = Error;
@@ -452,54 +287,6 @@ where
             })
         })
         .map_err(|err| Error::Other(format!("Error executing query in blocking block: {}", err)))
-    }
-
-    fn send_message(&self, message: OutMessage) -> Result<(), Error> {
-        let transport = self.transport_out.as_ref().ok_or_else(|| {
-            Error::Fatal("Tried to send message, but transport_out was none".to_string())
-        })?;
-
-        transport
-            .unbounded_send(OutEvent::Message(message))
-            .map_err(|_err| {
-                Error::Fatal(
-                    "Tried to send message, but transport_out channel is closed".to_string(),
-                )
-            })?;
-
-        Ok(())
-    }
-}
-
-///
-/// Parsed incoming message via transport
-///
-enum IncomingMessage {
-    Mutation(Mutation),
-    Query(Query),
-}
-
-impl IncomingMessage {
-    fn parse_incoming_message(
-        in_message: &InMessage,
-        schema: &Arc<Schema>,
-    ) -> Result<IncomingMessage, Error> {
-        match in_message.message_type {
-            <mutation_request::Owned as MessageType>::MESSAGE_TYPE => {
-                let mutation_frame = in_message.get_data_as_framed_message()?;
-                let mutation = Mutation::from_mutation_request_frame(schema, mutation_frame)?;
-                Ok(IncomingMessage::Mutation(mutation))
-            }
-            <query_request::Owned as MessageType>::MESSAGE_TYPE => {
-                let query_frame = in_message.get_data_as_framed_message()?;
-                let query = Query::from_query_request_frame(schema, query_frame)?;
-                Ok(IncomingMessage::Query(query))
-            }
-            other => Err(Error::Other(format!(
-                "Received message of unknown type: {}",
-                other
-            ))),
-        }
     }
 }
 
@@ -619,23 +406,23 @@ pub mod tests {
         Ok(())
     }
 
-    #[test]
-    fn store_mutate_query_via_transport() -> Result<(), failure::Error> {
-        let mut test_store = TestLocalStore::new()?;
-        test_store.start_store()?;
-
-        let mutation = test_store.create_put_contact_mutation("entry1", "contact1", "Hello World");
-        let response = test_store.mutate_via_transport(mutation)?;
-        test_store
-            .cluster
-            .wait_operation_committed(0, response.operation_id);
-
-        let query = Query::match_text("hello");
-        let results = test_store.query_via_transport(query)?;
-        assert_eq!(results.results.len(), 1);
-
-        Ok(())
-    }
+    //    #[test]
+    //    fn store_mutate_query_via_transport() -> Result<(), failure::Error> {
+    //        let mut test_store = TestLocalStore::new()?;
+    //        test_store.start_store()?;
+    //
+    //        let mutation = test_store.create_put_contact_mutation("entry1", "contact1", "Hello World");
+    //        let response = test_store.mutate_via_transport(mutation)?;
+    //        test_store
+    //            .cluster
+    //            .wait_operation_committed(0, response.operation_id);
+    //
+    //        let query = Query::match_text("hello");
+    //        let results = test_store.query_via_transport(query)?;
+    //        assert_eq!(results.results.len(), 1);
+    //
+    //        Ok(())
+    //    }
 
     #[test]
     fn query_error_propagating() -> Result<(), failure::Error> {
@@ -644,9 +431,9 @@ pub mod tests {
 
         let query = Query::test_fail();
         assert!(test_store.query_via_handle(query).is_err());
-
-        let query = Query::test_fail();
-        assert!(test_store.query_via_transport(query).is_err());
+        //
+        //        let query = Query::test_fail();
+        //        assert!(test_store.query_via_transport(query).is_err());
 
         Ok(())
     }
@@ -658,9 +445,9 @@ pub mod tests {
 
         let mutation = Mutation::TestFail(TestFailMutation {});
         assert!(test_store.mutate_via_handle(mutation).is_err());
-
-        let mutation = Mutation::TestFail(TestFailMutation {});
-        assert!(test_store.mutate_via_transport(mutation).is_err());
+        //
+        //        let mutation = Mutation::TestFail(TestFailMutation {});
+        //        assert!(test_store.mutate_via_transport(mutation).is_err());
 
         Ok(())
     }

@@ -26,7 +26,7 @@ use std::time::Duration;
 /// Configuration for remote store
 ///
 #[derive(Debug, Clone, Copy)]
-pub struct StoreConfiguration {
+pub struct ClientConfiguration {
     /// Duration before considering query has timed out if not responded
     pub query_timeout: Duration,
 
@@ -37,9 +37,9 @@ pub struct StoreConfiguration {
     pub timeout_check_interval: Duration,
 }
 
-impl Default for StoreConfiguration {
+impl Default for ClientConfiguration {
     fn default() -> Self {
-        StoreConfiguration {
+        ClientConfiguration {
             query_timeout: Duration::from_secs(10),
             mutation_timeout: Duration::from_secs(5),
             timeout_check_interval: Duration::from_millis(100),
@@ -51,11 +51,11 @@ impl Default for StoreConfiguration {
 /// This implementation of the AsyncStore allow sending all queries and mutations to
 /// a remote node's local store.
 ///
-pub struct RemoteStore<T>
+pub struct StoreClient<T>
 where
     T: TransportHandle,
 {
-    config: StoreConfiguration,
+    config: ClientConfiguration,
     start_notifier: CompletionNotifier<(), Error>,
     started: bool,
     inner: Arc<RwLock<Inner>>,
@@ -63,18 +63,18 @@ where
     stop_listener: CompletionListener<(), Error>,
 }
 
-impl<T> RemoteStore<T>
+impl<T> StoreClient<T>
 where
     T: TransportHandle,
 {
     pub fn new(
-        config: StoreConfiguration,
+        config: ClientConfiguration,
         cell: Cell,
         clock: Clock,
         schema: Arc<Schema>,
         transport_handle: T,
         index_node: Node,
-    ) -> Result<RemoteStore<T>, Error> {
+    ) -> Result<StoreClient<T>, Error> {
         let (stop_notifier, stop_listener) = CompletionNotifier::new_with_listener();
         let start_notifier = CompletionNotifier::new();
 
@@ -90,7 +90,7 @@ where
             stop_notifier,
         }));
 
-        Ok(RemoteStore {
+        Ok(StoreClient {
             config,
             start_notifier,
             started: false,
@@ -100,12 +100,12 @@ where
         })
     }
 
-    pub fn get_handle(&self) -> Result<StoreHandle, Error> {
+    pub fn get_handle(&self) -> Result<ClientHandle, Error> {
         let start_listener = self
             .start_notifier
             .get_listener()
             .expect("Couldn't get a listener on start notifier");
-        Ok(StoreHandle {
+        Ok(ClientHandle {
             start_listener,
             inner: Arc::downgrade(&self.inner),
         })
@@ -251,7 +251,7 @@ where
     }
 }
 
-impl<T> Future for RemoteStore<T>
+impl<T> Future for StoreClient<T>
 where
     T: TransportHandle,
 {
@@ -276,7 +276,7 @@ where
 /// Inner instance of the store
 ///
 struct Inner {
-    config: StoreConfiguration,
+    config: ClientConfiguration,
     cell: Cell,
     clock: Clock,
     schema: Arc<Schema>,
@@ -444,12 +444,12 @@ struct PendingRequest<T> {
 ///
 /// Async handle to the store
 ///
-pub struct StoreHandle {
+pub struct ClientHandle {
     start_listener: CompletionListener<(), Error>,
     inner: Weak<RwLock<Inner>>,
 }
 
-impl StoreHandle {
+impl ClientHandle {
     pub fn on_start(&self) -> Result<impl Future<Item = (), Error = Error>, Error> {
         // TODO: Should only return result
         Ok(self
@@ -463,7 +463,7 @@ impl StoreHandle {
     }
 }
 
-impl AsyncStore for StoreHandle {
+impl AsyncStore for ClientHandle {
     fn mutate(&self, mutation: Mutation) -> AsyncResult<MutationResult> {
         let inner = match self.inner.upgrade() {
             Some(inner) => inner,
@@ -507,183 +507,5 @@ impl AsyncStore for StoreHandle {
     fn watched_query(&self, _query: Query) -> ResultStream<QueryResult> {
         // TODO:
         unimplemented!()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::mutation::TestFailMutation;
-    use crate::store::local::TestLocalStore;
-    use exocore_common::node::LocalNode;
-    use exocore_common::tests_utils::expect_eventually;
-    use exocore_transport::mock::MockTransportHandle;
-
-    #[test]
-    fn mutation_and_query() -> Result<(), failure::Error> {
-        let mut test_remote_store = TestRemoteStore::new()?;
-        test_remote_store.start_local()?;
-        test_remote_store.start_remote()?;
-
-        let mutation = test_remote_store
-            .local_store
-            .create_put_contact_mutation("entity1", "trait1", "hello");
-        test_remote_store.send_and_await_mutation(mutation)?;
-
-        expect_eventually(|| {
-            let query = Query::match_text("hello");
-            let results = test_remote_store.send_and_await_query(query).unwrap();
-            results.results.len() == 1
-        });
-
-        Ok(())
-    }
-
-    #[test]
-    fn mutation_error_propagation() -> Result<(), failure::Error> {
-        let mut test_remote_store = TestRemoteStore::new()?;
-        test_remote_store.start_local()?;
-        test_remote_store.start_remote()?;
-
-        let mutation = Mutation::TestFail(TestFailMutation {});
-        let result = test_remote_store.send_and_await_mutation(mutation);
-        assert!(result.is_err());
-
-        Ok(())
-    }
-
-    #[test]
-    fn query_error_propagation() -> Result<(), failure::Error> {
-        let mut test_remote_store = TestRemoteStore::new()?;
-        test_remote_store.start_local()?;
-        test_remote_store.start_remote()?;
-
-        let mutation = test_remote_store
-            .local_store
-            .create_put_contact_mutation("entity1", "trait1", "hello");
-        test_remote_store.send_and_await_mutation(mutation)?;
-
-        let query = Query::test_fail();
-        let result = test_remote_store.send_and_await_query(query);
-        assert!(result.is_err());
-
-        Ok(())
-    }
-
-    #[test]
-    fn query_timeout() -> Result<(), failure::Error> {
-        let config = StoreConfiguration {
-            query_timeout: Duration::from_millis(500),
-            ..StoreConfiguration::default()
-        };
-
-        let mut test_remote_store = TestRemoteStore::new_with_configuration(config)?;
-
-        // only start remote, so local won't answer and it should timeout
-        test_remote_store.start_remote()?;
-
-        let query = Query::match_text("hello");
-        let result = test_remote_store.send_and_await_query(query);
-        assert!(result.is_err());
-
-        Ok(())
-    }
-
-    #[test]
-    fn mutation_timeout() -> Result<(), failure::Error> {
-        let config = StoreConfiguration {
-            mutation_timeout: Duration::from_millis(500),
-            ..StoreConfiguration::default()
-        };
-
-        let mut test_remote_store = TestRemoteStore::new_with_configuration(config)?;
-
-        // only start remote, so local won't answer and it should timeout
-        test_remote_store.start_remote()?;
-
-        let mutation = test_remote_store
-            .local_store
-            .create_put_contact_mutation("entity1", "trait1", "hello");
-        let result = test_remote_store.send_and_await_mutation(mutation);
-        assert!(result.is_err());
-
-        Ok(())
-    }
-
-    struct TestRemoteStore {
-        local_store: TestLocalStore,
-        remote_store: Option<RemoteStore<MockTransportHandle>>,
-        remote_handle: StoreHandle,
-    }
-
-    impl TestRemoteStore {
-        fn new() -> Result<TestRemoteStore, failure::Error> {
-            let config = StoreConfiguration::default();
-            Self::new_with_configuration(config)
-        }
-
-        fn new_with_configuration(
-            config: StoreConfiguration,
-        ) -> Result<TestRemoteStore, failure::Error> {
-            let local_store = TestLocalStore::new()?;
-
-            let local_node = LocalNode::generate();
-            let remote_store = RemoteStore::new(
-                config,
-                local_store.cluster.cells[0].cell().clone(),
-                local_store.cluster.clocks[0].clone(),
-                local_store.schema.clone(),
-                local_store
-                    .cluster
-                    .transport_hub
-                    .get_transport(local_node, TransportLayer::Index),
-                local_store.cluster.nodes[0].node().clone(),
-            )?;
-
-            let remote_handle = remote_store.get_handle()?;
-
-            Ok(TestRemoteStore {
-                local_store,
-
-                remote_store: Some(remote_store),
-                remote_handle,
-            })
-        }
-
-        fn start_local(&mut self) -> Result<(), failure::Error> {
-            self.local_store.start_store()?;
-            Ok(())
-        }
-
-        fn start_remote(&mut self) -> Result<(), failure::Error> {
-            let remote_store = self.remote_store.take().unwrap();
-            self.local_store
-                .cluster
-                .runtime
-                .spawn(remote_store.map_err(|err| {
-                    error!("Error spawning remote store: {}", err);
-                }));
-
-            self.local_store
-                .cluster
-                .runtime
-                .block_on(self.remote_handle.on_start()?)?;
-
-            Ok(())
-        }
-
-        fn send_and_await_mutation(&mut self, mutation: Mutation) -> Result<MutationResult, Error> {
-            self.local_store
-                .cluster
-                .runtime
-                .block_on(self.remote_handle.mutate(mutation))
-        }
-
-        fn send_and_await_query(&mut self, query: Query) -> Result<QueryResult, Error> {
-            self.local_store
-                .cluster
-                .runtime
-                .block_on(self.remote_handle.query(query))
-        }
     }
 }

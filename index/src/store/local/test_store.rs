@@ -31,14 +31,9 @@ pub struct TestLocalStore {
     pub cluster: DataTestCluster,
     pub schema: Arc<Schema>,
 
-    store: Option<LocalStore<DirectoryChainStore, MemoryPendingStore, MockTransportHandle>>,
+    pub store: Option<LocalStore<DirectoryChainStore, MemoryPendingStore>>,
     store_handle: StoreHandle<DirectoryChainStore, MemoryPendingStore>,
     _temp_dir: TempDir,
-
-    // external node & transport used to communicate with store
-    external_node: LocalNode,
-    external_transport_sink: Option<MpscHandleSink>,
-    external_transport_stream: Option<MpscHandleStream>,
 }
 
 impl TestLocalStore {
@@ -66,35 +61,13 @@ impl TestLocalStore {
             cluster.get_handle(0).try_clone()?,
         )?;
 
-        let transport = cluster
-            .transport_hub
-            .get_transport(cluster.nodes[0].clone(), TransportLayer::Index);
-
         let store = LocalStore::new(
             cluster.cells[0].clone(),
             schema.clone(),
             cluster.get_new_handle(0),
             index,
-            transport,
         )?;
         let store_handle = store.get_handle()?;
-
-        // external node & transport used to communicate with store
-        let external_node = LocalNode::generate();
-        let mut external_transport_handle = cluster
-            .transport_hub
-            .get_transport(external_node.clone(), TransportLayer::Index);
-        let external_transport_sink = external_transport_handle.get_sink();
-        let external_transport_stream = external_transport_handle.get_stream();
-        cluster.runtime.spawn(
-            external_transport_handle
-                .map(|_| {
-                    info!("Transport handle completed");
-                })
-                .map_err(|err| {
-                    error!("Transport handle error: {}", err);
-                }),
-        );
 
         Ok(TestLocalStore {
             cluster,
@@ -103,10 +76,6 @@ impl TestLocalStore {
             store: Some(store),
             store_handle,
             _temp_dir: temp_dir,
-
-            external_node,
-            external_transport_sink: Some(external_transport_sink),
-            external_transport_stream: Some(external_transport_stream),
         })
     }
 
@@ -138,76 +107,12 @@ impl TestLocalStore {
             .map_err(|err| err.into())
     }
 
-    pub fn mutate_via_transport(
-        &mut self,
-        mutation: Mutation,
-    ) -> Result<MutationResult, failure::Error> {
-        let mutation_frame = mutation.to_mutation_request_frame(&self.schema)?;
-
-        // send message to store
-        let rendez_vous_id = self.cluster.clocks[0].consistent_time(&self.cluster.nodes[0]);
-        let external_cell = self.cluster.cells[0].clone_for_local_node(self.external_node.clone());
-        let out_message =
-            OutMessage::from_framed_message(&external_cell, TransportLayer::Index, mutation_frame)?
-                .with_to_node(self.cluster.nodes[0].node().clone())
-                .with_rendez_vous_id(rendez_vous_id);
-
-        let sink = self.cluster.runtime.block_on(
-            self.external_transport_sink
-                .take()
-                .unwrap()
-                .send(OutEvent::Message(out_message)),
-        )?;
-        self.external_transport_sink = Some(sink);
-
-        // wait for response from store
-        let msg = self.wait_receive_next_message()?;
-
-        // read response into mutation response
-        let resp_frame = msg.get_data_as_framed_message()?;
-        let response = MutationResult::from_response_frame(&self.schema, resp_frame)?;
-        assert_eq!(msg.rendez_vous_id, Some(rendez_vous_id));
-
-        Ok(response)
-    }
-
     pub fn query_via_handle(&mut self, query: Query) -> Result<QueryResult, failure::Error> {
         let resp_future = self.store_handle.query(query);
         self.cluster
             .runtime
             .block_on(resp_future)
             .map_err(|err| err.into())
-    }
-
-    pub fn query_via_transport(&mut self, query: Query) -> Result<QueryResult, failure::Error> {
-        let query_frame = query.to_query_request_frame(&self.schema)?;
-
-        // send message to store
-        let rendez_vous_id = self.cluster.clocks[0].consistent_time(&self.cluster.nodes[0]);
-        let external_cell = self.cluster.cells[0].clone_for_local_node(self.external_node.clone());
-        let out_message =
-            OutMessage::from_framed_message(&external_cell, TransportLayer::Index, query_frame)?
-                .with_to_node(self.cluster.nodes[0].node().clone())
-                .with_rendez_vous_id(rendez_vous_id);
-
-        let sink = self.cluster.runtime.block_on(
-            self.external_transport_sink
-                .take()
-                .unwrap()
-                .send(OutEvent::Message(out_message)),
-        )?;
-        self.external_transport_sink = Some(sink);
-
-        // wait for response from store
-        let in_msg = self.wait_receive_next_message()?;
-
-        // read response into a results
-        let resp_frame = in_msg.get_data_as_framed_message()?;
-        let results = QueryResult::from_query_frame(&self.schema, resp_frame)?;
-
-        assert_eq!(in_msg.rendez_vous_id, Some(rendez_vous_id));
-
-        Ok(results)
     }
 
     pub fn create_put_contact_mutation<E: Into<EntityId>, T: Into<TraitId>, N: Into<String>>(
@@ -225,29 +130,5 @@ impl TestLocalStore {
                 .build()
                 .unwrap(),
         })
-    }
-
-    fn wait_receive_next_message(&mut self) -> Result<Box<InMessage>, failure::Error> {
-        loop {
-            let (received, stream) = self.cluster.runtime.block_on(
-                self.external_transport_stream
-                    .take()
-                    .unwrap()
-                    .into_future()
-                    .map_err(|(err, _stream)| {
-                        err_msg(format!("Error receiving from stream: {}", err))
-                    }),
-            )?;
-            self.external_transport_stream = Some(stream);
-
-            match received {
-                Some(InEvent::Message(msg)) => {
-                    return Ok(msg);
-                }
-                _ => {
-                    continue;
-                }
-            }
-        }
     }
 }

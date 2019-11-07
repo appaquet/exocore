@@ -28,7 +28,6 @@ pub struct WatchedQuery {
 
 #[derive(Clone)]
 pub enum Consumer {
-    Remote(Arc<Node>, RendezVousId),
     Local(mpsc::UnboundedSender<QueryResult>),
 }
 

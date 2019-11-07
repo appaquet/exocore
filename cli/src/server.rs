@@ -186,7 +186,7 @@ fn create_local_store<T: TransportHandle>(
         schema,
         index_engine_handle,
         entities_index,
-        transport,
+        //        transport,
     )?;
     rt.spawn(
         local_index_store

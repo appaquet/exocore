@@ -7,7 +7,7 @@ use exocore_common::crypto::keys::PublicKey;
 use exocore_common::node::{LocalNode, Node};
 use exocore_common::time::Clock;
 use exocore_common::utils::futures::spawn_future;
-use exocore_index::store::remote::{RemoteStore, StoreConfiguration, StoreHandle};
+use exocore_index::store::remote::{ClientConfiguration, ClientHandle, StoreClient};
 use exocore_schema::schema::Schema;
 use exocore_transport::{InEvent, TransportHandle, TransportLayer};
 
@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex};
 #[wasm_bindgen]
 pub struct ExocoreClient {
     _transport: BrowserTransportClient,
-    store_handle: Arc<StoreHandle>,
+    store_handle: Arc<ClientHandle>,
     schema: Arc<Schema>,
     inner: Arc<Mutex<Inner>>,
 }
@@ -52,8 +52,8 @@ impl ExocoreClient {
 
         let mut transport = BrowserTransportClient::new(url, remote_node.clone());
         let index_handle = transport.get_handle(cell.clone(), TransportLayer::Index);
-        let remote_store = RemoteStore::new(
-            StoreConfiguration::default(),
+        let remote_store = StoreClient::new(
+            ClientConfiguration::default(),
             cell.clone(),
             clock,
             schema.clone(),
