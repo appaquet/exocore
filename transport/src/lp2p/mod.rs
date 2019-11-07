@@ -1,5 +1,4 @@
 pub mod behaviour;
-pub mod common_transport;
 pub mod protocol;
 
 use crate::messages::InMessage;
@@ -18,8 +17,8 @@ use exocore_common::utils::futures::spawn_future;
 use futures::prelude::*;
 use futures::sync::mpsc;
 use futures::MapErr;
-use libp2p_core::{Multiaddr, PeerId};
-use libp2p_swarm::Swarm;
+use libp2p::core::{Multiaddr, PeerId};
+use libp2p::swarm::Swarm;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock, Weak};
 use std::time::Duration;
@@ -183,8 +182,7 @@ impl Libp2pTransport {
     ///
     fn start(&mut self) -> Result<(), Error> {
         let local_keypair = self.local_node.keypair().clone();
-        let transport =
-            common_transport::build_tcp_ws_secio_mplex_yamux(local_keypair.to_libp2p().clone());
+        let transport = libp2p::build_tcp_ws_secio_mplex_yamux(local_keypair.to_libp2p().clone());
 
         let behaviour = ExocoreBehaviour::new();
         let mut swarm = Swarm::new(transport, behaviour, self.local_node.peer_id().clone());
