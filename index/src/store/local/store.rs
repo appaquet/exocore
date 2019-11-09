@@ -4,27 +4,19 @@ use futures::prelude::*;
 use futures::sync::mpsc;
 use tokio::prelude::*;
 
-use exocore_common::cell::FullCell;
-use exocore_common::protos::index_transport_capnp::{mutation_request, query_request};
-use exocore_common::protos::MessageType;
 use exocore_common::utils::completion_notifier::{
     CompletionError, CompletionListener, CompletionNotifier,
 };
 use exocore_common::utils::futures::spawn_future;
 use exocore_schema::schema::Schema;
-use exocore_transport::{
-    InEvent, InMessage, OutEvent, OutMessage, TransportHandle, TransportLayer,
-};
 
 use crate::error::Error;
 use crate::mutation::{Mutation, MutationResult};
 use crate::query::{Query, QueryResult};
-use crate::store::local::watched_queries::{Consumer, WatchedQueries};
+use crate::store::local::watched_queries::WatchedQueries;
 use crate::store::{AsyncResult, AsyncStore, ResultStream};
 
 use super::entities_index::EntitiesIndex;
-
-// TODO: remove all the remote aspect of this
 
 ///
 /// Locally persisted store. It uses a data engine handle and entities index to
@@ -38,7 +30,6 @@ where
     start_notifier: CompletionNotifier<(), Error>,
     started: bool,
     inner: Arc<RwLock<Inner<CS, PS>>>,
-    //    transport_handle: Option<T>,
     stop_listener: CompletionListener<(), Error>,
 }
 
@@ -48,11 +39,9 @@ where
     PS: exocore_data::pending::PendingStore,
 {
     pub fn new(
-        cell: FullCell,
         schema: Arc<Schema>,
         data_handle: exocore_data::engine::EngineHandle<CS, PS>,
         index: EntitiesIndex<CS, PS>,
-        //        transport_handle: T,
     ) -> Result<LocalStore<CS, PS>, Error> {
         let (stop_notifier, stop_listener) = CompletionNotifier::new_with_listener();
         let start_notifier = CompletionNotifier::new();
@@ -60,12 +49,10 @@ where
         let watched = WatchedQueries::new();
 
         let inner = Arc::new(RwLock::new(Inner {
-            cell,
             schema,
             index,
             watched_queries: watched,
             data_handle,
-            transport_out: None,
             stop_notifier,
         }));
 
@@ -73,7 +60,6 @@ where
             start_notifier,
             started: false,
             inner,
-            //            transport_handle: Some(transport_handle),
             stop_listener,
         })
     }
@@ -113,12 +99,8 @@ where
                                 .watched_queries
                                 .update_query(&watched_query.query, &result)?;
 
-                            match &watched_query.consumer {
-                                Consumer::Local(channel) => {
-                                    // TODO: Should be bounded
-                                    let _ = channel.unbounded_send(result);
-                                }
-                            }
+                            // TODO: Should be bounded
+                            let _ = watched_query.consumer.unbounded_send(result);
                         }
                     }
 
@@ -208,12 +190,10 @@ where
     CS: exocore_data::chain::ChainStore,
     PS: exocore_data::pending::PendingStore,
 {
-    cell: FullCell,
     schema: Arc<Schema>,
     index: EntitiesIndex<CS, PS>,
     watched_queries: WatchedQueries,
     data_handle: exocore_data::engine::EngineHandle<CS, PS>,
-    transport_out: Option<mpsc::UnboundedSender<OutEvent>>,
     stop_notifier: CompletionNotifier<(), Error>,
 }
 
@@ -406,24 +386,6 @@ pub mod tests {
         Ok(())
     }
 
-    //    #[test]
-    //    fn store_mutate_query_via_transport() -> Result<(), failure::Error> {
-    //        let mut test_store = TestLocalStore::new()?;
-    //        test_store.start_store()?;
-    //
-    //        let mutation = test_store.create_put_contact_mutation("entry1", "contact1", "Hello World");
-    //        let response = test_store.mutate_via_transport(mutation)?;
-    //        test_store
-    //            .cluster
-    //            .wait_operation_committed(0, response.operation_id);
-    //
-    //        let query = Query::match_text("hello");
-    //        let results = test_store.query_via_transport(query)?;
-    //        assert_eq!(results.results.len(), 1);
-    //
-    //        Ok(())
-    //    }
-
     #[test]
     fn query_error_propagating() -> Result<(), failure::Error> {
         let mut test_store = TestLocalStore::new()?;
@@ -431,9 +393,6 @@ pub mod tests {
 
         let query = Query::test_fail();
         assert!(test_store.query_via_handle(query).is_err());
-        //
-        //        let query = Query::test_fail();
-        //        assert!(test_store.query_via_transport(query).is_err());
 
         Ok(())
     }
@@ -445,9 +404,6 @@ pub mod tests {
 
         let mutation = Mutation::TestFail(TestFailMutation {});
         assert!(test_store.mutate_via_handle(mutation).is_err());
-        //
-        //        let mutation = Mutation::TestFail(TestFailMutation {});
-        //        assert!(test_store.mutate_via_transport(mutation).is_err());
 
         Ok(())
     }

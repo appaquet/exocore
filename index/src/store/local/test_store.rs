@@ -61,12 +61,7 @@ impl TestLocalStore {
             cluster.get_handle(0).try_clone()?,
         )?;
 
-        let store = LocalStore::new(
-            cluster.cells[0].clone(),
-            schema.clone(),
-            cluster.get_new_handle(0),
-            index,
-        )?;
+        let store = LocalStore::new(schema.clone(), cluster.get_new_handle(0), index)?;
         let store_handle = store.get_handle()?;
 
         Ok(TestLocalStore {

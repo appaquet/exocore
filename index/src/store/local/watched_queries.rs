@@ -20,15 +20,10 @@ pub struct WatchedQueries {
 
 #[derive(Clone)]
 pub struct WatchedQuery {
-    pub(crate) consumer: Consumer,
+    pub(crate) consumer: mpsc::UnboundedSender<QueryResult>,
     pub(crate) query: Arc<Query>,
     pub(crate) last_register: Instant,
     pub(crate) last_hash: ResultHash,
-}
-
-#[derive(Clone)]
-pub enum Consumer {
-    Local(mpsc::UnboundedSender<QueryResult>),
 }
 
 impl WatchedQueries {
@@ -43,7 +38,7 @@ impl WatchedQueries {
     pub fn watch_query(
         &self,
         query: Query,
-        consumer: Consumer,
+        consumer: mpsc::UnboundedSender<QueryResult>,
         results: &QueryResult,
     ) -> Result<(), Error> {
         let mut inner = self.inner.lock()?;

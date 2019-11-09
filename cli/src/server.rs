@@ -7,6 +7,7 @@ use exocore_data::{
     MemoryPendingStore,
 };
 use exocore_index::store::local::{EntitiesIndex, EntitiesIndexConfig, LocalStore};
+use exocore_index::store::remote::server::StoreServer;
 use exocore_schema::schema::Schema;
 use exocore_transport::either::EitherTransportHandle;
 use exocore_transport::lp2p::Libp2pTransportConfig;
@@ -181,15 +182,24 @@ fn create_local_store<T: TransportHandle>(
     schema: Arc<Schema>,
     entities_index: EntitiesIndex<DirectoryChainStore, MemoryPendingStore>,
 ) -> Result<(), failure::Error> {
-    let local_index_store = LocalStore::new(
-        full_cell.clone(),
-        schema,
-        index_engine_handle,
-        entities_index,
-        //        transport,
-    )?;
+    let local_store = LocalStore::new(schema.clone(), index_engine_handle, entities_index)?;
+    let store_handle = local_store.get_handle()?;
+
     rt.spawn(
-        local_index_store
+        local_store
+            .map(|_| {
+                info!("Local index has stopped");
+            })
+            .map_err(|err| {
+                error!("Local index has stopped: {}", err);
+            }),
+    );
+    let _ = rt.block_on(store_handle.on_start()?);
+
+    let remote_store_server =
+        StoreServer::new(full_cell.cell().clone(), schema, store_handle, transport)?;
+    rt.spawn(
+        remote_store_server
             .map(|_| {
                 info!("Local index has stopped");
             })
