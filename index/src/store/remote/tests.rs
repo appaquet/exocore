@@ -4,7 +4,7 @@ use futures::Future;
 
 use exocore_common::node::LocalNode;
 use exocore_common::tests_utils::expect_eventually;
-use exocore_transport::mock::{MockTransport, MockTransportHandle};
+use exocore_transport::mock::MockTransportHandle;
 use exocore_transport::TransportLayer;
 
 use crate::error::Error;
@@ -15,7 +15,6 @@ use crate::store::AsyncStore;
 
 use super::*;
 use crate::store::remote::server::StoreServer;
-use exocore_data::{DirectoryChainStore, MemoryPendingStore};
 
 #[test]
 fn mutation_and_query() -> Result<(), failure::Error> {
@@ -147,7 +146,7 @@ impl TestRemoteStore {
     }
 
     fn start_server(&mut self) -> Result<(), failure::Error> {
-        let store_handle = self.local_store.store.as_ref().unwrap().get_handle()?;
+        let store_handle = self.local_store.store.as_ref().unwrap().get_handle();
 
         self.local_store.start_store()?;
 

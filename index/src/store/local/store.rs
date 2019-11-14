@@ -1,7 +1,7 @@
-use std::sync::{Arc, RwLock, Weak};
+use std::sync::{Arc, Mutex, RwLock, Weak};
 
 use futures::prelude::*;
-use futures::sync::mpsc;
+use futures::sync::{mpsc, oneshot};
 use tokio::prelude::*;
 
 use exocore_common::utils::completion_notifier::{
@@ -12,22 +12,39 @@ use exocore_schema::schema::Schema;
 
 use crate::error::Error;
 use crate::mutation::{Mutation, MutationResult};
-use crate::query::{Query, QueryResult};
+use crate::query::{Query, QueryResult, WatchToken};
 use crate::store::local::watched_queries::WatchedQueries;
 use crate::store::{AsyncResult, AsyncStore, ResultStream};
 
 use super::entities_index::EntitiesIndex;
 
-///
+/// Config for `LocalStore`
+#[derive(Clone, Copy)]
+pub struct Config {
+    pub query_channel_size: usize,
+    pub query_parallelism: usize,
+    pub handle_watch_query_channel_size: usize,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            query_channel_size: 1000,
+            query_parallelism: 4,
+            handle_watch_query_channel_size: 1000,
+        }
+    }
+}
+
 /// Locally persisted store. It uses a data engine handle and entities index to
-/// perform mutations and resolve queries
-///
+/// perform mutations and resolve queries.
 pub struct LocalStore<CS, PS>
 where
     CS: exocore_data::chain::ChainStore,
     PS: exocore_data::pending::PendingStore,
 {
     start_notifier: CompletionNotifier<(), Error>,
+    config: Config,
     started: bool,
     inner: Arc<RwLock<Inner<CS, PS>>>,
     stop_listener: CompletionListener<(), Error>,
@@ -39,6 +56,7 @@ where
     PS: exocore_data::pending::PendingStore,
 {
     pub fn new(
+        config: Config,
         schema: Arc<Schema>,
         data_handle: exocore_data::engine::EngineHandle<CS, PS>,
         index: EntitiesIndex<CS, PS>,
@@ -47,71 +65,97 @@ where
         let start_notifier = CompletionNotifier::new();
 
         let watched = WatchedQueries::new();
-
         let inner = Arc::new(RwLock::new(Inner {
             schema,
             index,
             watched_queries: watched,
+            queries_sender: None,
             data_handle,
             stop_notifier,
         }));
 
         Ok(LocalStore {
             start_notifier,
+            config,
             started: false,
             inner,
             stop_listener,
         })
     }
 
-    pub fn get_handle(&self) -> Result<StoreHandle<CS, PS>, Error> {
+    pub fn get_handle(&self) -> StoreHandle<CS, PS> {
         let start_listener = self
             .start_notifier
             .get_listener()
             .expect("Couldn't get a listener on start notifier");
-        Ok(StoreHandle {
+
+        StoreHandle {
+            config: self.config,
             start_listener,
             inner: Arc::downgrade(&self.inner),
-        })
+        }
     }
 
     fn start(&mut self) -> Result<(), Error> {
         let mut inner = self.inner.write()?;
 
-        // query watching changes
-        let (mut watching_sender, watching_receiver) = mpsc::channel(2);
+        // incoming queries execution
+        let (queries_sender, queries_receiver) = mpsc::channel(self.config.query_channel_size);
         let weak_inner1 = Arc::downgrade(&self.inner);
         let weak_inner2 = Arc::downgrade(&self.inner);
+        let weak_inner3 = Arc::downgrade(&self.inner);
         spawn_future(
-            watching_receiver
+            queries_receiver
                 .map_err(|_| Error::Dropped)
-                // TODO: Throttle
-                .for_each(move |_| {
-                    let inner = weak_inner1.upgrade().ok_or(Error::Dropped)?;
+                .map(move |watch_request: QueryRequest| {
+                    debug!("Executing new query");
+                    Inner::execute_query_async(weak_inner1.clone(), watch_request.query.clone())
+                        .then(|result| Ok((result, watch_request)))
+                })
+                .buffer_unordered(self.config.query_parallelism)
+                .for_each(move |(result, query_request)| {
+                    let inner = weak_inner2.upgrade().ok_or(Error::Dropped)?;
                     let inner = inner.read()?;
 
-                    // TODO: Should mark as blocking
-                    let watched_queries = inner.watched_queries.queries()?;
-                    for watched_query in watched_queries {
-                        let result = inner.index.search(&watched_query.query)?;
-                        if result.hash != watched_query.last_hash {
-                            inner
-                                .watched_queries
-                                .update_query(&watched_query.query, &result)?;
+                    match &result {
+                        Ok(_) => debug!("Got query result"),
+                        Err(err) => warn!("Error executing query: {}", err),
+                    }
 
-                            // TODO: Should be bounded
-                            let _ = watched_query.consumer.unbounded_send(result);
+                    let should_reply = match (&query_request.sender, &result) {
+                        (QueryRequestSender::Stream(sender), Ok(result)) => inner
+                            .watched_queries
+                            .update_query_results(&query_request.query, result, sender.clone()),
+
+                        (QueryRequestSender::Stream(_), Err(_err)) => {
+                            if let Some(watch_token) = query_request.query.token {
+                                inner.watched_queries.unwatch_query(watch_token);
+                            }
+
+                            true
                         }
+
+                        (QueryRequestSender::Future(_), _result) => true,
+                    };
+
+                    if should_reply {
+                        query_request.send(result);
                     }
 
                     Ok(())
                 })
                 .map_err(move |_| {
-                    Inner::notify_stop("query watching stream", &weak_inner2, Err(Error::Dropped))
+                    Inner::notify_stop(
+                        "watched query events stream",
+                        &weak_inner3,
+                        Err(Error::Dropped),
+                    )
                 }),
         );
+        inner.queries_sender = Some(queries_sender);
 
         // schedule data engine events stream
+        let (mut watch_check_sender, watch_check_receiver) = mpsc::channel(2);
         let weak_inner1 = Arc::downgrade(&self.inner);
         let weak_inner2 = Arc::downgrade(&self.inner);
         let weak_inner3 = Arc::downgrade(&self.inner);
@@ -119,7 +163,7 @@ where
             inner
                 .data_handle
                 .take_events_stream()?
-                // TODO: throttled
+                // TODO: Should be throttled & buffered https://github.com/appaquet/exocore/issues/130
                 .map_err(|err| err.into())
                 .for_each(move |event| {
                     if let Err(err) = Self::handle_data_engine_event(&weak_inner1, event) {
@@ -131,7 +175,7 @@ where
                     }
 
                     // notify query watching. if it's full, it's guaranteed that it will catch those changes on next iteration
-                    let _ = watching_sender.try_send(());
+                    let _ = watch_check_sender.try_send(());
 
                     Ok(())
                 })
@@ -140,6 +184,47 @@ where
                 })
                 .map_err(move |err| {
                     Inner::notify_stop("data engine event stream", &weak_inner3, Err(err))
+                }),
+        );
+
+        // checks if watched queries have their results changed
+        let weak_inner1 = Arc::downgrade(&self.inner);
+        let weak_inner2 = Arc::downgrade(&self.inner);
+        spawn_future(
+            watch_check_receiver
+                .map_err(|_| Error::Dropped)
+                .for_each(move |_| {
+                    let inner = weak_inner1.upgrade().ok_or(Error::Dropped)?;
+                    let mut inner = inner.write()?;
+
+                    for query in inner.watched_queries.queries() {
+                        let send_result =
+                            inner
+                                .queries_sender
+                                .as_mut()
+                                .unwrap()
+                                .try_send(QueryRequest {
+                                    query: query.query.as_ref().clone(),
+                                    sender: QueryRequestSender::Stream(query.sender.clone()),
+                                });
+
+                        if let Err(err) = send_result {
+                            error!(
+                                "Error sending to watched query. Removing it from queries: {}",
+                                err
+                            );
+                            inner.watched_queries.unwatch_query(query.token);
+                        }
+                    }
+
+                    Ok(())
+                })
+                .map_err(move |_| {
+                    Inner::notify_stop(
+                        "watched queries checker stream",
+                        &weak_inner2,
+                        Err(Error::Dropped),
+                    )
                 }),
         );
 
@@ -193,6 +278,7 @@ where
     schema: Arc<Schema>,
     index: EntitiesIndex<CS, PS>,
     watched_queries: WatchedQueries,
+    queries_sender: Option<mpsc::Sender<QueryRequest>>,
     data_handle: exocore_data::engine::EngineHandle<CS, PS>,
     stop_notifier: CompletionNotifier<(), Error>,
 }
@@ -248,7 +334,6 @@ where
         weak_inner: Weak<RwLock<Inner<CS, PS>>>,
         query: Query,
     ) -> impl Future<Item = QueryResult, Error = Error> {
-        // TODO: Use a bounded threadpool instead of executing on current executor: https://github.com/appaquet/exocore/issues/113
         future::lazy(|| {
             future::poll_fn(move || {
                 let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
@@ -278,6 +363,7 @@ where
     CS: exocore_data::chain::ChainStore,
     PS: exocore_data::pending::PendingStore,
 {
+    config: Config,
     start_listener: CompletionListener<(), Error>,
     inner: Weak<RwLock<Inner<CS, PS>>>,
 }
@@ -312,30 +398,76 @@ where
     }
 
     fn query(&self, query: Query) -> AsyncResult<QueryResult> {
-        let weak_inner = self.inner.clone();
-        Box::new(Inner::execute_query_async(weak_inner, query))
+        let inner = if let Some(inner) = self.inner.upgrade() {
+            inner
+        } else {
+            return Box::new(future::err(Error::Dropped));
+        };
+
+        let mut inner = if let Ok(inner) = inner.write() {
+            inner
+        } else {
+            return Box::new(future::err(Error::Dropped));
+        };
+
+        let (sender, receiver) = oneshot::channel();
+        let new_sender = inner.queries_sender.as_mut().expect("Queries sender channel was not initialized. A query was made before the store was started.");
+
+        // ok to dismiss send as sender end will be dropped in case of an error and consumer will be notified by channel being closed
+        let _ = new_sender.try_send(QueryRequest {
+            query,
+            sender: QueryRequestSender::Future(sender),
+        });
+
+        Box::new(
+            receiver
+                .map_err(|_| Error::Other("Query channel was cancelled".to_string()))
+                .and_then(|result| result),
+        )
     }
 
-    fn watched_query(&self, _query: Query) -> ResultStream<QueryResult> {
-        let weak_inner = self.inner.clone();
+    fn watched_query(&self, query: Query) -> ResultStream<QueryResult> {
+        let inner = if let Some(inner) = self.inner.upgrade() {
+            inner
+        } else {
+            return Box::new(stream::once(Err(Error::Dropped)));
+        };
 
-        // TOOD: Should be bounded
-        let (sender, receiver) = mpsc::unbounded();
+        let mut inner = if let Ok(inner) = inner.write() {
+            inner
+        } else {
+            return Box::new(stream::once(Err(Error::Dropped)));
+        };
+
+        let watch_token = query.token;
+
+        let (sender, receiver) = mpsc::channel(self.config.handle_watch_query_channel_size);
+        let new_sender = inner.queries_sender.as_mut().expect("Queries sender channel was not initialized. A query was made before the store was started.");
+
+        // ok to dismiss send as sender end will be dropped in case of an error and consumer will be notified by channel being closed
+        let _ = new_sender.try_send(QueryRequest {
+            query,
+            sender: QueryRequestSender::Stream(Arc::new(Mutex::new(sender))),
+        });
 
         Box::new(LocalWatchedQuery {
-            inner: weak_inner,
+            watch_token,
+            inner: self.inner.clone(),
             receiver,
         })
     }
 }
 
+/// A query received through the `watched_query` method that needs to be watched and notified
+/// when new changes happen to the store that would affects its results.
 pub struct LocalWatchedQuery<CS, PS>
 where
     CS: exocore_data::chain::ChainStore,
     PS: exocore_data::pending::PendingStore,
 {
+    watch_token: Option<WatchToken>,
     inner: Weak<RwLock<Inner<CS, PS>>>,
-    receiver: mpsc::UnboundedReceiver<QueryResult>,
+    receiver: mpsc::Receiver<Result<QueryResult, Error>>,
 }
 
 impl<CS, PS> Stream for LocalWatchedQuery<CS, PS>
@@ -347,7 +479,16 @@ where
     type Error = Error;
 
     fn poll(&mut self) -> Result<Async<Option<Self::Item>>, Self::Error> {
-        unimplemented!()
+        let res = self.receiver.poll();
+        match res {
+            Ok(Async::Ready(Some(Ok(result)))) => Ok(Async::Ready(Some(result))),
+            Ok(Async::Ready(None)) => Ok(Async::Ready(None)),
+            Ok(Async::Ready(Some(Err(err)))) => Err(err),
+            Ok(Async::NotReady) => Ok(Async::NotReady),
+            Err(_) => Err(Error::Other(
+                "Error polling watch query channel".to_string(),
+            )),
+        }
     }
 }
 
@@ -357,7 +498,39 @@ where
     PS: exocore_data::pending::PendingStore,
 {
     fn drop(&mut self) {
-        // TODO: unregister query
+        if let Some(watch_token) = self.watch_token {
+            if let Some(inner) = self.inner.upgrade() {
+                if let Ok(inner) = inner.read() {
+                    inner.watched_queries.unwatch_query(watch_token);
+                }
+            }
+        }
+    }
+}
+
+/// Incoming query to be executed, or re-scheduled watched query to be re-executed.
+struct QueryRequest {
+    query: Query,
+    sender: QueryRequestSender,
+}
+
+enum QueryRequestSender {
+    Stream(Arc<Mutex<mpsc::Sender<Result<QueryResult, Error>>>>),
+    Future(oneshot::Sender<Result<QueryResult, Error>>),
+}
+
+impl QueryRequest {
+    fn send(mut self, result: Result<QueryResult, Error>) {
+        match self.sender {
+            QueryRequestSender::Future(sender) => {
+                let _ = sender.send(result);
+            }
+            QueryRequestSender::Stream(ref mut sender) => {
+                if let Ok(mut sender) = sender.lock() {
+                    let _ = sender.try_send(result);
+                }
+            }
+        }
     }
 }
 
@@ -367,6 +540,8 @@ pub mod tests {
     use crate::store::local::TestLocalStore;
 
     use super::*;
+    use exocore_common::time::ConsistentTimestamp;
+    use std::time::Duration;
 
     #[test]
     fn store_mutate_query_via_handle() -> Result<(), failure::Error> {
@@ -404,6 +579,74 @@ pub mod tests {
 
         let mutation = Mutation::TestFail(TestFailMutation {});
         assert!(test_store.mutate_via_handle(mutation).is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn watched_query() -> Result<(), failure::Error> {
+        let mut test_store = TestLocalStore::new()?;
+        test_store.start_store()?;
+
+        let query = Query::match_text("hello").with_watch_token(ConsistentTimestamp(123));
+        let stream = test_store.store_handle.watched_query(query);
+
+        let (result, stream) = test_store
+            .cluster
+            .runtime
+            .block_on(stream.into_future())
+            .map_err(|_| ())
+            .unwrap();
+        assert_eq!(result.unwrap().results.len(), 0);
+
+        let mutation = test_store.create_put_contact_mutation("entry1", "contact1", "Hello World");
+        let response = test_store.mutate_via_handle(mutation)?;
+        test_store
+            .cluster
+            .wait_operation_committed(0, response.operation_id);
+
+        let (result, stream) = test_store
+            .cluster
+            .runtime
+            .block_on(stream.into_future())
+            .map_err(|_| ())
+            .unwrap();
+        assert_eq!(result.unwrap().results.len(), 1);
+
+        let mutation =
+            test_store.create_put_contact_mutation("entry2", "contact2", "Something else");
+        let response = test_store.mutate_via_handle(mutation)?;
+        test_store
+            .cluster
+            .wait_operation_committed(0, response.operation_id);
+
+        let result = test_store
+            .cluster
+            .runtime
+            .block_on(stream.into_future().timeout(Duration::from_secs(1)));
+
+        match result {
+            Err(err) if err.is_elapsed() => {
+                // fine
+            }
+            _ => {
+                panic!("Expected timeout, got something else");
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn watched_query_failure() -> Result<(), failure::Error> {
+        let mut test_store = TestLocalStore::new()?;
+        test_store.start_store()?;
+
+        let query = Query::test_fail().with_watch_token(ConsistentTimestamp(123));
+        let stream = test_store.store_handle.watched_query(query);
+
+        let result = test_store.cluster.runtime.block_on(stream.into_future());
+        assert!(result.is_err());
 
         Ok(())
     }

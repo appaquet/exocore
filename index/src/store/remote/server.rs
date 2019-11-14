@@ -3,7 +3,7 @@ use std::sync::{Arc, RwLock, Weak};
 use futures::prelude::*;
 use futures::sync::mpsc;
 
-use exocore_common::cell::{Cell, FullCell};
+use exocore_common::cell::Cell;
 use exocore_common::protos::index_transport_capnp::{mutation_request, query_request};
 use exocore_common::protos::MessageType;
 use exocore_common::utils::completion_notifier::{

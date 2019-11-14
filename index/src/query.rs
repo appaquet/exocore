@@ -104,6 +104,11 @@ impl Query {
         self
     }
 
+    pub fn with_watch_token(mut self, token: WatchToken) -> Self {
+        self.token = Some(token);
+        self
+    }
+
     pub fn only_summary(mut self) -> Self {
         self.summary = true;
         self

@@ -182,8 +182,14 @@ fn create_local_store<T: TransportHandle>(
     schema: Arc<Schema>,
     entities_index: EntitiesIndex<DirectoryChainStore, MemoryPendingStore>,
 ) -> Result<(), failure::Error> {
-    let local_store = LocalStore::new(schema.clone(), index_engine_handle, entities_index)?;
-    let store_handle = local_store.get_handle()?;
+    // TODO: Config
+    let local_store = LocalStore::new(
+        Default::default(),
+        schema.clone(),
+        index_engine_handle,
+        entities_index,
+    )?;
+    let store_handle = local_store.get_handle();
 
     rt.spawn(
         local_store

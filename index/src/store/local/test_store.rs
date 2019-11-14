@@ -1,19 +1,12 @@
 use std::sync::Arc;
 
-use failure::err_msg;
-use futures::{Future, Sink, Stream};
+use futures::Future;
 use tempdir::TempDir;
 
-use exocore_common::node::LocalNode;
 use exocore_data::tests_utils::DataTestCluster;
 use exocore_data::{DirectoryChainStore, MemoryPendingStore};
 use exocore_schema::entity::{EntityId, RecordBuilder, TraitBuilder, TraitId};
 use exocore_schema::schema::Schema;
-use exocore_transport::mock::MockTransportHandle;
-use exocore_transport::transport::{MpscHandleSink, MpscHandleStream};
-use exocore_transport::{
-    InEvent, InMessage, OutEvent, OutMessage, TransportHandle, TransportLayer,
-};
 
 use crate::mutation::{Mutation, MutationResult, PutTraitMutation};
 use crate::query::{Query, QueryResult};
@@ -32,13 +25,13 @@ pub struct TestLocalStore {
     pub schema: Arc<Schema>,
 
     pub store: Option<LocalStore<DirectoryChainStore, MemoryPendingStore>>,
-    store_handle: StoreHandle<DirectoryChainStore, MemoryPendingStore>,
+    pub store_handle: StoreHandle<DirectoryChainStore, MemoryPendingStore>,
     _temp_dir: TempDir,
 }
 
 impl TestLocalStore {
     pub fn new() -> Result<TestLocalStore, failure::Error> {
-        let mut cluster = DataTestCluster::new_single_and_start()?;
+        let cluster = DataTestCluster::new_single_and_start()?;
 
         let temp_dir = tempdir::TempDir::new("store")?;
         let schema = exocore_schema::test_schema::create();
@@ -61,8 +54,13 @@ impl TestLocalStore {
             cluster.get_handle(0).try_clone()?,
         )?;
 
-        let store = LocalStore::new(schema.clone(), cluster.get_new_handle(0), index)?;
-        let store_handle = store.get_handle()?;
+        let store = LocalStore::new(
+            Default::default(),
+            schema.clone(),
+            cluster.get_new_handle(0),
+            index,
+        )?;
+        let store_handle = store.get_handle();
 
         Ok(TestLocalStore {
             cluster,
