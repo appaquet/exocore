@@ -129,12 +129,6 @@ impl ExocoreClient {
     pub fn mutate(&self) -> crate::mutation::MutationBuilder {
         crate::mutation::MutationBuilder::new(self.schema.clone(), self.store_handle.clone())
     }
-
-    #[wasm_bindgen]
-    pub fn bla(&mut self, func: js_sys::Function) {
-        let mut inner = self.inner.lock().unwrap();
-        inner.status_change_callback = Some(func);
-    }
 }
 
 impl Drop for ExocoreClient {

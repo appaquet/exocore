@@ -182,9 +182,9 @@ fn create_local_store<T: TransportHandle>(
     schema: Arc<Schema>,
     entities_index: EntitiesIndex<DirectoryChainStore, MemoryPendingStore>,
 ) -> Result<(), failure::Error> {
-    // TODO: Config
+    let store_config = Default::default();
     let local_store = LocalStore::new(
-        Default::default(),
+        store_config,
         schema.clone(),
         index_engine_handle,
         entities_index,
