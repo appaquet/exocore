@@ -12,11 +12,10 @@ jobs:
         run: |
           set -e
 
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y -c rustfmt clippy
+          rustup update
           export PATH=$PATH:$HOME/.cargo/bin:/usr/local/cargo/bin
           rustc --version && cargo --version
-          rustup component add rustfmt
-          rustup component add clippy
 
       - name: Check & test
         run: |
@@ -45,11 +44,10 @@ jobs:
 
           apt update && apt install -y clang curl
 
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y -c rustfmt clippy -t wasm32-unknown-unknown
+          rustup update
           export PATH=$PATH:$HOME/.cargo/bin:/usr/local/cargo/bin
           rustc --version && cargo --version
-
-          rustup target add wasm32-unknown-unknown
 
       - name: Check & test
         run: |
@@ -69,7 +67,8 @@ jobs:
         run: |
           set -e
 
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y -c rustfmt clippy
+          rustup update
           export PATH=$PATH:$HOME/.cargo/bin:/usr/local/cargo/bin
           rustc --version && cargo --version
           rustup toolchain install nightly-2019-09-01 # if changed, change in coverage.sh
