@@ -625,7 +625,7 @@ pub mod tests {
             .runtime
             .block_on(stream.into_future().timeout(Duration::from_secs(1)));
 
-        match result {
+        match &result {
             Err(err) if err.is_elapsed() => {
                 // fine
             }
