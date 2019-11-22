@@ -22,35 +22,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Weak};
 use std::time::Duration;
 
-///
-/// Configuration for remote store
-///
-#[derive(Debug, Clone, Copy)]
-pub struct ClientConfiguration {
-    /// Duration before considering query has timed out if not responded
-    pub query_timeout: Duration,
-
-    /// Duration before considering mutation has timed out if not responded
-    pub mutation_timeout: Duration,
-
-    /// Interval at which we should check for pending queries and mutations timeout
-    pub timeout_check_interval: Duration,
-}
-
-impl Default for ClientConfiguration {
-    fn default() -> Self {
-        ClientConfiguration {
-            query_timeout: Duration::from_secs(10),
-            mutation_timeout: Duration::from_secs(5),
-            timeout_check_interval: Duration::from_millis(100),
-        }
-    }
-}
-
-///
 /// This implementation of the AsyncStore allow sending all queries and mutations to
 /// a remote node's local store.
-///
 pub struct StoreClient<T>
 where
     T: TransportHandle,
@@ -86,6 +59,7 @@ where
             transport_out: None,
             index_node,
             pending_queries: HashMap::new(),
+            watched_queries: HashMap::new(),
             pending_mutations: HashMap::new(),
             stop_notifier,
         }));
@@ -172,15 +146,15 @@ where
                 }),
         );
 
-        // schedule query & mutation requests timeout checker
+        // management timer that checks for timed out queries & register watched queries
         let weak_inner1 = Arc::downgrade(&self.inner);
         let weak_inner2 = Arc::downgrade(&self.inner);
         spawn_future(
-            wasm_timer::Interval::new_interval(self.config.timeout_check_interval)
-                .map_err(|err| Error::Fatal(format!("Timer error: {}", err)))
-                .for_each(move |_| Self::check_requests_timout(&weak_inner1))
+            wasm_timer::Interval::new_interval(self.config.management_interval)
+                .map_err(|err| Error::Fatal(format!("Management timer error: {}", err)))
+                .for_each(move |_| Self::management_timer_process(&weak_inner1))
                 .map_err(move |err| {
-                    Inner::notify_stop("timeout check error", &weak_inner2, Err(err));
+                    Inner::notify_stop("management timeout error", &weak_inner2, Err(err));
                 }),
         );
 
@@ -215,9 +189,11 @@ where
                     )));
                 }
             }
-            Ok(IncomingMessage::QueryResponse(query)) => {
+            Ok(IncomingMessage::QueryResponse(result)) => {
                 if let Some(pending_request) = inner.pending_queries.remove(&request_id) {
-                    let _ = pending_request.result_sender.send(Ok(query));
+                    let _ = pending_request.result_sender.send(Ok(result));
+                } else if let Some(watched_query) = inner.watched_queries.get_mut(&request_id) {
+                    let _ = watched_query.result_sender.try_send(Ok(result));
                 } else {
                     return Err(Error::Other(format!(
                         "Couldn't find pending query for query response (request_id={:?} type={:?} from={:?})",
@@ -226,8 +202,11 @@ where
                 }
             }
             Err(err) => {
+                // TODO: watch query
                 if let Some(pending_request) = inner.pending_mutations.remove(&request_id) {
                     let _ = pending_request.result_sender.send(Err(err));
+                } else if let Some(mut watched_query) = inner.watched_queries.remove(&request_id) {
+                    let _ = watched_query.result_sender.try_send(Err(err));
                 } else if let Some(pending_request) = inner.pending_queries.remove(&request_id) {
                     let _ = pending_request.result_sender.send(Err(err));
                 }
@@ -237,7 +216,7 @@ where
         Ok(())
     }
 
-    fn check_requests_timout(weak_inner: &Weak<RwLock<Inner>>) -> Result<(), Error> {
+    fn management_timer_process(weak_inner: &Weak<RwLock<Inner>>) -> Result<(), Error> {
         let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
         let mut inner = inner.write()?;
 
@@ -246,6 +225,8 @@ where
 
         let mutation_timeout = inner.config.mutation_timeout;
         Inner::check_map_requests_timeouts(&mut inner.pending_mutations, mutation_timeout);
+
+        inner.check_register_watched_queries();
 
         Ok(())
     }
@@ -272,9 +253,31 @@ where
     }
 }
 
-///
-/// Inner instance of the store
-///
+#[derive(Debug, Clone, Copy)]
+pub struct ClientConfiguration {
+    pub query_timeout: Duration,
+
+    pub mutation_timeout: Duration,
+
+    pub management_interval: Duration,
+
+    pub watched_queries_register_interval: Duration,
+
+    pub watched_query_channel_size: usize,
+}
+
+impl Default for ClientConfiguration {
+    fn default() -> Self {
+        ClientConfiguration {
+            query_timeout: Duration::from_secs(10),
+            mutation_timeout: Duration::from_secs(5),
+            watched_queries_register_interval: Duration::from_secs(10),
+            management_interval: Duration::from_millis(100),
+            watched_query_channel_size: 1000,
+        }
+    }
+}
+
 struct Inner {
     config: ClientConfiguration,
     cell: Cell,
@@ -283,6 +286,7 @@ struct Inner {
     transport_out: Option<mpsc::UnboundedSender<OutEvent>>,
     index_node: Node,
     pending_queries: HashMap<ConsistentTimestamp, PendingRequest<QueryResult>>,
+    watched_queries: HashMap<ConsistentTimestamp, WatchedQuery>,
     pending_mutations: HashMap<ConsistentTimestamp, PendingRequest<MutationResult>>,
     stop_notifier: CompletionNotifier<(), Error>,
 }
@@ -342,6 +346,50 @@ impl Inner {
         Ok(receiver)
     }
 
+    fn watch_query(
+        &mut self,
+        query: Query,
+    ) -> Result<
+        (
+            ConsistentTimestamp,
+            mpsc::Receiver<Result<QueryResult, Error>>,
+        ),
+        Error,
+    > {
+        let query = if query.token.is_none() {
+            let watch_token = self.clock.consistent_time(self.cell.local_node());
+            query.with_watch_token(watch_token)
+        } else {
+            query
+        };
+
+        let (result_sender, receiver) = mpsc::channel(self.config.watched_query_channel_size);
+        let request_id = self.clock.consistent_time(self.cell.local_node());
+        let watched_query = WatchedQuery {
+            request_id,
+            result_sender,
+            query,
+            last_register: Instant::now(),
+        };
+
+        self.send_watch_query(&watched_query)?;
+        self.watched_queries.insert(request_id, watched_query);
+
+        Ok((request_id, receiver))
+    }
+
+    fn send_watch_query(&self, watched_query: &WatchedQuery) -> Result<(), Error> {
+        let request_frame = watched_query.query.to_query_request_frame(&self.schema)?;
+        let message =
+            OutMessage::from_framed_message(&self.cell, TransportLayer::Index, request_frame)?
+                .with_to_node(self.index_node.clone())
+                .with_rendez_vous_id(watched_query.request_id);
+
+        self.send_message(message)?;
+
+        Ok(())
+    }
+
     fn check_map_requests_timeouts<T>(
         requests: &mut HashMap<ConsistentTimestamp, PendingRequest<T>>,
         timeout: Duration,
@@ -359,6 +407,25 @@ impl Inner {
                     .result_sender
                     .send(Err(Error::Timeout(request.send_time.elapsed(), timeout)));
             }
+        }
+    }
+
+    fn check_register_watched_queries(&mut self) {
+        let register_interval = self.config.watched_queries_register_interval;
+
+        let mut sent_queries = Vec::new();
+        for (token, query) in &self.watched_queries {
+            if query.last_register.elapsed() > register_interval {
+                if let Err(err) = self.send_watch_query(query) {
+                    error!("Couldn't send watch query: {}", err);
+                }
+                sent_queries.push(*token);
+            }
+        }
+
+        for token in &sent_queries {
+            let query = self.watched_queries.get_mut(token).unwrap();
+            query.last_register = Instant::now();
         }
     }
 
@@ -441,6 +508,13 @@ struct PendingRequest<T> {
     send_time: Instant,
 }
 
+struct WatchedQuery {
+    request_id: ConsistentTimestamp,
+    query: Query,
+    result_sender: mpsc::Sender<Result<QueryResult, Error>>,
+    last_register: Instant,
+}
+
 ///
 /// Async handle to the store
 ///
@@ -504,8 +578,58 @@ impl AsyncStore for ClientHandle {
         }
     }
 
-    fn watched_query(&self, _query: Query) -> ResultStream<QueryResult> {
-        // TODO:
-        unimplemented!()
+    fn watched_query(&self, query: Query) -> ResultStream<QueryResult> {
+        let inner = match self.inner.upgrade() {
+            Some(inner) => inner,
+            None => return Box::new(futures::stream::once(Err(Error::Dropped))),
+        };
+        let mut inner = match inner.write() {
+            Ok(inner) => inner,
+            Err(err) => return Box::new(futures::stream::once(Err(err.into()))),
+        };
+
+        match inner.watch_query(query) {
+            Ok((request_id, receiver)) => Box::new(WatchedQueryStream {
+                inner: self.inner.clone(),
+                request_id,
+                receiver,
+            }),
+            Err(err) => Box::new(futures::stream::once(Err(err))),
+        }
+    }
+}
+
+struct WatchedQueryStream {
+    inner: Weak<RwLock<Inner>>,
+    request_id: ConsistentTimestamp,
+    receiver: mpsc::Receiver<Result<QueryResult, Error>>,
+}
+
+impl Stream for WatchedQueryStream {
+    type Item = QueryResult;
+    type Error = Error;
+
+    fn poll(&mut self) -> Result<Async<Option<Self::Item>>, Self::Error> {
+        let res = self.receiver.poll();
+        match res {
+            Ok(Async::Ready(Some(Ok(result)))) => Ok(Async::Ready(Some(result))),
+            Ok(Async::Ready(None)) => Ok(Async::Ready(None)),
+            Ok(Async::Ready(Some(Err(err)))) => Err(err),
+            Ok(Async::NotReady) => Ok(Async::NotReady),
+            Err(_) => Err(Error::Other(
+                "Error polling watch query channel".to_string(),
+            )),
+        }
+    }
+}
+
+impl Drop for WatchedQueryStream {
+    fn drop(&mut self) {
+        if let Some(inner) = self.inner.upgrade() {
+            if let Ok(mut inner) = inner.write() {
+                // TODO: unregister from server
+                inner.watched_queries.remove(&self.request_id);
+            }
+        }
     }
 }

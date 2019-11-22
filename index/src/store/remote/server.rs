@@ -17,6 +17,7 @@ use crate::error::Error;
 use crate::mutation::{Mutation, MutationResult};
 use crate::query::{Query, QueryResult};
 use crate::store::AsyncStore;
+use std::time::Duration;
 
 pub struct StoreServer<CS, PS, T>
 where
@@ -112,6 +113,8 @@ where
                 }),
         );
 
+        // TODO: Management timer to check if watched queries should be stopped
+
         // schedule transport handle
         let weak_inner1 = Arc::downgrade(&self.inner);
         let weak_inner2 = Arc::downgrade(&self.inner);
@@ -144,7 +147,11 @@ where
                 Self::handle_incoming_mutation_message(weak_inner, in_message, mutation)?;
             }
             IncomingMessage::Query(query) => {
-                Self::handle_incoming_query_message(weak_inner, in_message, query)?;
+                if query.token.is_none() {
+                    Self::handle_incoming_query_message(weak_inner, in_message, query)?;
+                } else {
+                    Self::handle_incoming_watched_query_message(weak_inner, in_message, query)?;
+                }
             }
         }
 
@@ -183,6 +190,45 @@ where
                 })
                 .map_err(|err: Error| {
                     error!("Error executing incoming query: {}", err);
+                }),
+        );
+
+        Ok(())
+    }
+
+    fn handle_incoming_watched_query_message(
+        weak_inner: &Weak<RwLock<Inner<CS, PS>>>,
+        in_message: Box<InMessage>,
+        query: Query,
+    ) -> Result<(), Error> {
+        let weak_inner1 = weak_inner.clone();
+        let weak_inner2 = weak_inner.clone();
+
+        let result_stream = {
+            let inner = weak_inner1.upgrade().ok_or(Error::Dropped)?;
+            let inner = inner.read()?;
+            inner.store_handle.watched_query(query.clone())
+        };
+
+        spawn_future(
+            result_stream
+                .then(move |result| -> Result<(), Error> {
+                    let inner = weak_inner2.upgrade().ok_or(Error::Dropped)?;
+                    let inner = inner.read()?;
+
+                    if let Err(err) = &result {
+                        error!("Returning error executing incoming query: {}", err);
+                    }
+
+                    let resp_frame = QueryResult::result_to_response_frame(&inner.schema, result)?;
+                    let message = in_message.to_response_message(&inner.cell, resp_frame)?;
+                    inner.send_message(message)?;
+
+                    Ok(())
+                })
+                .for_each(|_| Ok(()))
+                .map_err(|err| {
+                    error!("Error in watched query stream: {}", err);
                 }),
         );
 
@@ -329,6 +375,18 @@ impl IncomingMessage {
                 "Received message of unknown type: {}",
                 other
             ))),
+        }
+    }
+}
+
+pub struct ServerConfiguration {
+    pub watched_queries_register_timeout: Duration,
+}
+
+impl Default for ServerConfiguration {
+    fn default() -> Self {
+        ServerConfiguration {
+            watched_queries_register_timeout: Duration::from_secs(30),
         }
     }
 }

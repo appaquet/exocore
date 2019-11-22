@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use futures::Future;
+use futures::prelude::*;
 
 use exocore_common::node::LocalNode;
 use exocore_common::tests_utils::expect_eventually;
@@ -11,7 +11,7 @@ use crate::error::Error;
 use crate::mutation::{Mutation, MutationResult, TestFailMutation};
 use crate::query::{Query, QueryResult};
 use crate::store::local::TestLocalStore;
-use crate::store::AsyncStore;
+use crate::store::{AsyncStore, ResultStream};
 
 use super::*;
 use crate::store::remote::server::StoreServer;
@@ -104,6 +104,45 @@ fn mutation_timeout() -> Result<(), failure::Error> {
     let result = test_remote_store.send_and_await_mutation(mutation);
     assert!(result.is_err());
 
+    Ok(())
+}
+
+#[test]
+fn watched_query() -> Result<(), failure::Error> {
+    let mut test_remote_store = TestRemoteStore::new()?;
+    test_remote_store.start_server()?;
+    test_remote_store.start_client()?;
+
+    let mutation = test_remote_store
+        .local_store
+        .create_put_contact_mutation("entity1", "trait1", "hello");
+    test_remote_store.send_and_await_mutation(mutation)?;
+
+    let query = Query::match_text("hello");
+    let stream = test_remote_store.client_handle.watched_query(query);
+
+    let (results, stream) = test_remote_store.get_stream_result(stream);
+    let results = results.unwrap();
+    assert_eq!(results.results.len(), 1);
+
+    let mutation = test_remote_store
+        .local_store
+        .create_put_contact_mutation("entity2", "trait2", "hello");
+    test_remote_store.send_and_await_mutation(mutation)?;
+
+    let (results, _stream) = test_remote_store.get_stream_result(stream);
+    assert_eq!(results.unwrap().results.len(), 2);
+
+    Ok(())
+}
+
+#[test]
+fn watched_query_timeout() -> Result<(), failure::Error> {
+    Ok(())
+}
+
+#[test]
+fn watched_query_error_propagation() -> Result<(), failure::Error> {
     Ok(())
 }
 
@@ -200,5 +239,17 @@ impl TestRemoteStore {
             .cluster
             .runtime
             .block_on(self.client_handle.query(query))
+    }
+
+    fn get_stream_result(
+        &mut self,
+        stream: ResultStream<QueryResult>,
+    ) -> (Option<QueryResult>, ResultStream<QueryResult>) {
+        self.local_store
+            .cluster
+            .runtime
+            .block_on(stream.into_future())
+            .map_err(|_| ())
+            .unwrap()
     }
 }
