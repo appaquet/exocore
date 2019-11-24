@@ -7,7 +7,7 @@ use exocore_data::{
     MemoryPendingStore,
 };
 use exocore_index::store::local::{EntitiesIndex, EntitiesIndexConfig, LocalStore};
-use exocore_index::store::remote::server::StoreServer;
+use exocore_index::store::remote::server::RemoteStoreServer;
 use exocore_schema::schema::Schema;
 use exocore_transport::either::EitherTransportHandle;
 use exocore_transport::lp2p::Libp2pTransportConfig;
@@ -202,8 +202,14 @@ fn create_local_store<T: TransportHandle>(
     );
     let _ = rt.block_on(store_handle.on_start()?);
 
-    let remote_store_server =
-        StoreServer::new(full_cell.cell().clone(), schema, store_handle, transport)?;
+    let server_config = Default::default();
+    let remote_store_server = RemoteStoreServer::new(
+        server_config,
+        full_cell.cell().clone(),
+        schema,
+        store_handle,
+        transport,
+    )?;
     rt.spawn(
         remote_store_server
             .map(|_| {

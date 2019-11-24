@@ -3,7 +3,7 @@ use std::time::Duration;
 use futures::prelude::*;
 
 use exocore_common::node::LocalNode;
-use exocore_common::tests_utils::expect_eventually;
+use exocore_common::tests_utils::{expect_eventually, setup_logging};
 use exocore_transport::mock::MockTransportHandle;
 use exocore_transport::TransportLayer;
 
@@ -14,7 +14,7 @@ use crate::store::local::TestLocalStore;
 use crate::store::{AsyncStore, ResultStream};
 
 use super::*;
-use crate::store::remote::server::StoreServer;
+use crate::store::remote::server::{RemoteStoreServer, RemoteStoreServerConfiguration};
 
 #[test]
 fn mutation_and_query() -> Result<(), failure::Error> {
@@ -69,12 +69,13 @@ fn query_error_propagation() -> Result<(), failure::Error> {
 
 #[test]
 fn query_timeout() -> Result<(), failure::Error> {
-    let config = ClientConfiguration {
+    let client_config = RemoteStoreClientConfiguration {
         query_timeout: Duration::from_millis(500),
-        ..ClientConfiguration::default()
+        ..RemoteStoreClientConfiguration::default()
     };
 
-    let mut test_remote_store = TestRemoteStore::new_with_configuration(config)?;
+    let mut test_remote_store =
+        TestRemoteStore::new_with_configuration(Default::default(), client_config)?;
 
     // only start remote, so local won't answer and it should timeout
     test_remote_store.start_client()?;
@@ -88,12 +89,13 @@ fn query_timeout() -> Result<(), failure::Error> {
 
 #[test]
 fn mutation_timeout() -> Result<(), failure::Error> {
-    let config = ClientConfiguration {
+    let client_config = RemoteStoreClientConfiguration {
         mutation_timeout: Duration::from_millis(500),
-        ..ClientConfiguration::default()
+        ..RemoteStoreClientConfiguration::default()
     };
 
-    let mut test_remote_store = TestRemoteStore::new_with_configuration(config)?;
+    let mut test_remote_store =
+        TestRemoteStore::new_with_configuration(Default::default(), client_config)?;
 
     // only start remote, so local won't answer and it should timeout
     test_remote_store.start_client()?;
@@ -121,7 +123,7 @@ fn watched_query() -> Result<(), failure::Error> {
     let query = Query::match_text("hello");
     let stream = test_remote_store.client_handle.watched_query(query);
 
-    let (results, stream) = test_remote_store.get_stream_result(stream);
+    let (results, stream) = test_remote_store.get_stream_result(stream).unwrap();
     let results = results.unwrap();
     assert_eq!(results.results.len(), 1);
 
@@ -130,8 +132,29 @@ fn watched_query() -> Result<(), failure::Error> {
         .create_put_contact_mutation("entity2", "trait2", "hello");
     test_remote_store.send_and_await_mutation(mutation)?;
 
-    let (results, _stream) = test_remote_store.get_stream_result(stream);
+    let (results, _stream) = test_remote_store.get_stream_result(stream).unwrap();
     assert_eq!(results.unwrap().results.len(), 2);
+
+    Ok(())
+}
+
+#[test]
+fn watched_query_error_propagation() -> Result<(), failure::Error> {
+    setup_logging();
+
+    let mut test_remote_store = TestRemoteStore::new()?;
+    test_remote_store.start_server()?;
+    test_remote_store.start_client()?;
+
+    let query = Query::test_fail();
+    let stream = test_remote_store.client_handle.watched_query(query);
+
+    let (results, stream) = test_remote_store.get_stream_result(stream).unwrap();
+    assert!(results.is_err());
+
+    // stream should have been closed
+    let res = test_remote_store.get_stream_result(stream);
+    assert!(res.is_none());
 
     Ok(())
 }
@@ -142,30 +165,33 @@ fn watched_query_timeout() -> Result<(), failure::Error> {
 }
 
 #[test]
-fn watched_query_error_propagation() -> Result<(), failure::Error> {
+fn watched_drop_unregisters() -> Result<(), failure::Error> {
     Ok(())
 }
 
 struct TestRemoteStore {
     local_store: TestLocalStore,
-    client: Option<StoreClient<MockTransportHandle>>,
+    server_config: RemoteStoreServerConfiguration,
+    client: Option<RemoteStoreClient<MockTransportHandle>>,
     client_handle: ClientHandle,
 }
 
 impl TestRemoteStore {
     fn new() -> Result<TestRemoteStore, failure::Error> {
-        let config = ClientConfiguration::default();
-        Self::new_with_configuration(config)
+        let client_config = Default::default();
+        let server_config = Default::default();
+        Self::new_with_configuration(server_config, client_config)
     }
 
     fn new_with_configuration(
-        config: ClientConfiguration,
+        server_config: RemoteStoreServerConfiguration,
+        client_config: RemoteStoreClientConfiguration,
     ) -> Result<TestRemoteStore, failure::Error> {
         let local_store = TestLocalStore::new()?;
 
         let local_node = LocalNode::generate();
-        let store_client = StoreClient::new(
-            config,
+        let store_client = RemoteStoreClient::new(
+            client_config,
             local_store.cluster.cells[0].cell().clone(),
             local_store.cluster.clocks[0].clone(),
             local_store.schema.clone(),
@@ -179,6 +205,7 @@ impl TestRemoteStore {
 
         Ok(TestRemoteStore {
             local_store,
+            server_config,
             client: Some(store_client),
             client_handle,
         })
@@ -196,16 +223,14 @@ impl TestRemoteStore {
             TransportLayer::Index,
         );
 
-        let server = StoreServer::new(cell, schema, store_handle, transport)?;
-
+        let server =
+            RemoteStoreServer::new(self.server_config, cell, schema, store_handle, transport)?;
         self.local_store
             .cluster
             .runtime
             .spawn(server.map_err(|err| {
                 error!("Error spawning remote store server: {}", err);
             }));
-
-        // TODO: Wait on start
 
         Ok(())
     }
@@ -244,12 +269,17 @@ impl TestRemoteStore {
     fn get_stream_result(
         &mut self,
         stream: ResultStream<QueryResult>,
-    ) -> (Option<QueryResult>, ResultStream<QueryResult>) {
-        self.local_store
+    ) -> Option<(Result<QueryResult, Error>, ResultStream<QueryResult>)> {
+        let res = self
+            .local_store
             .cluster
             .runtime
-            .block_on(stream.into_future())
-            .map_err(|_| ())
-            .unwrap()
+            .block_on(stream.into_future());
+
+        match res {
+            Ok((Some(result), stream)) => Some((Ok(result), stream)),
+            Ok((None, _stream)) => None,
+            Err((err, stream)) => Some((Err(err), stream)),
+        }
     }
 }

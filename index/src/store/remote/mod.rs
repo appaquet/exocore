@@ -1,5 +1,5 @@
 pub mod client;
-pub use client::{ClientConfiguration, ClientHandle, StoreClient};
+pub use client::{ClientHandle, RemoteStoreClient, RemoteStoreClientConfiguration};
 
 #[cfg(feature = "local_store")]
 pub mod server;

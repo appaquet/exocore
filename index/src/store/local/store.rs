@@ -119,7 +119,10 @@ where
 
                     match &result {
                         Ok(_) => debug!("Got query result"),
-                        Err(err) => warn!("Error executing query: {}", err),
+                        Err(err) => warn!(
+                            "Error executing query: err={} watch={:?}",
+                            err, query_request.query.token
+                        ),
                     }
 
                     let should_reply = match (&query_request.sender, &result) {

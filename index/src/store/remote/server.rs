@@ -1,7 +1,7 @@
 use std::sync::{Arc, RwLock, Weak};
 
 use futures::prelude::*;
-use futures::sync::mpsc;
+use futures::sync::{mpsc, oneshot};
 
 use exocore_common::cell::Cell;
 use exocore_common::protos::index_transport_capnp::{mutation_request, query_request};
@@ -15,16 +15,33 @@ use exocore_transport::{InEvent, InMessage, OutEvent, OutMessage, TransportHandl
 
 use crate::error::Error;
 use crate::mutation::{Mutation, MutationResult};
-use crate::query::{Query, QueryResult};
+use crate::query::{Query, QueryResult, WatchToken};
 use crate::store::AsyncStore;
-use std::time::Duration;
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
-pub struct StoreServer<CS, PS, T>
+#[derive(Clone, Copy)]
+pub struct RemoteStoreServerConfiguration {
+    pub watched_queries_register_timeout: Duration,
+    pub management_timer_interval: Duration,
+}
+
+impl Default for RemoteStoreServerConfiguration {
+    fn default() -> Self {
+        RemoteStoreServerConfiguration {
+            watched_queries_register_timeout: Duration::from_secs(30),
+            management_timer_interval: Duration::from_millis(500),
+        }
+    }
+}
+
+pub struct RemoteStoreServer<CS, PS, T>
 where
     CS: exocore_data::chain::ChainStore,
     PS: exocore_data::pending::PendingStore,
     T: TransportHandle,
 {
+    config: RemoteStoreServerConfiguration,
     start_notifier: CompletionNotifier<(), Error>,
     started: bool,
     inner: Arc<RwLock<Inner<CS, PS>>>,
@@ -32,30 +49,34 @@ where
     stop_listener: CompletionListener<(), Error>,
 }
 
-impl<CS, PS, T> StoreServer<CS, PS, T>
+impl<CS, PS, T> RemoteStoreServer<CS, PS, T>
 where
     CS: exocore_data::chain::ChainStore,
     PS: exocore_data::pending::PendingStore,
     T: TransportHandle,
 {
     pub fn new(
+        config: RemoteStoreServerConfiguration,
         cell: Cell,
         schema: Arc<Schema>,
         store_handle: crate::store::local::StoreHandle<CS, PS>,
         transport_handle: T,
-    ) -> Result<StoreServer<CS, PS, T>, Error> {
+    ) -> Result<RemoteStoreServer<CS, PS, T>, Error> {
         let (stop_notifier, stop_listener) = CompletionNotifier::new_with_listener();
         let start_notifier = CompletionNotifier::new();
 
         let inner = Arc::new(RwLock::new(Inner {
+            config,
             cell,
             schema,
             store_handle,
+            watched_queries: HashMap::new(),
             transport_out: None,
             stop_notifier,
         }));
 
-        Ok(StoreServer {
+        Ok(RemoteStoreServer {
+            config,
             start_notifier,
             started: false,
             inner,
@@ -113,7 +134,17 @@ where
                 }),
         );
 
-        // TODO: Management timer to check if watched queries should be stopped
+        // management time
+        let weak_inner1 = Arc::downgrade(&self.inner);
+        let weak_inner2 = Arc::downgrade(&self.inner);
+        spawn_future(
+            tokio::timer::Interval::new_interval(self.config.management_timer_interval)
+                .map_err(|err| Error::Fatal(format!("Management timer error: {}", err)))
+                .for_each(move |_| Self::management_timer_process(&weak_inner1))
+                .map_err(move |err| {
+                    Inner::notify_stop("management timer error", &weak_inner2, Err(err));
+                }),
+        );
 
         // schedule transport handle
         let weak_inner1 = Arc::downgrade(&self.inner);
@@ -139,10 +170,13 @@ where
         weak_inner: &Weak<RwLock<Inner<CS, PS>>>,
         in_message: Box<InMessage>,
     ) -> Result<(), Error> {
-        let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
-        let inner = inner.read()?;
+        let parsed_message = {
+            let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
+            let inner = inner.read()?;
+            IncomingMessage::parse_incoming_message(&in_message, &inner.schema)?
+        };
 
-        match IncomingMessage::parse_incoming_message(&in_message, &inner.schema)? {
+        match parsed_message {
             IncomingMessage::Mutation(mutation) => {
                 Self::handle_incoming_mutation_message(weak_inner, in_message, mutation)?;
             }
@@ -204,10 +238,30 @@ where
         let weak_inner1 = weak_inner.clone();
         let weak_inner2 = weak_inner.clone();
 
-        let result_stream = {
+        let token = query
+            .token
+            .ok_or_else(|| Error::QueryParsing("Watched query didn't have a token".to_string()))?;
+
+        let (result_stream, timeout_receiver) = {
+            // check if this query already exists. if so, just update its last register
             let inner = weak_inner1.upgrade().ok_or(Error::Dropped)?;
-            let inner = inner.read()?;
-            inner.store_handle.watched_query(query.clone())
+            let mut inner = inner.write()?;
+            if let Some(watch_query) = inner.watched_queries.get_mut(&token) {
+                watch_query.last_register = Instant::now();
+                return Ok(());
+            }
+
+            // register query
+            let (timeout_sender, timeout_receiver) = oneshot::channel();
+            let watched_query = WatchedQuery {
+                last_register: Instant::now(),
+                _timeout_sender: timeout_sender,
+            };
+            inner.watched_queries.insert(token, watched_query);
+
+            let result_stream = inner.store_handle.watched_query(query.clone());
+
+            (result_stream, timeout_receiver)
         };
 
         spawn_future(
@@ -229,7 +283,13 @@ where
                 .for_each(|_| Ok(()))
                 .map_err(|err| {
                     error!("Error in watched query stream: {}", err);
-                }),
+                })
+                .select({
+                    // channel will be dropped and stream killed if we have a registering timeout
+                    timeout_receiver.map_err(|_| ())
+                })
+                .map_err(|_| ())
+                .map(|_| ()),
         );
 
         Ok(())
@@ -271,9 +331,32 @@ where
 
         Ok(())
     }
+
+    fn management_timer_process(weak_inner: &Weak<RwLock<Inner<CS, PS>>>) -> Result<(), Error> {
+        let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
+        let mut inner = inner.write()?;
+
+        let timeout_duration = inner.config.watched_queries_register_timeout;
+        let mut timed_out_tokens = Vec::new();
+        for (token, watched_query) in &mut inner.watched_queries {
+            if watched_query.last_register.elapsed() > timeout_duration {
+                debug!(
+                    "Watched query with token={:?} timed out, dropping it",
+                    token
+                );
+                timed_out_tokens.push(*token);
+            }
+        }
+
+        for token in timed_out_tokens {
+            inner.watched_queries.remove(&token);
+        }
+
+        Ok(())
+    }
 }
 
-impl<CS, PS, T> Future for StoreServer<CS, PS, T>
+impl<CS, PS, T> Future for RemoteStoreServer<CS, PS, T>
 where
     CS: exocore_data::chain::ChainStore,
     PS: exocore_data::pending::PendingStore,
@@ -301,9 +384,11 @@ where
     CS: exocore_data::chain::ChainStore,
     PS: exocore_data::pending::PendingStore,
 {
+    config: RemoteStoreServerConfiguration,
     cell: Cell,
     schema: Arc<Schema>,
     store_handle: crate::store::local::StoreHandle<CS, PS>,
+    watched_queries: HashMap<WatchToken, WatchedQuery>,
     transport_out: Option<mpsc::UnboundedSender<OutEvent>>,
     stop_notifier: CompletionNotifier<(), Error>,
 }
@@ -347,9 +432,7 @@ where
     }
 }
 
-///
 /// Parsed incoming message via transport
-///
 enum IncomingMessage {
     Mutation(Mutation),
     Query(Query),
@@ -379,14 +462,9 @@ impl IncomingMessage {
     }
 }
 
-pub struct ServerConfiguration {
-    pub watched_queries_register_timeout: Duration,
-}
+struct WatchedQuery {
+    last_register: Instant,
 
-impl Default for ServerConfiguration {
-    fn default() -> Self {
-        ServerConfiguration {
-            watched_queries_register_timeout: Duration::from_secs(30),
-        }
-    }
+    // selected by stream's future to get killed if we drop this query for timeout
+    _timeout_sender: oneshot::Sender<()>,
 }

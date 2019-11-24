@@ -10,7 +10,9 @@ use exocore_common::crypto::keys::{Keypair, PublicKey};
 use exocore_common::node::{LocalNode, Node};
 use exocore_common::time::Clock;
 use exocore_index::query::Query;
-use exocore_index::store::remote::{ClientConfiguration, ClientHandle, StoreClient};
+use exocore_index::store::remote::{
+    ClientHandle, RemoteStoreClient, RemoteStoreClientConfiguration,
+};
 use exocore_index::store::AsyncStore;
 use exocore_schema::schema::Schema;
 use exocore_schema::serialization::with_schema;
@@ -71,8 +73,8 @@ impl Context {
         let store_transport = transport
             .get_handle(cell.clone(), TransportLayer::Index)
             .expect("Couldn't get transport handle for remote index");
-        let remote_store_config = ClientConfiguration::default();
-        let remote_store = StoreClient::new(
+        let remote_store_config = RemoteStoreClientConfiguration::default();
+        let remote_store = RemoteStoreClient::new(
             remote_store_config,
             cell,
             clock,

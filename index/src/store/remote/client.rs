@@ -22,13 +22,38 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Weak};
 use std::time::Duration;
 
+#[derive(Debug, Clone, Copy)]
+pub struct RemoteStoreClientConfiguration {
+    pub query_timeout: Duration,
+
+    pub mutation_timeout: Duration,
+
+    pub management_interval: Duration,
+
+    pub watched_queries_register_interval: Duration,
+
+    pub watched_query_channel_size: usize,
+}
+
+impl Default for RemoteStoreClientConfiguration {
+    fn default() -> Self {
+        RemoteStoreClientConfiguration {
+            query_timeout: Duration::from_secs(10),
+            mutation_timeout: Duration::from_secs(5),
+            watched_queries_register_interval: Duration::from_secs(10),
+            management_interval: Duration::from_millis(100),
+            watched_query_channel_size: 1000,
+        }
+    }
+}
+
 /// This implementation of the AsyncStore allow sending all queries and mutations to
 /// a remote node's local store.
-pub struct StoreClient<T>
+pub struct RemoteStoreClient<T>
 where
     T: TransportHandle,
 {
-    config: ClientConfiguration,
+    config: RemoteStoreClientConfiguration,
     start_notifier: CompletionNotifier<(), Error>,
     started: bool,
     inner: Arc<RwLock<Inner>>,
@@ -36,18 +61,18 @@ where
     stop_listener: CompletionListener<(), Error>,
 }
 
-impl<T> StoreClient<T>
+impl<T> RemoteStoreClient<T>
 where
     T: TransportHandle,
 {
     pub fn new(
-        config: ClientConfiguration,
+        config: RemoteStoreClientConfiguration,
         cell: Cell,
         clock: Clock,
         schema: Arc<Schema>,
         transport_handle: T,
         index_node: Node,
-    ) -> Result<StoreClient<T>, Error> {
+    ) -> Result<RemoteStoreClient<T>, Error> {
         let (stop_notifier, stop_listener) = CompletionNotifier::new_with_listener();
         let start_notifier = CompletionNotifier::new();
 
@@ -64,7 +89,7 @@ where
             stop_notifier,
         }));
 
-        Ok(StoreClient {
+        Ok(RemoteStoreClient {
             config,
             start_notifier,
             started: false,
@@ -154,7 +179,7 @@ where
                 .map_err(|err| Error::Fatal(format!("Management timer error: {}", err)))
                 .for_each(move |_| Self::management_timer_process(&weak_inner1))
                 .map_err(move |err| {
-                    Inner::notify_stop("management timeout error", &weak_inner2, Err(err));
+                    Inner::notify_stop("management timer error", &weak_inner2, Err(err));
                 }),
         );
 
@@ -232,7 +257,7 @@ where
     }
 }
 
-impl<T> Future for StoreClient<T>
+impl<T> Future for RemoteStoreClient<T>
 where
     T: TransportHandle,
 {
@@ -253,33 +278,8 @@ where
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct ClientConfiguration {
-    pub query_timeout: Duration,
-
-    pub mutation_timeout: Duration,
-
-    pub management_interval: Duration,
-
-    pub watched_queries_register_interval: Duration,
-
-    pub watched_query_channel_size: usize,
-}
-
-impl Default for ClientConfiguration {
-    fn default() -> Self {
-        ClientConfiguration {
-            query_timeout: Duration::from_secs(10),
-            mutation_timeout: Duration::from_secs(5),
-            watched_queries_register_interval: Duration::from_secs(10),
-            management_interval: Duration::from_millis(100),
-            watched_query_channel_size: 1000,
-        }
-    }
-}
-
 struct Inner {
-    config: ClientConfiguration,
+    config: RemoteStoreClientConfiguration,
     cell: Cell,
     clock: Clock,
     schema: Arc<Schema>,
@@ -525,7 +525,6 @@ pub struct ClientHandle {
 
 impl ClientHandle {
     pub fn on_start(&self) -> Result<impl Future<Item = (), Error = Error>, Error> {
-        // TODO: Should only return result
         Ok(self
             .start_listener
             .try_clone()
