@@ -386,6 +386,19 @@ where
                 _ => Error::Other("Error in completion error".to_string()),
             }))
     }
+
+    #[cfg(test)]
+    pub(crate) fn watched_queries(&self) -> Vec<WatchToken> {
+        let inner = self.inner.upgrade().unwrap();
+        let inner = inner.read().unwrap();
+
+        let mut tokens = Vec::new();
+        for query in inner.watched_queries.queries() {
+            tokens.push(query.token);
+        }
+
+        tokens
+    }
 }
 
 impl<CS, PS> AsyncStore for StoreHandle<CS, PS>

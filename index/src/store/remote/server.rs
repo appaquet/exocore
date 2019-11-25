@@ -17,6 +17,7 @@ use crate::error::Error;
 use crate::mutation::{Mutation, MutationResult};
 use crate::query::{Query, QueryResult, WatchToken};
 use crate::store::AsyncStore;
+use exocore_transport::messages::MessageReplyToken;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
@@ -237,6 +238,7 @@ where
     ) -> Result<(), Error> {
         let weak_inner1 = weak_inner.clone();
         let weak_inner2 = weak_inner.clone();
+        let weak_inner3 = weak_inner.clone();
 
         let token = query
             .token
@@ -247,6 +249,7 @@ where
             let inner = weak_inner1.upgrade().ok_or(Error::Dropped)?;
             let mut inner = inner.write()?;
             if let Some(watch_query) = inner.watched_queries.get_mut(&token) {
+                warn!("Re-registering query");
                 watch_query.last_register = Instant::now();
                 return Ok(());
             }
@@ -258,12 +261,15 @@ where
                 _timeout_sender: timeout_sender,
             };
             inner.watched_queries.insert(token, watched_query);
+            warn!("Registering query");
 
             let result_stream = inner.store_handle.watched_query(query.clone());
 
             (result_stream, timeout_receiver)
         };
 
+        let reply_token1 = in_message.get_reply_token()?;
+        let reply_token2 = reply_token1.clone();
         spawn_future(
             result_stream
                 .then(move |result| -> Result<(), Error> {
@@ -274,9 +280,7 @@ where
                         error!("Returning error executing incoming query: {}", err);
                     }
 
-                    let resp_frame = QueryResult::result_to_response_frame(&inner.schema, result)?;
-                    let message = in_message.to_response_message(&inner.cell, resp_frame)?;
-                    inner.send_message(message)?;
+                    Self::reply_query_result(&inner, &reply_token1, result)?;
 
                     Ok(())
                 })
@@ -288,10 +292,33 @@ where
                     // channel will be dropped and stream killed if we have a registering timeout
                     timeout_receiver.map_err(|_| ())
                 })
-                .map_err(|_| ())
+                .map_err(move |_| {
+                    if let Some(inner) = weak_inner3.upgrade() {
+                        if let Ok(inner) = inner.read() {
+                            let _ = Self::reply_query_result(
+                                &inner,
+                                &reply_token2,
+                                Err(Error::Other(
+                                    "Error or timeout in watched query".to_string(),
+                                )),
+                            );
+                        }
+                    }
+                })
                 .map(|_| ()),
         );
 
+        Ok(())
+    }
+
+    fn reply_query_result(
+        inner: &Inner<CS, PS>,
+        reply_token: &MessageReplyToken,
+        result: Result<QueryResult, Error>,
+    ) -> Result<(), Error> {
+        let resp_frame = QueryResult::result_to_response_frame(&inner.schema, result)?;
+        let message = reply_token.to_response_message(&inner.cell, resp_frame)?;
+        inner.send_message(message)?;
         Ok(())
     }
 
@@ -340,9 +367,10 @@ where
         let mut timed_out_tokens = Vec::new();
         for (token, watched_query) in &mut inner.watched_queries {
             if watched_query.last_register.elapsed() > timeout_duration {
-                debug!(
-                    "Watched query with token={:?} timed out, dropping it",
-                    token
+                error!(
+                    "Watched query with token={:?} timed out after {:?}, dropping it",
+                    token,
+                    watched_query.last_register.elapsed(),
                 );
                 timed_out_tokens.push(*token);
             }

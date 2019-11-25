@@ -3,7 +3,7 @@ use std::time::Duration;
 use futures::prelude::*;
 
 use exocore_common::node::LocalNode;
-use exocore_common::tests_utils::{expect_eventually, setup_logging};
+use exocore_common::tests_utils::expect_eventually;
 use exocore_transport::mock::MockTransportHandle;
 use exocore_transport::TransportLayer;
 
@@ -140,8 +140,6 @@ fn watched_query() -> Result<(), failure::Error> {
 
 #[test]
 fn watched_query_error_propagation() -> Result<(), failure::Error> {
-    setup_logging();
-
     let mut test_remote_store = TestRemoteStore::new()?;
     test_remote_store.start_server()?;
     test_remote_store.start_client()?;
@@ -161,11 +159,56 @@ fn watched_query_error_propagation() -> Result<(), failure::Error> {
 
 #[test]
 fn watched_query_timeout() -> Result<(), failure::Error> {
+    let server_config = RemoteStoreServerConfiguration {
+        management_timer_interval: Duration::from_millis(100),
+        watched_queries_register_timeout: Duration::from_millis(200),
+    };
+
+    // client will re-register itself at higher interval then expected on server, which will
+    // result in timing out eventually
+    let client_config = RemoteStoreClientConfiguration {
+        watched_queries_register_interval: Duration::from_millis(300),
+        ..RemoteStoreClientConfiguration::default()
+    };
+
+    let mut test_remote_store =
+        TestRemoteStore::new_with_configuration(server_config, client_config)?;
+    test_remote_store.start_server()?;
+    test_remote_store.start_client()?;
+
+    let mutation = test_remote_store
+        .local_store
+        .create_put_contact_mutation("entity1", "trait1", "hello");
+    test_remote_store.send_and_await_mutation(mutation)?;
+
+    let query = Query::match_text("hello");
+    let stream = test_remote_store.client_handle.watched_query(query);
+
+    let (results, stream) = test_remote_store.get_stream_result(stream).unwrap();
+    let results = results.unwrap();
+    assert_eq!(results.results.len(), 1);
+
+    let watched_queries = test_remote_store.local_store.store_handle.watched_queries();
+    assert_eq!(watched_queries.len(), 1);
+
+    // wait for watched query to be removed on server because of timeout
+    expect_eventually(|| {
+        let watched_queries = test_remote_store.local_store.store_handle.watched_queries();
+        watched_queries.is_empty()
+    });
+
+    // stream should be sent an error and then closed
+    let (res, stream) = test_remote_store.get_stream_result(stream).unwrap();
+    assert!(res.is_err());
+    let res = test_remote_store.get_stream_result(stream);
+    assert!(res.is_none());
+
     Ok(())
 }
 
 #[test]
 fn watched_drop_unregisters() -> Result<(), failure::Error> {
+    // TODO:
     Ok(())
 }
 
