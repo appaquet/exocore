@@ -12,7 +12,7 @@ use exocore_schema::schema::Schema;
 
 use crate::error::Error;
 use crate::mutation::{Mutation, MutationResult};
-use crate::query::{Query, QueryResult, WatchToken};
+use crate::query::{Query, QueryResult, WatchToken, WatchedQuery};
 use crate::store::local::watched_queries::WatchedQueries;
 use crate::store::{AsyncResult, AsyncStore, ResultStream};
 
@@ -119,22 +119,21 @@ where
 
                     match &result {
                         Ok(_) => debug!("Got query result"),
-                        Err(err) => warn!(
-                            "Error executing query: err={} watch={:?}",
-                            err, query_request.query.token
-                        ),
+                        Err(err) => warn!("Error executing query: err={}", err),
                     }
 
                     let should_reply = match (&query_request.sender, &result) {
-                        (QueryRequestSender::Stream(sender), Ok(result)) => inner
-                            .watched_queries
-                            .update_query_results(&query_request.query, result, sender.clone()),
+                        (QueryRequestSender::Stream(sender, watch_token), Ok(result)) => {
+                            inner.watched_queries.update_query_results(
+                                *watch_token,
+                                &query_request.query,
+                                result,
+                                sender.clone(),
+                            )
+                        }
 
-                        (QueryRequestSender::Stream(_), Err(_err)) => {
-                            if let Some(watch_token) = query_request.query.token {
-                                inner.watched_queries.unwatch_query(watch_token);
-                            }
-
+                        (QueryRequestSender::Stream(_, watch_token), Err(_err)) => {
+                            inner.watched_queries.unwatch_query(*watch_token);
                             true
                         }
 
@@ -200,15 +199,18 @@ where
                     let inner = weak_inner1.upgrade().ok_or(Error::Dropped)?;
                     let mut inner = inner.write()?;
 
-                    for query in inner.watched_queries.queries() {
+                    for watched_query in inner.watched_queries.queries() {
                         let send_result =
                             inner
                                 .queries_sender
                                 .as_mut()
                                 .unwrap()
                                 .try_send(QueryRequest {
-                                    query: query.query.as_ref().clone(),
-                                    sender: QueryRequestSender::Stream(query.sender.clone()),
+                                    query: watched_query.query.as_ref().clone(),
+                                    sender: QueryRequestSender::Stream(
+                                        watched_query.sender.clone(),
+                                        watched_query.token,
+                                    ),
                                 });
 
                         if let Err(err) = send_result {
@@ -216,7 +218,7 @@ where
                                 "Error sending to watched query. Removing it from queries: {}",
                                 err
                             );
-                            inner.watched_queries.unwatch_query(query.token);
+                            inner.watched_queries.unwatch_query(watched_query.token);
                         }
                     }
 
@@ -442,7 +444,7 @@ where
         )
     }
 
-    fn watched_query(&self, query: Query) -> ResultStream<QueryResult> {
+    fn watched_query(&self, watched_query: WatchedQuery) -> ResultStream<QueryResult> {
         let inner = if let Some(inner) = self.inner.upgrade() {
             inner
         } else {
@@ -455,15 +457,15 @@ where
             return Box::new(stream::once(Err(Error::Dropped)));
         };
 
-        let watch_token = query.token;
+        let watch_token = watched_query.token;
 
         let (sender, receiver) = mpsc::channel(self.config.handle_watch_query_channel_size);
         let new_sender = inner.queries_sender.as_mut().expect("Queries sender channel was not initialized. A query was made before the store was started.");
 
         // ok to dismiss send as sender end will be dropped in case of an error and consumer will be notified by channel being closed
         let _ = new_sender.try_send(QueryRequest {
-            query,
-            sender: QueryRequestSender::Stream(Arc::new(Mutex::new(sender))),
+            query: watched_query.query,
+            sender: QueryRequestSender::Stream(Arc::new(Mutex::new(sender)), watch_token),
         });
 
         Box::new(LocalWatchedQuery {
@@ -481,7 +483,7 @@ where
     CS: exocore_data::chain::ChainStore,
     PS: exocore_data::pending::PendingStore,
 {
-    watch_token: Option<WatchToken>,
+    watch_token: WatchToken,
     inner: Weak<RwLock<Inner<CS, PS>>>,
     receiver: mpsc::Receiver<Result<QueryResult, Error>>,
 }
@@ -514,11 +516,9 @@ where
     PS: exocore_data::pending::PendingStore,
 {
     fn drop(&mut self) {
-        if let Some(watch_token) = self.watch_token {
-            if let Some(inner) = self.inner.upgrade() {
-                if let Ok(inner) = inner.read() {
-                    inner.watched_queries.unwatch_query(watch_token);
-                }
+        if let Some(inner) = self.inner.upgrade() {
+            if let Ok(inner) = inner.read() {
+                inner.watched_queries.unwatch_query(self.watch_token);
             }
         }
     }
@@ -531,7 +531,10 @@ struct QueryRequest {
 }
 
 enum QueryRequestSender {
-    Stream(Arc<Mutex<mpsc::Sender<Result<QueryResult, Error>>>>),
+    Stream(
+        Arc<Mutex<mpsc::Sender<Result<QueryResult, Error>>>>,
+        WatchToken,
+    ),
     Future(oneshot::Sender<Result<QueryResult, Error>>),
 }
 
@@ -541,7 +544,7 @@ impl QueryRequest {
             QueryRequestSender::Future(sender) => {
                 let _ = sender.send(result);
             }
-            QueryRequestSender::Stream(ref mut sender) => {
+            QueryRequestSender::Stream(ref mut sender, _token) => {
                 if let Ok(mut sender) = sender.lock() {
                     let _ = sender.try_send(result);
                 }
@@ -604,7 +607,8 @@ pub mod tests {
         let mut test_store = TestLocalStore::new()?;
         test_store.start_store()?;
 
-        let query = Query::match_text("hello").with_watch_token(ConsistentTimestamp(123));
+        let query = Query::match_text("hello");
+        let query = WatchedQuery::new(query, ConsistentTimestamp(123));
         let stream = test_store.store_handle.watched_query(query);
 
         let (result, stream) = test_store
@@ -658,7 +662,8 @@ pub mod tests {
         let mut test_store = TestLocalStore::new()?;
         test_store.start_store()?;
 
-        let query = Query::test_fail().with_watch_token(ConsistentTimestamp(123));
+        let query = Query::test_fail();
+        let query = WatchedQuery::new(query, ConsistentTimestamp(123));
         let stream = test_store.store_handle.watched_query(query);
 
         let result = test_store.cluster.runtime.block_on(stream.into_future());

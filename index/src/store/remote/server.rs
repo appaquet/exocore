@@ -4,7 +4,9 @@ use futures::prelude::*;
 use futures::sync::{mpsc, oneshot};
 
 use exocore_common::cell::Cell;
-use exocore_common::protos::index_transport_capnp::{mutation_request, query_request};
+use exocore_common::protos::index_transport_capnp::{
+    mutation_request, query_request, unwatch_query_request, watched_query_request,
+};
 use exocore_common::protos::MessageType;
 use exocore_common::utils::completion_notifier::{
     CompletionError, CompletionListener, CompletionNotifier,
@@ -15,8 +17,9 @@ use exocore_transport::{InEvent, InMessage, OutEvent, OutMessage, TransportHandl
 
 use crate::error::Error;
 use crate::mutation::{Mutation, MutationResult};
-use crate::query::{Query, QueryResult, WatchToken};
+use crate::query::{Query, QueryResult, WatchToken, WatchedQuery};
 use crate::store::AsyncStore;
+use exocore_common::time::ConsistentTimestamp;
 use exocore_transport::messages::MessageReplyToken;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -182,11 +185,13 @@ where
                 Self::handle_incoming_mutation_message(weak_inner, in_message, mutation)?;
             }
             IncomingMessage::Query(query) => {
-                if query.token.is_none() {
-                    Self::handle_incoming_query_message(weak_inner, in_message, query)?;
-                } else {
-                    Self::handle_incoming_watched_query_message(weak_inner, in_message, query)?;
-                }
+                Self::handle_incoming_query_message(weak_inner, in_message, query)?;
+            }
+            IncomingMessage::WatchedQuery(query) => {
+                Self::handle_incoming_watched_query_message(weak_inner, in_message, query)?;
+            }
+            IncomingMessage::UnwatchQuery(token) => {
+                Self::handle_unwatch_query(weak_inner, token)?;
             }
         }
 
@@ -234,15 +239,13 @@ where
     fn handle_incoming_watched_query_message(
         weak_inner: &Weak<RwLock<Inner<CS, PS>>>,
         in_message: Box<InMessage>,
-        query: Query,
+        query: WatchedQuery,
     ) -> Result<(), Error> {
         let weak_inner1 = weak_inner.clone();
         let weak_inner2 = weak_inner.clone();
         let weak_inner3 = weak_inner.clone();
 
-        let token = query
-            .token
-            .ok_or_else(|| Error::QueryParsing("Watched query didn't have a token".to_string()))?;
+        let token = query.token;
 
         let (result_stream, timeout_receiver) = {
             // check if this query already exists. if so, just update its last register
@@ -256,7 +259,7 @@ where
 
             // register query
             let (timeout_sender, timeout_receiver) = oneshot::channel();
-            let watched_query = WatchedQuery {
+            let watched_query = RegisteredWatchedQuery {
                 last_register: Instant::now(),
                 _timeout_sender: timeout_sender,
             };
@@ -359,6 +362,16 @@ where
         Ok(())
     }
 
+    fn handle_unwatch_query(
+        weak_inner: &Weak<RwLock<Inner<CS, PS>>>,
+        token: WatchToken,
+    ) -> Result<(), Error> {
+        let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
+        let mut inner = inner.write()?;
+        inner.watched_queries.remove(&token);
+        Ok(())
+    }
+
     fn management_timer_process(weak_inner: &Weak<RwLock<Inner<CS, PS>>>) -> Result<(), Error> {
         let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
         let mut inner = inner.write()?;
@@ -416,7 +429,7 @@ where
     cell: Cell,
     schema: Arc<Schema>,
     store_handle: crate::store::local::StoreHandle<CS, PS>,
-    watched_queries: HashMap<WatchToken, WatchedQuery>,
+    watched_queries: HashMap<WatchToken, RegisteredWatchedQuery>,
     transport_out: Option<mpsc::UnboundedSender<OutEvent>>,
     stop_notifier: CompletionNotifier<(), Error>,
 }
@@ -464,6 +477,8 @@ where
 enum IncomingMessage {
     Mutation(Mutation),
     Query(Query),
+    WatchedQuery(WatchedQuery),
+    UnwatchQuery(WatchToken),
 }
 
 impl IncomingMessage {
@@ -473,14 +488,26 @@ impl IncomingMessage {
     ) -> Result<IncomingMessage, Error> {
         match in_message.message_type {
             <mutation_request::Owned as MessageType>::MESSAGE_TYPE => {
-                let mutation_frame = in_message.get_data_as_framed_message()?;
-                let mutation = Mutation::from_mutation_request_frame(schema, mutation_frame)?;
+                let frame = in_message.get_data_as_framed_message()?;
+                let mutation = Mutation::from_mutation_request_frame(schema, frame)?;
                 Ok(IncomingMessage::Mutation(mutation))
             }
             <query_request::Owned as MessageType>::MESSAGE_TYPE => {
-                let query_frame = in_message.get_data_as_framed_message()?;
-                let query = Query::from_query_request_frame(schema, query_frame)?;
+                let frame = in_message.get_data_as_framed_message()?;
+                let query = Query::from_request_frame(schema, frame)?;
                 Ok(IncomingMessage::Query(query))
+            }
+            <watched_query_request::Owned as MessageType>::MESSAGE_TYPE => {
+                let frame = in_message.get_data_as_framed_message()?;
+                let query = WatchedQuery::from_request_frame(schema, frame)?;
+                Ok(IncomingMessage::WatchedQuery(query))
+            }
+            <unwatch_query_request::Owned as MessageType>::MESSAGE_TYPE => {
+                let frame =
+                    in_message.get_data_as_framed_message::<unwatch_query_request::Owned>()?;
+                let reader = frame.get_reader()?;
+                let watch_token = ConsistentTimestamp(reader.get_token());
+                Ok(IncomingMessage::UnwatchQuery(watch_token))
             }
             other => Err(Error::Other(format!(
                 "Received message of unknown type: {}",
@@ -490,7 +517,7 @@ impl IncomingMessage {
     }
 }
 
-struct WatchedQuery {
+struct RegisteredWatchedQuery {
     last_register: Instant,
 
     // selected by stream's future to get killed if we drop this query for timeout

@@ -1,10 +1,13 @@
 use crate::error::Error;
 use crate::mutation::{Mutation, MutationResult};
-use crate::query::{Query, QueryResult};
+use crate::query::{Query, QueryResult, WatchToken, WatchedQuery};
 use crate::store::{AsyncResult, AsyncStore, ResultStream};
 use exocore_common::cell::Cell;
+use exocore_common::framing::CapnpFrameBuilder;
 use exocore_common::node::Node;
-use exocore_common::protos::index_transport_capnp::{mutation_response, query_response};
+use exocore_common::protos::index_transport_capnp::{
+    mutation_response, query_response, unwatch_query_request, watched_query_response,
+};
 use exocore_common::protos::MessageType;
 use exocore_common::time::Instant;
 use exocore_common::time::{Clock, ConsistentTimestamp};
@@ -286,7 +289,7 @@ struct Inner {
     transport_out: Option<mpsc::UnboundedSender<OutEvent>>,
     index_node: Node,
     pending_queries: HashMap<ConsistentTimestamp, PendingRequest<QueryResult>>,
-    watched_queries: HashMap<ConsistentTimestamp, WatchedQuery>,
+    watched_queries: HashMap<ConsistentTimestamp, WatchedQueryRequest>,
     pending_mutations: HashMap<ConsistentTimestamp, PendingRequest<MutationResult>>,
     stop_notifier: CompletionNotifier<(), Error>,
 }
@@ -326,7 +329,7 @@ impl Inner {
         let (result_sender, receiver) = futures::oneshot();
 
         let request_id = self.clock.consistent_time(self.cell.local_node());
-        let request_frame = query.to_query_request_frame(&self.schema)?;
+        let request_frame = query.to_request_frame(&self.schema)?;
         let message =
             OutMessage::from_framed_message(&self.cell, TransportLayer::Index, request_frame)?
                 .with_to_node(self.index_node.clone())
@@ -348,7 +351,7 @@ impl Inner {
 
     fn watch_query(
         &mut self,
-        query: Query,
+        watched_query: WatchedQuery,
     ) -> Result<
         (
             ConsistentTimestamp,
@@ -356,19 +359,12 @@ impl Inner {
         ),
         Error,
     > {
-        let query = if query.token.is_none() {
-            let watch_token = self.clock.consistent_time(self.cell.local_node());
-            query.with_watch_token(watch_token)
-        } else {
-            query
-        };
-
         let (result_sender, receiver) = mpsc::channel(self.config.watched_query_channel_size);
         let request_id = self.clock.consistent_time(self.cell.local_node());
-        let watched_query = WatchedQuery {
+        let watched_query = WatchedQueryRequest {
             request_id,
             result_sender,
-            query,
+            query: watched_query,
             last_register: Instant::now(),
         };
 
@@ -378,16 +374,26 @@ impl Inner {
         Ok((request_id, receiver))
     }
 
-    fn send_watch_query(&self, watched_query: &WatchedQuery) -> Result<(), Error> {
-        let request_frame = watched_query.query.to_query_request_frame(&self.schema)?;
+    fn send_watch_query(&self, watched_query: &WatchedQueryRequest) -> Result<(), Error> {
+        let request_frame = watched_query.query.to_request_frame(&self.schema)?;
         let message =
             OutMessage::from_framed_message(&self.cell, TransportLayer::Index, request_frame)?
                 .with_to_node(self.index_node.clone())
                 .with_rendez_vous_id(watched_query.request_id);
 
-        self.send_message(message)?;
+        self.send_message(message)
+    }
 
-        Ok(())
+    fn send_unwatch_query(&self, token: WatchToken) -> Result<(), Error> {
+        let mut frame_builder = CapnpFrameBuilder::<unwatch_query_request::Owned>::new();
+        let mut message_builder = frame_builder.get_builder();
+        message_builder.set_token(token.0);
+
+        let message =
+            OutMessage::from_framed_message(&self.cell, TransportLayer::Index, frame_builder)?
+                .with_to_node(self.index_node.clone());
+
+        self.send_message(message)
     }
 
     fn check_map_requests_timeouts<T>(
@@ -491,6 +497,11 @@ impl IncomingMessage {
                 let query_result = QueryResult::from_query_frame(schema, query_frame)?;
                 Ok(IncomingMessage::QueryResponse(query_result))
             }
+            <watched_query_response::Owned as MessageType>::MESSAGE_TYPE => {
+                let query_frame = in_message.get_data_as_framed_message()?;
+                let query_result = QueryResult::from_query_frame(schema, query_frame)?;
+                Ok(IncomingMessage::QueryResponse(query_result))
+            }
             other => Err(Error::Other(format!(
                 "Received message of unknown type: {}",
                 other
@@ -508,9 +519,9 @@ struct PendingRequest<T> {
     send_time: Instant,
 }
 
-struct WatchedQuery {
+struct WatchedQueryRequest {
     request_id: ConsistentTimestamp,
-    query: Query,
+    query: WatchedQuery,
     result_sender: mpsc::Sender<Result<QueryResult, Error>>,
     last_register: Instant,
 }
@@ -577,7 +588,7 @@ impl AsyncStore for ClientHandle {
         }
     }
 
-    fn watched_query(&self, query: Query) -> ResultStream<QueryResult> {
+    fn watched_query(&self, query: WatchedQuery) -> ResultStream<QueryResult> {
         let inner = match self.inner.upgrade() {
             Some(inner) => inner,
             None => return Box::new(futures::stream::once(Err(Error::Dropped))),
@@ -587,9 +598,11 @@ impl AsyncStore for ClientHandle {
             Err(err) => return Box::new(futures::stream::once(Err(err.into()))),
         };
 
+        let token = query.token;
         match inner.watch_query(query) {
             Ok((request_id, receiver)) => Box::new(WatchedQueryStream {
                 inner: self.inner.clone(),
+                token,
                 request_id,
                 receiver,
             }),
@@ -600,6 +613,7 @@ impl AsyncStore for ClientHandle {
 
 struct WatchedQueryStream {
     inner: Weak<RwLock<Inner>>,
+    token: WatchToken,
     request_id: ConsistentTimestamp,
     receiver: mpsc::Receiver<Result<QueryResult, Error>>,
 }
@@ -626,8 +640,8 @@ impl Drop for WatchedQueryStream {
     fn drop(&mut self) {
         if let Some(inner) = self.inner.upgrade() {
             if let Ok(mut inner) = inner.write() {
-                // TODO: unregister from server
                 inner.watched_queries.remove(&self.request_id);
+                let _ = inner.send_unwatch_query(self.token);
             }
         }
     }

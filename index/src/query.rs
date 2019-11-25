@@ -1,7 +1,9 @@
 use crate::error::Error;
 use chrono::{DateTime, Utc};
 use exocore_common::framing::{CapnpFrameBuilder, FrameReader, TypedCapnpFrame};
-use exocore_common::protos::index_transport_capnp::{query_request, query_response};
+use exocore_common::protos::index_transport_capnp::{
+    query_request, query_response, watched_query_request,
+};
 use exocore_common::time::ConsistentTimestamp;
 use exocore_schema::entity::{Entity, EntityId};
 use exocore_schema::schema::Schema;
@@ -19,9 +21,6 @@ pub struct Query {
     pub inner: InnerQuery,
 
     pub paging: Option<QueryPaging>,
-
-    /// Watching token used to uniquely identify the query
-    pub token: Option<WatchToken>,
 
     /// If true, only return summary
     pub summary: bool,
@@ -48,7 +47,6 @@ impl Query {
                 query: query.into(),
             }),
             paging: None,
-            token: None,
             summary: false,
             result_hash: None,
         }
@@ -61,7 +59,6 @@ impl Query {
                 trait_query: None,
             }),
             paging: None,
-            token: None,
             summary: false,
             result_hash: None,
         }
@@ -73,7 +70,6 @@ impl Query {
                 entity_id: entity_id.into(),
             }),
             paging: None,
-            token: None,
             summary: false,
             result_hash: None,
         }
@@ -84,7 +80,6 @@ impl Query {
         Query {
             inner: InnerQuery::TestFail(TestFailQuery {}),
             paging: None,
-            token: None,
             summary: false,
             result_hash: None,
         }
@@ -104,11 +99,6 @@ impl Query {
         self
     }
 
-    pub fn with_watch_token(mut self, token: WatchToken) -> Self {
-        self.token = Some(token);
-        self
-    }
-
     pub fn only_summary(mut self) -> Self {
         self.summary = true;
         self
@@ -123,7 +113,7 @@ impl Query {
         self.paging.as_ref().unwrap_or(&QueryPaging::DEFAULT_PAGING)
     }
 
-    pub fn to_query_request_frame(
+    pub fn to_request_frame(
         &self,
         schema: &Arc<Schema>,
     ) -> Result<CapnpFrameBuilder<query_request::Owned>, Error> {
@@ -135,10 +125,50 @@ impl Query {
         Ok(frame_builder)
     }
 
-    pub fn from_query_request_frame<I>(
+    pub fn from_request_frame<I>(
         schema: &Arc<Schema>,
         frame: TypedCapnpFrame<I, query_request::Owned>,
     ) -> Result<Query, Error>
+    where
+        I: FrameReader,
+    {
+        let reader = frame.get_reader()?;
+        let data = reader.get_request()?;
+        let query = with_schema(schema, || serde_json::from_slice(data))?;
+
+        Ok(query)
+    }
+}
+
+/// Query that will be watched for changes and be consumed as a stream instead of a future.
+#[serde(rename_all = "snake_case")]
+#[derive(Serialize, Deserialize, Clone)]
+pub struct WatchedQuery {
+    pub query: Query,
+    pub token: WatchToken,
+}
+
+impl WatchedQuery {
+    pub fn new(query: Query, token: WatchToken) -> WatchedQuery {
+        WatchedQuery { query, token }
+    }
+
+    pub fn to_request_frame(
+        &self,
+        schema: &Arc<Schema>,
+    ) -> Result<CapnpFrameBuilder<watched_query_request::Owned>, Error> {
+        let mut frame_builder = CapnpFrameBuilder::<watched_query_request::Owned>::new();
+        let mut msg_builder = frame_builder.get_builder();
+        let serialized_query = with_schema(schema, || serde_json::to_vec(&self))?;
+        msg_builder.set_request(&serialized_query);
+
+        Ok(frame_builder)
+    }
+
+    pub fn from_request_frame<I>(
+        schema: &Arc<Schema>,
+        frame: TypedCapnpFrame<I, watched_query_request::Owned>,
+    ) -> Result<WatchedQuery, Error>
     where
         I: FrameReader,
     {
@@ -286,7 +316,6 @@ pub struct QueryResult {
     pub total_estimated: u32,
     pub current_page: QueryPaging,
     pub next_page: Option<QueryPaging>,
-    pub token: Option<WatchToken>,
     pub hash: ResultHash,
 }
 
@@ -298,7 +327,6 @@ impl QueryResult {
             total_estimated: 0,
             current_page: QueryPaging::new(0),
             next_page: None,
-            token: None,
             hash: 0,
         }
     }

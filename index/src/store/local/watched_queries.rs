@@ -23,34 +23,30 @@ impl WatchedQueries {
 
     pub fn update_query_results(
         &self,
+        token: WatchToken,
         query: &Query,
         results: &QueryResult,
         sender: Arc<Mutex<mpsc::Sender<Result<QueryResult, Error>>>>,
     ) -> bool {
         let mut inner = self.inner.lock().expect("Inner got poisoned");
 
-        if let Some(token) = query.token {
-            if let Some(mut current_watched) = inner.queries.remove(&token) {
-                let should_reply = current_watched.last_hash != results.hash;
+        if let Some(mut current_watched) = inner.queries.remove(&token) {
+            let should_reply = current_watched.last_hash != results.hash;
 
-                current_watched.last_hash = results.hash;
-                inner.queries.insert(token, current_watched);
+            current_watched.last_hash = results.hash;
+            inner.queries.insert(token, current_watched);
 
-                should_reply
-            } else {
-                let watched_query = WatchedQuery {
-                    token,
-                    sender,
-                    query: Arc::new(query.clone()),
-                    last_register: Instant::now(),
-                    last_hash: results.hash,
-                };
-
-                inner.queries.insert(token, watched_query);
-                true
-            }
+            should_reply
         } else {
-            error!("Query didn't have a watch token");
+            let watched_query = RegisteredWatchedQuery {
+                token,
+                sender,
+                query: Arc::new(query.clone()),
+                last_register: Instant::now(),
+                last_hash: results.hash,
+            };
+
+            inner.queries.insert(token, watched_query);
             true
         }
     }
@@ -61,18 +57,18 @@ impl WatchedQueries {
         }
     }
 
-    pub fn queries(&self) -> Vec<WatchedQuery> {
+    pub fn queries(&self) -> Vec<RegisteredWatchedQuery> {
         let inner = self.inner.lock().expect("Inner got poisoned");
         inner.queries.values().cloned().collect()
     }
 }
 
 struct Inner {
-    queries: HashMap<WatchToken, WatchedQuery>,
+    queries: HashMap<WatchToken, RegisteredWatchedQuery>,
 }
 
 #[derive(Clone)]
-pub struct WatchedQuery {
+pub struct RegisteredWatchedQuery {
     pub(crate) token: WatchToken,
     pub(crate) sender: Arc<Mutex<mpsc::Sender<Result<QueryResult, Error>>>>,
     pub(crate) query: Arc<Query>,
