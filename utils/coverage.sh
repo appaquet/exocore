@@ -17,7 +17,7 @@ export RUSTUP_TOOLCHAIN=nightly-2019-11-14 # if changed, change in push-tester.y
 export CARGO_OPTIONS="--all --all-features --exclude=exocore-cli --exclude=exocore-client-wasm --exclude=exocore-client-android"
 export CARGO_INCREMENTAL=0
 export RUSTFLAGS="-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Zno-landing-pads"
-cargo clean -p exocore-common
+cargo clean -p exocore-schema
 cargo build $CARGO_OPTIONS
 cargo test $CARGO_OPTIONS
 
