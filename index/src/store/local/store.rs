@@ -568,13 +568,13 @@ pub mod tests {
         test_store.start_store()?;
 
         let mutation = test_store.create_put_contact_mutation("entry1", "contact1", "Hello World");
-        let response = test_store.mutate_via_handle(mutation)?;
+        let response = test_store.mutate(mutation)?;
         test_store
             .cluster
             .wait_operation_committed(0, response.operation_id);
 
         let query = Query::match_text("hello");
-        let results = test_store.query_via_handle(query)?;
+        let results = test_store.query(query)?;
         assert_eq!(results.results.len(), 1);
 
         Ok(())
@@ -586,7 +586,7 @@ pub mod tests {
         test_store.start_store()?;
 
         let query = Query::test_fail();
-        assert!(test_store.query_via_handle(query).is_err());
+        assert!(test_store.query(query).is_err());
 
         Ok(())
     }
@@ -597,7 +597,7 @@ pub mod tests {
         test_store.start_store()?;
 
         let mutation = Mutation::TestFail(TestFailMutation {});
-        assert!(test_store.mutate_via_handle(mutation).is_err());
+        assert!(test_store.mutate(mutation).is_err());
 
         Ok(())
     }
@@ -620,7 +620,7 @@ pub mod tests {
         assert_eq!(result.unwrap().results.len(), 0);
 
         let mutation = test_store.create_put_contact_mutation("entry1", "contact1", "Hello World");
-        let response = test_store.mutate_via_handle(mutation)?;
+        let response = test_store.mutate(mutation)?;
         test_store
             .cluster
             .wait_operation_committed(0, response.operation_id);
@@ -635,7 +635,7 @@ pub mod tests {
 
         let mutation =
             test_store.create_put_contact_mutation("entry2", "contact2", "Something else");
-        let response = test_store.mutate_via_handle(mutation)?;
+        let response = test_store.mutate(mutation)?;
         test_store
             .cluster
             .wait_operation_committed(0, response.operation_id);

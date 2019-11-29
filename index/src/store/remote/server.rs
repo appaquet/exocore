@@ -25,27 +25,27 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy)]
-pub struct RemoteStoreServerConfiguration {
+pub struct ServerConfiguration {
     pub watched_queries_register_timeout: Duration,
     pub management_timer_interval: Duration,
 }
 
-impl Default for RemoteStoreServerConfiguration {
+impl Default for ServerConfiguration {
     fn default() -> Self {
-        RemoteStoreServerConfiguration {
+        ServerConfiguration {
             watched_queries_register_timeout: Duration::from_secs(30),
             management_timer_interval: Duration::from_millis(500),
         }
     }
 }
 
-pub struct RemoteStoreServer<CS, PS, T>
+pub struct Server<CS, PS, T>
 where
     CS: exocore_data::chain::ChainStore,
     PS: exocore_data::pending::PendingStore,
     T: TransportHandle,
 {
-    config: RemoteStoreServerConfiguration,
+    config: ServerConfiguration,
     start_notifier: CompletionNotifier<(), Error>,
     started: bool,
     inner: Arc<RwLock<Inner<CS, PS>>>,
@@ -53,19 +53,19 @@ where
     stop_listener: CompletionListener<(), Error>,
 }
 
-impl<CS, PS, T> RemoteStoreServer<CS, PS, T>
+impl<CS, PS, T> Server<CS, PS, T>
 where
     CS: exocore_data::chain::ChainStore,
     PS: exocore_data::pending::PendingStore,
     T: TransportHandle,
 {
     pub fn new(
-        config: RemoteStoreServerConfiguration,
+        config: ServerConfiguration,
         cell: Cell,
         schema: Arc<Schema>,
         store_handle: crate::store::local::StoreHandle<CS, PS>,
         transport_handle: T,
-    ) -> Result<RemoteStoreServer<CS, PS, T>, Error> {
+    ) -> Result<Server<CS, PS, T>, Error> {
         let (stop_notifier, stop_listener) = CompletionNotifier::new_with_listener();
         let start_notifier = CompletionNotifier::new();
 
@@ -79,7 +79,7 @@ where
             stop_notifier,
         }));
 
-        Ok(RemoteStoreServer {
+        Ok(Server {
             config,
             start_notifier,
             started: false,
@@ -204,7 +204,6 @@ where
         query: Query,
     ) -> Result<(), Error> {
         let weak_inner1 = weak_inner.clone();
-
         let future_result = {
             let inner = weak_inner1.upgrade().ok_or(Error::Dropped)?;
             let inner = inner.read()?;
@@ -245,14 +244,12 @@ where
         let weak_inner2 = weak_inner.clone();
         let weak_inner3 = weak_inner.clone();
 
-        let token = query.token;
-
+        let watch_token = query.token;
         let (result_stream, timeout_receiver) = {
             // check if this query already exists. if so, just update its last register
             let inner = weak_inner1.upgrade().ok_or(Error::Dropped)?;
             let mut inner = inner.write()?;
-            if let Some(watch_query) = inner.watched_queries.get_mut(&token) {
-                warn!("Re-registering query");
+            if let Some(watch_query) = inner.watched_queries.get_mut(&watch_token) {
                 watch_query.last_register = Instant::now();
                 return Ok(());
             }
@@ -263,8 +260,7 @@ where
                 last_register: Instant::now(),
                 _timeout_sender: timeout_sender,
             };
-            inner.watched_queries.insert(token, watched_query);
-            warn!("Registering query");
+            inner.watched_queries.insert(watch_token, watched_query);
 
             let result_stream = inner.store_handle.watched_query(query.clone());
 
@@ -397,7 +393,7 @@ where
     }
 }
 
-impl<CS, PS, T> Future for RemoteStoreServer<CS, PS, T>
+impl<CS, PS, T> Future for Server<CS, PS, T>
 where
     CS: exocore_data::chain::ChainStore,
     PS: exocore_data::pending::PendingStore,
@@ -425,7 +421,7 @@ where
     CS: exocore_data::chain::ChainStore,
     PS: exocore_data::pending::PendingStore,
 {
-    config: RemoteStoreServerConfiguration,
+    config: ServerConfiguration,
     cell: Cell,
     schema: Arc<Schema>,
     store_handle: crate::store::local::StoreHandle<CS, PS>,
@@ -473,7 +469,6 @@ where
     }
 }
 
-/// Parsed incoming message via transport
 enum IncomingMessage {
     Mutation(Mutation),
     Query(Query),

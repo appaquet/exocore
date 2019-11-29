@@ -26,7 +26,7 @@ use std::sync::{Arc, RwLock, Weak};
 use std::time::Duration;
 
 #[derive(Debug, Clone, Copy)]
-pub struct RemoteStoreClientConfiguration {
+pub struct ClientConfiguration {
     pub query_timeout: Duration,
 
     pub mutation_timeout: Duration,
@@ -38,9 +38,9 @@ pub struct RemoteStoreClientConfiguration {
     pub watched_query_channel_size: usize,
 }
 
-impl Default for RemoteStoreClientConfiguration {
+impl Default for ClientConfiguration {
     fn default() -> Self {
-        RemoteStoreClientConfiguration {
+        ClientConfiguration {
             query_timeout: Duration::from_secs(10),
             mutation_timeout: Duration::from_secs(5),
             watched_queries_register_interval: Duration::from_secs(10),
@@ -51,12 +51,12 @@ impl Default for RemoteStoreClientConfiguration {
 }
 
 /// This implementation of the AsyncStore allow sending all queries and mutations to
-/// a remote node's local store.
-pub struct RemoteStoreClient<T>
+/// a remote node's local store running the `Server` component.
+pub struct Client<T>
 where
     T: TransportHandle,
 {
-    config: RemoteStoreClientConfiguration,
+    config: ClientConfiguration,
     start_notifier: CompletionNotifier<(), Error>,
     started: bool,
     inner: Arc<RwLock<Inner>>,
@@ -64,18 +64,18 @@ where
     stop_listener: CompletionListener<(), Error>,
 }
 
-impl<T> RemoteStoreClient<T>
+impl<T> Client<T>
 where
     T: TransportHandle,
 {
     pub fn new(
-        config: RemoteStoreClientConfiguration,
+        config: ClientConfiguration,
         cell: Cell,
         clock: Clock,
         schema: Arc<Schema>,
         transport_handle: T,
         index_node: Node,
-    ) -> Result<RemoteStoreClient<T>, Error> {
+    ) -> Result<Client<T>, Error> {
         let (stop_notifier, stop_listener) = CompletionNotifier::new_with_listener();
         let start_notifier = CompletionNotifier::new();
 
@@ -92,7 +92,7 @@ where
             stop_notifier,
         }));
 
-        Ok(RemoteStoreClient {
+        Ok(Client {
             config,
             start_notifier,
             started: false,
@@ -201,7 +201,7 @@ where
             rendez_vous_id
         } else {
             return Err(Error::Other(format!(
-                "Got an InMessage without a follow id (type={:?} from={:?})",
+                "Got an InMessage without a rendez_vous_id (type={:?} from={:?})",
                 in_message.message_type, in_message.from
             )));
         };
@@ -230,7 +230,6 @@ where
                 }
             }
             Err(err) => {
-                // TODO: watch query
                 if let Some(pending_request) = inner.pending_mutations.remove(&request_id) {
                     let _ = pending_request.result_sender.send(Err(err));
                 } else if let Some(mut watched_query) = inner.watched_queries.remove(&request_id) {
@@ -254,13 +253,13 @@ where
         let mutation_timeout = inner.config.mutation_timeout;
         Inner::check_map_requests_timeouts(&mut inner.pending_mutations, mutation_timeout);
 
-        inner.check_register_watched_queries();
+        inner.send_watched_queries_keepalive();
 
         Ok(())
     }
 }
 
-impl<T> Future for RemoteStoreClient<T>
+impl<T> Future for Client<T>
 where
     T: TransportHandle,
 {
@@ -282,7 +281,7 @@ where
 }
 
 struct Inner {
-    config: RemoteStoreClientConfiguration,
+    config: ClientConfiguration,
     cell: Cell,
     clock: Clock,
     schema: Arc<Schema>,
@@ -416,7 +415,7 @@ impl Inner {
         }
     }
 
-    fn check_register_watched_queries(&mut self) {
+    fn send_watched_queries_keepalive(&mut self) {
         let register_interval = self.config.watched_queries_register_interval;
 
         let mut sent_queries = Vec::new();

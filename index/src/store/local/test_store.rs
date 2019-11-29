@@ -17,9 +17,7 @@ use crate::store::AsyncStore;
 
 use super::*;
 
-///
 /// Utility to test local store
-///
 pub struct TestLocalStore {
     pub cluster: DataTestCluster,
     pub schema: Arc<Schema>,
@@ -89,10 +87,7 @@ impl TestLocalStore {
         Ok(())
     }
 
-    pub fn mutate_via_handle(
-        &mut self,
-        mutation: Mutation,
-    ) -> Result<MutationResult, failure::Error> {
+    pub fn mutate(&mut self, mutation: Mutation) -> Result<MutationResult, failure::Error> {
         let resp_future = self.store_handle.mutate(mutation);
         self.cluster
             .runtime
@@ -100,7 +95,7 @@ impl TestLocalStore {
             .map_err(|err| err.into())
     }
 
-    pub fn query_via_handle(&mut self, query: Query) -> Result<QueryResult, failure::Error> {
+    pub fn query(&mut self, query: Query) -> Result<QueryResult, failure::Error> {
         let resp_future = self.store_handle.query(query);
         self.cluster
             .runtime

@@ -7,9 +7,7 @@ use exocore_common::crypto::keys::PublicKey;
 use exocore_common::node::{LocalNode, Node};
 use exocore_common::time::Clock;
 use exocore_common::utils::futures::spawn_future;
-use exocore_index::store::remote::{
-    ClientHandle, RemoteStoreClient, RemoteStoreClientConfiguration,
-};
+use exocore_index::store::remote::{Client, ClientConfiguration, ClientHandle};
 use exocore_schema::schema::Schema;
 use exocore_transport::{InEvent, TransportHandle, TransportLayer};
 
@@ -54,8 +52,8 @@ impl ExocoreClient {
 
         let mut transport = BrowserTransportClient::new(url, remote_node.clone());
         let index_handle = transport.get_handle(cell.clone(), TransportLayer::Index);
-        let remote_store = RemoteStoreClient::new(
-            RemoteStoreClientConfiguration::default(),
+        let remote_store = Client::new(
+            ClientConfiguration::default(),
             cell.clone(),
             clock,
             schema.clone(),

@@ -14,7 +14,7 @@ use crate::store::local::TestLocalStore;
 use crate::store::{AsyncStore, ResultStream};
 
 use super::*;
-use crate::store::remote::server::{RemoteStoreServer, RemoteStoreServerConfiguration};
+use crate::store::remote::server::{Server, ServerConfiguration};
 use exocore_common::time::ConsistentTimestamp;
 
 #[test]
@@ -70,9 +70,9 @@ fn query_error_propagation() -> Result<(), failure::Error> {
 
 #[test]
 fn query_timeout() -> Result<(), failure::Error> {
-    let client_config = RemoteStoreClientConfiguration {
+    let client_config = ClientConfiguration {
         query_timeout: Duration::from_millis(500),
-        ..RemoteStoreClientConfiguration::default()
+        ..ClientConfiguration::default()
     };
 
     let mut test_remote_store =
@@ -90,9 +90,9 @@ fn query_timeout() -> Result<(), failure::Error> {
 
 #[test]
 fn mutation_timeout() -> Result<(), failure::Error> {
-    let client_config = RemoteStoreClientConfiguration {
+    let client_config = ClientConfiguration {
         mutation_timeout: Duration::from_millis(500),
-        ..RemoteStoreClientConfiguration::default()
+        ..ClientConfiguration::default()
     };
 
     let mut test_remote_store =
@@ -162,16 +162,16 @@ fn watched_query_error_propagation() -> Result<(), failure::Error> {
 
 #[test]
 fn watched_query_timeout() -> Result<(), failure::Error> {
-    let server_config = RemoteStoreServerConfiguration {
+    let server_config = ServerConfiguration {
         management_timer_interval: Duration::from_millis(100),
         watched_queries_register_timeout: Duration::from_millis(200),
     };
 
     // client will re-register itself at higher interval then expected on server, which will
     // result in timing out eventually
-    let client_config = RemoteStoreClientConfiguration {
+    let client_config = ClientConfiguration {
         watched_queries_register_interval: Duration::from_millis(300),
-        ..RemoteStoreClientConfiguration::default()
+        ..ClientConfiguration::default()
     };
 
     let mut test_remote_store =
@@ -241,8 +241,8 @@ fn watched_drop_unregisters() -> Result<(), failure::Error> {
 
 struct TestRemoteStore {
     local_store: TestLocalStore,
-    server_config: RemoteStoreServerConfiguration,
-    client: Option<RemoteStoreClient<MockTransportHandle>>,
+    server_config: ServerConfiguration,
+    client: Option<Client<MockTransportHandle>>,
     client_handle: ClientHandle,
 }
 
@@ -254,13 +254,13 @@ impl TestRemoteStore {
     }
 
     fn new_with_configuration(
-        server_config: RemoteStoreServerConfiguration,
-        client_config: RemoteStoreClientConfiguration,
+        server_config: ServerConfiguration,
+        client_config: ClientConfiguration,
     ) -> Result<TestRemoteStore, failure::Error> {
         let local_store = TestLocalStore::new()?;
 
         let local_node = LocalNode::generate();
-        let store_client = RemoteStoreClient::new(
+        let store_client = Client::new(
             client_config,
             local_store.cluster.cells[0].cell().clone(),
             local_store.cluster.clocks[0].clone(),
@@ -293,8 +293,7 @@ impl TestRemoteStore {
             TransportLayer::Index,
         );
 
-        let server =
-            RemoteStoreServer::new(self.server_config, cell, schema, store_handle, transport)?;
+        let server = Server::new(self.server_config, cell, schema, store_handle, transport)?;
         self.local_store
             .cluster
             .runtime
