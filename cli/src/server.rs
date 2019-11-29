@@ -6,7 +6,7 @@ use exocore_data::{
     DirectoryChainStore, DirectoryChainStoreConfig, Engine, EngineConfig, EngineHandle,
     MemoryPendingStore,
 };
-use exocore_index::store::local::{EntitiesIndex, EntitiesIndexConfig, LocalStore};
+use exocore_index::store::local::{EntitiesIndex, EntitiesIndexConfig, Store};
 use exocore_index::store::remote::server::Server;
 use exocore_schema::schema::Schema;
 use exocore_transport::either::EitherTransportHandle;
@@ -183,7 +183,7 @@ fn create_local_store<T: TransportHandle>(
     entities_index: EntitiesIndex<DirectoryChainStore, MemoryPendingStore>,
 ) -> Result<(), failure::Error> {
     let store_config = Default::default();
-    let local_store = LocalStore::new(
+    let local_store = Store::new(
         store_config,
         schema.clone(),
         index_engine_handle,

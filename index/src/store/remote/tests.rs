@@ -10,7 +10,7 @@ use exocore_transport::TransportLayer;
 use crate::error::Error;
 use crate::mutation::{Mutation, MutationResult, TestFailMutation};
 use crate::query::{Query, QueryResult, WatchedQuery};
-use crate::store::local::TestLocalStore;
+use crate::store::local::TestStore;
 use crate::store::{AsyncStore, ResultStream};
 
 use super::*;
@@ -240,7 +240,7 @@ fn watched_drop_unregisters() -> Result<(), failure::Error> {
 }
 
 struct TestRemoteStore {
-    local_store: TestLocalStore,
+    local_store: TestStore,
     server_config: ServerConfiguration,
     client: Option<Client<MockTransportHandle>>,
     client_handle: ClientHandle,
@@ -257,7 +257,7 @@ impl TestRemoteStore {
         server_config: ServerConfiguration,
         client_config: ClientConfiguration,
     ) -> Result<TestRemoteStore, failure::Error> {
-        let local_store = TestLocalStore::new()?;
+        let local_store = TestStore::new()?;
 
         let local_node = LocalNode::generate();
         let store_client = Client::new(

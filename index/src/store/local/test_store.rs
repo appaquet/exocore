@@ -17,18 +17,18 @@ use crate::store::AsyncStore;
 
 use super::*;
 
-/// Utility to test local store
-pub struct TestLocalStore {
+/// Utility to test store
+pub struct TestStore {
     pub cluster: DataTestCluster,
     pub schema: Arc<Schema>,
 
-    pub store: Option<LocalStore<DirectoryChainStore, MemoryPendingStore>>,
+    pub store: Option<Store<DirectoryChainStore, MemoryPendingStore>>,
     pub store_handle: StoreHandle<DirectoryChainStore, MemoryPendingStore>,
     _temp_dir: TempDir,
 }
 
-impl TestLocalStore {
-    pub fn new() -> Result<TestLocalStore, failure::Error> {
+impl TestStore {
+    pub fn new() -> Result<TestStore, failure::Error> {
         let cluster = DataTestCluster::new_single_and_start()?;
 
         let temp_dir = tempdir::TempDir::new("store")?;
@@ -52,7 +52,7 @@ impl TestLocalStore {
             cluster.get_handle(0).try_clone()?,
         )?;
 
-        let store = LocalStore::new(
+        let store = Store::new(
             Default::default(),
             schema.clone(),
             cluster.get_new_handle(0),
@@ -60,7 +60,7 @@ impl TestLocalStore {
         )?;
         let store_handle = store.get_handle();
 
-        Ok(TestLocalStore {
+        Ok(TestStore {
             cluster,
             schema: schema.clone(),
 

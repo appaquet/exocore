@@ -18,17 +18,17 @@ use crate::store::{AsyncResult, AsyncStore, ResultStream};
 
 use super::entities_index::EntitiesIndex;
 
-/// Config for `LocalStore`
+/// Config for `Store`
 #[derive(Clone, Copy)]
-pub struct Config {
+pub struct StoreConfig {
     pub query_channel_size: usize,
     pub query_parallelism: usize,
     pub handle_watch_query_channel_size: usize,
 }
 
-impl Default for Config {
+impl Default for StoreConfig {
     fn default() -> Self {
-        Config {
+        StoreConfig {
             query_channel_size: 1000,
             query_parallelism: 4,
             handle_watch_query_channel_size: 1000,
@@ -38,29 +38,29 @@ impl Default for Config {
 
 /// Locally persisted store. It uses a data engine handle and entities index to
 /// perform mutations and resolve queries.
-pub struct LocalStore<CS, PS>
+pub struct Store<CS, PS>
 where
     CS: exocore_data::chain::ChainStore,
     PS: exocore_data::pending::PendingStore,
 {
     start_notifier: CompletionNotifier<(), Error>,
-    config: Config,
+    config: StoreConfig,
     started: bool,
     inner: Arc<RwLock<Inner<CS, PS>>>,
     stop_listener: CompletionListener<(), Error>,
 }
 
-impl<CS, PS> LocalStore<CS, PS>
+impl<CS, PS> Store<CS, PS>
 where
     CS: exocore_data::chain::ChainStore,
     PS: exocore_data::pending::PendingStore,
 {
     pub fn new(
-        config: Config,
+        config: StoreConfig,
         schema: Arc<Schema>,
         data_handle: exocore_data::engine::EngineHandle<CS, PS>,
         index: EntitiesIndex<CS, PS>,
-    ) -> Result<LocalStore<CS, PS>, Error> {
+    ) -> Result<Store<CS, PS>, Error> {
         let (stop_notifier, stop_listener) = CompletionNotifier::new_with_listener();
         let start_notifier = CompletionNotifier::new();
 
@@ -74,7 +74,7 @@ where
             stop_notifier,
         }));
 
-        Ok(LocalStore {
+        Ok(Store {
             start_notifier,
             config,
             started: false,
@@ -234,7 +234,7 @@ where
         );
 
         self.start_notifier.complete(Ok(()));
-        info!("Index local store started");
+        info!("Index store started");
 
         Ok(())
     }
@@ -250,7 +250,7 @@ where
     }
 }
 
-impl<CS, PS> Future for LocalStore<CS, PS>
+impl<CS, PS> Future for Store<CS, PS>
 where
     CS: exocore_data::chain::ChainStore,
     PS: exocore_data::pending::PendingStore,
@@ -368,7 +368,7 @@ where
     CS: exocore_data::chain::ChainStore,
     PS: exocore_data::pending::PendingStore,
 {
-    config: Config,
+    config: StoreConfig,
     start_listener: CompletionListener<(), Error>,
     inner: Weak<RwLock<Inner<CS, PS>>>,
 }
@@ -556,15 +556,15 @@ impl QueryRequest {
 #[cfg(test)]
 pub mod tests {
     use crate::mutation::TestFailMutation;
-    use crate::store::local::TestLocalStore;
 
     use super::*;
+    use crate::store::local::TestStore;
     use exocore_common::time::ConsistentTimestamp;
     use std::time::Duration;
 
     #[test]
     fn store_mutate_query_via_handle() -> Result<(), failure::Error> {
-        let mut test_store = TestLocalStore::new()?;
+        let mut test_store = TestStore::new()?;
         test_store.start_store()?;
 
         let mutation = test_store.create_put_contact_mutation("entry1", "contact1", "Hello World");
@@ -582,7 +582,7 @@ pub mod tests {
 
     #[test]
     fn query_error_propagating() -> Result<(), failure::Error> {
-        let mut test_store = TestLocalStore::new()?;
+        let mut test_store = TestStore::new()?;
         test_store.start_store()?;
 
         let query = Query::test_fail();
@@ -593,7 +593,7 @@ pub mod tests {
 
     #[test]
     fn mutation_error_propagating() -> Result<(), failure::Error> {
-        let mut test_store = TestLocalStore::new()?;
+        let mut test_store = TestStore::new()?;
         test_store.start_store()?;
 
         let mutation = Mutation::TestFail(TestFailMutation {});
@@ -604,7 +604,7 @@ pub mod tests {
 
     #[test]
     fn watched_query() -> Result<(), failure::Error> {
-        let mut test_store = TestLocalStore::new()?;
+        let mut test_store = TestStore::new()?;
         test_store.start_store()?;
 
         let query = Query::match_text("hello");
@@ -659,7 +659,7 @@ pub mod tests {
 
     #[test]
     fn watched_query_failure() -> Result<(), failure::Error> {
-        let mut test_store = TestLocalStore::new()?;
+        let mut test_store = TestStore::new()?;
         test_store.start_store()?;
 
         let query = Query::test_fail();

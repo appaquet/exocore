@@ -28,13 +28,9 @@ use std::time::Duration;
 #[derive(Debug, Clone, Copy)]
 pub struct ClientConfiguration {
     pub query_timeout: Duration,
-
     pub mutation_timeout: Duration,
-
     pub management_interval: Duration,
-
     pub watched_queries_register_interval: Duration,
-
     pub watched_query_channel_size: usize,
 }
 

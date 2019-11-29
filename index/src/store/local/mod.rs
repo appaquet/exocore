@@ -5,10 +5,10 @@ mod traits_index;
 mod watched_queries;
 
 pub use entities_index::{EntitiesIndex, EntitiesIndexConfig};
-pub use store::{LocalStore, StoreHandle};
+pub use store::{Store, StoreHandle};
 
 #[cfg(test)]
 mod test_store;
 
 #[cfg(test)]
-pub use test_store::TestLocalStore;
+pub use test_store::TestStore;
