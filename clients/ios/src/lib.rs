@@ -18,11 +18,12 @@ use exocore_transport::lp2p::Libp2pTransportConfig;
 use exocore_transport::{Libp2pTransport, TransportLayer};
 use futures::prelude::*;
 use libc;
+use std::ffi::CString;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 
 #[repr(u8)]
-enum Error {
+enum Status {
     Success = 0,
 }
 
@@ -33,7 +34,7 @@ pub struct Context {
 }
 
 impl Context {
-    fn new() -> Result<Context, Error> {
+    fn new() -> Result<Context, Status> {
         logging::setup(None);
         info!("Initializing...");
 
@@ -60,7 +61,7 @@ impl Context {
             PublicKey::decode_base58_string("peFdPsQsdqzT2H6cPd3WdU1fGdATDmavh4C17VWWacZTMP")
                 .expect("Couldn't decode cell publickey");
         let remote_node = Node::new_from_public_key(remote_node_pk);
-        let remote_addr = "/ip4/192.168.2.19/tcp/3330"
+        let remote_addr = "/ip4/192.168.2.13/tcp/3330"
             .parse()
             .expect("Couldn't parse remote node addr");
         remote_node.add_address(remote_addr);
@@ -72,7 +73,7 @@ impl Context {
             .get_handle(cell.clone(), TransportLayer::Index)
             .expect("Couldn't get transport handle for remote index");
         let remote_store_config = ClientConfiguration::default();
-        let remote_store = Client::new(
+        let remote_store_client = Client::new(
             remote_store_config,
             cell,
             clock,
@@ -82,7 +83,7 @@ impl Context {
         )
         .expect("Couldn't start remote store");
 
-        let store_handle = remote_store
+        let store_handle = remote_store_client
             .get_handle()
             .expect("Couldn't get store handle");
 
@@ -97,7 +98,7 @@ impl Context {
         );
 
         runtime.spawn(
-            remote_store
+            remote_store_client
                 .map(|_| {
                     error!("Remote store is done");
                 })
@@ -115,41 +116,108 @@ impl Context {
 }
 
 #[repr(C)]
-pub struct ContextResult {
-    status: Error,
+pub struct ExocoreContext {
+    status: Status,
     context: *mut Context,
 }
 
 #[no_mangle]
-pub extern "C" fn exocore_context_new() -> ContextResult {
+pub extern "C" fn exocore_context_new() -> ExocoreContext {
     let context = match Context::new() {
         Ok(context) => context,
         Err(err) => {
-            return ContextResult {
+            return ExocoreContext {
                 status: err,
                 context: std::ptr::null_mut(),
             }
         }
     };
 
-    ContextResult {
-        status: Error::Success,
+    ExocoreContext {
+        status: Status::Success,
         context: Box::into_raw(Box::new(context)),
     }
 }
 
 #[no_mangle]
-pub extern "C" fn exocore_send_query(ctx: *mut Context, _query: *const libc::c_char) {
+pub extern "C" fn exocore_context_free(ctx: *mut Context) {
+    unsafe {
+        drop(Box::from_raw(ctx));
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn exocore_query(
+    ctx: *mut Context,
+    query: *const libc::c_char,
+    on_ready: extern "C" fn(status: QueryStatus, *const libc::c_char),
+) {
     let context = unsafe { ctx.as_mut().unwrap() };
 
-    match context
-        .runtime
-        .block_on(context.store_handle.query(Query::match_text("hello")))
-    {
-        Ok(res) => {
-            let json = with_schema(&context.schema, || serde_json::to_string(&res)).unwrap();
-            println!("got results: {:?}", json);
-        }
-        Err(err) => println!("got err: {}", err),
-    }
+    // TODO: Should be dropped if dropped
+    let schema = context.schema.clone();
+    context.runtime.spawn(
+        context
+            .store_handle
+            .query(Query::match_text("hello"))
+            .then(move |res| {
+                let ret = res.as_ref().map(|_| ()).map_err(|_| ());
+
+                match res {
+                    Ok(res) => {
+                        let json = with_schema(&schema, || serde_json::to_string(&res)).unwrap();
+                        info!("Got results: {:?}", json);
+
+                        let cstr = CString::new(json).unwrap();
+                        on_ready(QueryStatus::Success, cstr.as_ref().as_ptr());
+                    }
+                    Err(err) => println!("Got error"),
+                }
+
+                ret
+            })
+            .map(|_| ())
+            .map_err(|_| ()),
+    );
+}
+
+#[no_mangle]
+pub extern "C" fn exocore_watched_query(
+    ctx: *mut Context,
+    query: *const libc::c_char,
+    on_change: extern "C" fn(status: QueryStatus, *const libc::c_char),
+) {
+    let context = unsafe { ctx.as_mut().unwrap() };
+
+    // TODO: Should be dropped if dropped
+    let schema = context.schema.clone();
+    context.runtime.spawn(
+        context
+            .store_handle
+            .watched_query(Query::match_text("hello"))
+            .then(move |res| {
+                let ret = res.as_ref().map(|_| ()).map_err(|_| ());
+
+                match res {
+                    Ok(res) => {
+                        let json = with_schema(&schema, || serde_json::to_string(&res)).unwrap();
+                        info!("Got results: {:?}", json);
+
+                        let cstr = CString::new(json).unwrap();
+                        on_change(QueryStatus::Success, cstr.as_ref().as_ptr());
+                    }
+                    Err(err) => println!("Got error"),
+                }
+
+                ret
+            })
+            .for_each(|_| Ok(()))
+            .map_err(|_| ()),
+    );
+}
+
+#[repr(u8)]
+pub enum QueryStatus {
+    Success = 0,
+    Error,
 }

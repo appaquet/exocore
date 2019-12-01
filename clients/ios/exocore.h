@@ -5,19 +5,32 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-enum ExocoreError {
-  ExocoreError_Success = 0,
-  ExocoreError_TokioRuntime = 1,
+enum ExocoreQueryStatus {
+  ExocoreQueryStatus_Success = 0,
+  ExocoreQueryStatus_Error,
 };
-typedef uint8_t ExocoreError;
+typedef uint8_t ExocoreQueryStatus;
+
+enum ExocoreStatus {
+  ExocoreStatus_Success = 0,
+};
+typedef uint8_t ExocoreStatus;
 
 typedef struct ExocoreContext ExocoreContext;
 
-typedef struct ExocoreContextResult {
-  ExocoreError status;
+typedef struct ExocoreExocoreContext {
+  ExocoreStatus status;
   ExocoreContext *context;
-} ExocoreContextResult;
+} ExocoreExocoreContext;
 
-ExocoreContextResult exocore_context_new(void);
+void exocore_context_free(ExocoreContext *ctx);
 
-void exocore_send_query(ExocoreContext *ctx, const char *query);
+ExocoreExocoreContext exocore_context_new(void);
+
+void exocore_query(ExocoreContext *ctx,
+                   const char *query,
+                   void (*on_ready)(ExocoreQueryStatus status, const char*));
+
+void exocore_watched_query(ExocoreContext *ctx,
+                           const char *query,
+                           void (*on_change)(ExocoreQueryStatus status, const char*));
