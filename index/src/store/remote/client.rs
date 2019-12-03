@@ -1,7 +1,6 @@
 use crate::error::Error;
 use crate::mutation::{Mutation, MutationResult};
 use crate::query::{Query, QueryResult, WatchToken, WatchedQuery};
-use crate::store::{AsyncResult, AsyncStore, ResultStream};
 use exocore_common::cell::Cell;
 use exocore_common::framing::CapnpFrameBuilder;
 use exocore_common::node::Node;
@@ -320,7 +319,13 @@ impl Inner {
     fn send_query(
         &mut self,
         query: Query,
-    ) -> Result<oneshot::Receiver<Result<QueryResult, Error>>, Error> {
+    ) -> Result<
+        (
+            ConsistentTimestamp,
+            oneshot::Receiver<Result<QueryResult, Error>>,
+        ),
+        Error,
+    > {
         let (result_sender, receiver) = futures::oneshot();
 
         let request_id = self.clock.consistent_time(self.cell.local_node());
@@ -341,7 +346,7 @@ impl Inner {
             },
         );
 
-        Ok(receiver)
+        Ok((request_id, receiver))
     }
 
     fn watch_query(
@@ -540,57 +545,51 @@ impl ClientHandle {
                 _ => Error::Other("Error in completion error".to_string()),
             }))
     }
-}
 
-impl AsyncStore for ClientHandle {
-    fn mutate(&self, mutation: Mutation) -> AsyncResult<MutationResult> {
+    pub fn mutate(
+        &self,
+        mutation: Mutation,
+    ) -> Result<impl Future<Item = MutationResult, Error = Error>, Error> {
         let inner = match self.inner.upgrade() {
             Some(inner) => inner,
-            None => return Box::new(futures::failed(Error::Dropped)),
+            None => return Err(Error::Dropped),
         };
         let mut inner = match inner.write() {
             Ok(inner) => inner,
-            Err(err) => return Box::new(futures::failed(err.into())),
+            Err(err) => return Err(err.into()),
         };
 
-        match inner.send_mutation(mutation) {
-            Ok(receiver) => Box::new(receiver.then(|res| match res {
-                Ok(Ok(res)) => Ok(res),
-                Ok(Err(err)) => Err(err),
-                Err(_err) => Err(Error::Other("Mutation got cancelled".to_string())),
-            })),
-            Err(err) => Box::new(futures::failed(err)),
-        }
+        Ok(inner
+            .send_mutation(mutation)?
+            .map_err(|_| Error::Other("Mutation future channel closed".to_string()))
+            .and_then(|res| res))
     }
 
-    fn query(&self, query: Query) -> AsyncResult<QueryResult> {
+    pub fn query(&self, query: Query) -> Result<QueryFuture, Error> {
         let inner = match self.inner.upgrade() {
             Some(inner) => inner,
-            None => return Box::new(futures::failed(Error::Dropped)),
+            None => return Err(Error::Dropped),
         };
         let mut inner = match inner.write() {
             Ok(inner) => inner,
-            Err(err) => return Box::new(futures::failed(err.into())),
+            Err(err) => return Err(err.into()),
         };
 
-        match inner.send_query(query) {
-            Ok(receiver) => Box::new(receiver.then(|res| match res {
-                Ok(Ok(res)) => Ok(res),
-                Ok(Err(err)) => Err(err),
-                Err(_err) => Err(Error::Other("Query got cancelled".to_string())),
-            })),
-            Err(err) => Box::new(futures::failed(err)),
-        }
+        let (request_id, receiver) = inner.send_query(query)?;
+        Ok(QueryFuture {
+            receiver,
+            request_id,
+        })
     }
 
-    fn watched_query(&self, query: Query) -> ResultStream<QueryResult> {
+    pub fn watched_query(&self, query: Query) -> Result<WatchedQueryStream, Error> {
         let inner = match self.inner.upgrade() {
             Some(inner) => inner,
-            None => return Box::new(futures::stream::once(Err(Error::Dropped))),
+            None => return Err(Error::Dropped),
         };
         let mut inner = match inner.write() {
             Ok(inner) => inner,
-            Err(err) => return Box::new(futures::stream::once(Err(err.into()))),
+            Err(err) => return Err(err.into()),
         };
 
         let watch_token = query
@@ -601,23 +600,72 @@ impl AsyncStore for ClientHandle {
             token: watch_token,
         };
 
-        match inner.watch_query(watch_query) {
-            Ok((request_id, receiver)) => Box::new(WatchedQueryStream {
-                inner: self.inner.clone(),
-                watch_token,
-                request_id,
-                receiver,
-            }),
-            Err(err) => Box::new(futures::stream::once(Err(err))),
+        let (request_id, receiver) = inner.watch_query(watch_query)?;
+        Ok(WatchedQueryStream {
+            inner: self.inner.clone(),
+            watch_token,
+            request_id,
+            receiver,
+        })
+    }
+
+    pub fn cancel_query(&self, query_id: ConsistentTimestamp) -> Result<(), Error> {
+        let inner = match self.inner.upgrade() {
+            Some(inner) => inner,
+            None => return Err(Error::Dropped),
+        };
+        let mut inner = match inner.write() {
+            Ok(inner) => inner,
+            Err(err) => return Err(err.into()),
+        };
+
+        inner.pending_queries.remove(&query_id);
+        if let Some(query) = inner.watched_queries.remove(&query_id) {
+            let _ = inner.send_unwatch_query(query.query.token);
+        }
+
+        Ok(())
+    }
+}
+
+pub struct QueryFuture {
+    receiver: oneshot::Receiver<Result<QueryResult, Error>>,
+    request_id: ConsistentTimestamp,
+}
+
+impl QueryFuture {
+    pub fn query_id(&self) -> ConsistentTimestamp {
+        self.request_id
+    }
+}
+
+impl Future for QueryFuture {
+    type Item = QueryResult;
+    type Error = Error;
+
+    fn poll(&mut self) -> Result<Async<QueryResult>, Error> {
+        match self.receiver.poll() {
+            Ok(Async::Ready(Ok(res))) => Ok(Async::Ready(res)),
+            Ok(Async::Ready(Err(err))) => Err(err),
+            Ok(Async::NotReady) => Ok(Async::NotReady),
+            Err(_) => Err(Error::Other(
+                "Error polling query result future".to_string(),
+            )),
         }
     }
 }
 
-struct WatchedQueryStream {
+pub struct WatchedQueryStream {
     inner: Weak<RwLock<Inner>>,
     watch_token: WatchToken,
     request_id: ConsistentTimestamp,
     receiver: mpsc::Receiver<Result<QueryResult, Error>>,
+}
+
+impl WatchedQueryStream {
+    pub fn query_id(&self) -> ConsistentTimestamp {
+        self.request_id
+    }
 }
 
 impl Stream for WatchedQueryStream {

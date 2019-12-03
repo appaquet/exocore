@@ -23,14 +23,21 @@ typedef struct ExocoreExocoreContext {
   ExocoreContext *context;
 } ExocoreExocoreContext;
 
+typedef struct ExocoreQueryHandle {
+  ExocoreQueryStatus status;
+  uint64_t query_id;
+} ExocoreQueryHandle;
+
 void exocore_context_free(ExocoreContext *ctx);
 
 ExocoreExocoreContext exocore_context_new(void);
 
-void exocore_query(ExocoreContext *ctx,
-                   const char *query,
-                   void (*on_ready)(ExocoreQueryStatus status, const char*));
+ExocoreQueryHandle exocore_query(ExocoreContext *ctx,
+                                 const char *query,
+                                 void (*on_ready)(ExocoreQueryStatus status, const char*));
 
-void exocore_watched_query(ExocoreContext *ctx,
-                           const char *query,
-                           void (*on_change)(ExocoreQueryStatus status, const char*));
+void exocore_query_cancel(ExocoreContext *ctx, ExocoreQueryHandle handle);
+
+ExocoreQueryHandle exocore_watched_query(ExocoreContext *ctx,
+                                         const char *query,
+                                         void (*on_change)(ExocoreQueryStatus status, const char*));

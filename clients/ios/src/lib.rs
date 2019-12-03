@@ -8,10 +8,9 @@ mod logging;
 use exocore_common::cell::Cell;
 use exocore_common::crypto::keys::{Keypair, PublicKey};
 use exocore_common::node::{LocalNode, Node};
-use exocore_common::time::Clock;
+use exocore_common::time::{Clock, ConsistentTimestamp};
 use exocore_index::query::Query;
 use exocore_index::store::remote::{Client, ClientConfiguration, ClientHandle};
-use exocore_index::store::AsyncStore;
 use exocore_schema::schema::Schema;
 use exocore_schema::serialization::with_schema;
 use exocore_transport::lp2p::Libp2pTransportConfig;
@@ -21,11 +20,6 @@ use libc;
 use std::ffi::CString;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
-
-#[repr(u8)]
-enum Status {
-    Success = 0,
-}
 
 pub struct Context {
     runtime: Runtime,
@@ -121,6 +115,11 @@ pub struct ExocoreContext {
     context: *mut Context,
 }
 
+#[repr(u8)]
+enum Status {
+    Success = 0,
+}
+
 #[no_mangle]
 pub extern "C" fn exocore_context_new() -> ExocoreContext {
     let context = match Context::new() {
@@ -151,15 +150,18 @@ pub extern "C" fn exocore_query(
     ctx: *mut Context,
     query: *const libc::c_char,
     on_ready: extern "C" fn(status: QueryStatus, *const libc::c_char),
-) {
+) -> QueryHandle {
     let context = unsafe { ctx.as_mut().unwrap() };
 
-    // TODO: Should be dropped if dropped
+    let result_future = context
+        .store_handle
+        .query(Query::match_text("hello"))
+        .expect("TODO"); // TODO:
+    let query_id = result_future.query_id();
+
     let schema = context.schema.clone();
     context.runtime.spawn(
-        context
-            .store_handle
-            .query(Query::match_text("hello"))
+        result_future
             .then(move |res| {
                 let ret = res.as_ref().map(|_| ()).map_err(|_| ());
 
@@ -179,6 +181,11 @@ pub extern "C" fn exocore_query(
             .map(|_| ())
             .map_err(|_| ()),
     );
+
+    QueryHandle {
+        status: QueryStatus::Success,
+        query_id: query_id.0,
+    }
 }
 
 #[no_mangle]
@@ -186,15 +193,18 @@ pub extern "C" fn exocore_watched_query(
     ctx: *mut Context,
     query: *const libc::c_char,
     on_change: extern "C" fn(status: QueryStatus, *const libc::c_char),
-) {
+) -> QueryHandle {
     let context = unsafe { ctx.as_mut().unwrap() };
 
-    // TODO: Should be dropped if dropped
+    let result_stream = context
+        .store_handle
+        .watched_query(Query::match_text("hello"))
+        .expect("TODO"); // TODO:
+    let query_id = result_stream.query_id();
+
     let schema = context.schema.clone();
     context.runtime.spawn(
-        context
-            .store_handle
-            .watched_query(Query::match_text("hello"))
+        result_stream
             .then(move |res| {
                 let ret = res.as_ref().map(|_| ()).map_err(|_| ());
 
@@ -214,10 +224,33 @@ pub extern "C" fn exocore_watched_query(
             .for_each(|_| Ok(()))
             .map_err(|_| ()),
     );
+
+    QueryHandle {
+        status: QueryStatus::Success,
+        query_id: query_id.0,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn exocore_query_cancel(ctx: *mut Context, handle: QueryHandle) {
+    let context = unsafe { ctx.as_mut().unwrap() };
+
+    if let Err(err) = context
+        .store_handle
+        .cancel_query(ConsistentTimestamp(handle.query_id))
+    {
+        error!("Error cancelling query: {}", err)
+    }
 }
 
 #[repr(u8)]
 pub enum QueryStatus {
     Success = 0,
     Error,
+}
+
+#[repr(C)]
+pub struct QueryHandle {
+    status: QueryStatus,
+    query_id: u64,
 }

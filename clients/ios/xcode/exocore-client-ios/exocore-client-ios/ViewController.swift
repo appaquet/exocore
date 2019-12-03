@@ -3,6 +3,7 @@ import UIKit
 
 class ViewController: UIViewController {
     var context: OpaquePointer?
+    var queryHandle: ExocoreQueryHandle?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -13,8 +14,8 @@ class ViewController: UIViewController {
         }
     }
 
-    @IBAction func buttonClick(_ sender: Any) {
-        exocore_watched_query(self.context, "hello world", { (status, json) in
+    @IBAction func queryClick(_ sender: Any) {
+        self.queryHandle = exocore_watched_query(self.context, "hello world", { (status, json) in
             guard let jsonString = json, let nativeJsonString = String(utf8String: jsonString) else {
                 print("Got json string that couldn't read")
                 return
@@ -22,6 +23,12 @@ class ViewController: UIViewController {
 
             print("Got result \(status) \(nativeJsonString)")
         })
+    }
+
+    @IBAction func cancelClick(_ sender: Any) {
+        if let handle = self.queryHandle {
+            exocore_query_cancel(self.context, handle)
+        }
     }
 }
 
