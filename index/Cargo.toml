@@ -19,7 +19,7 @@ itertools = "0.8"
 maplit = "1"
 tokio = { version = "0.1", features = ["io"], default-features = false }
 log = "0.4"
-wasm-timer = "0.1"
+wasm-timer = "0.2"
 
 # Schema
 serde = "1.0"
