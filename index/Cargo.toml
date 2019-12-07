@@ -14,7 +14,7 @@ exocore-transport = { path = "../transport" }
 exocore-common = { path = "../common" }
 exocore-schema = { path = "../schema" }
 failure = "0.1"
-futures = "0.1"
+futures = "0.3"
 itertools = "0.8"
 maplit = "1"
 tokio = { version = "0.1", features = ["io"], default-features = false }

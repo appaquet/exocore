@@ -14,7 +14,7 @@ memory_pending = []
 exocore-common = { path = "../common" }
 exocore-transport = { path = "../transport" }
 log = "0.4"
-futures = "0.1"
+futures = "0.3"
 tokio = { version = "0.1", features = ["io"], default-features = false }
 byteorder = "1.2"
 failure = "0.1"

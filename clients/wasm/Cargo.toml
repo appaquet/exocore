@@ -13,7 +13,7 @@ exocore-index = { path = "../../index", default-features = false }
 exocore-transport = { path = "../../transport" }
 exocore-schema = { path = "../../schema" }
 tokio = { version = "0.1", features = ["io"], default-features = false }
-futures = "0.1"
+futures = "0.3"
 failure = "0.1"
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] } # serde for serialization from JsValue
 wasm-bindgen-futures = "0.3"
