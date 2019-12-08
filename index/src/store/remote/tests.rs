@@ -265,6 +265,40 @@ fn watched_cancel() -> Result<(), failure::Error> {
     Ok(())
 }
 
+#[test]
+fn client_drop_stops_watched_stream() -> Result<(), failure::Error> {
+    let mut test_remote_store = TestRemoteStore::new()?;
+    test_remote_store.start_server()?;
+    test_remote_store.start_client()?;
+
+    let query = Query::match_text("hello");
+    let stream = test_remote_store
+        .client_handle
+        .watched_query(query)
+        .unwrap();
+
+    let (results, stream) = test_remote_store.get_stream_result(stream).unwrap();
+    assert!(results.is_ok());
+
+    // drop remote store client
+    let TestRemoteStore {
+        mut local_store,
+        client_handle,
+        ..
+    } = test_remote_store;
+    drop(client_handle);
+
+    // stream should have been closed because it got dropped
+    match local_store.cluster.runtime.block_on(stream.into_future()) {
+        Ok((None, _stream)) => { /* stream got dropped */ }
+        _ => {
+            panic!("Got another result");
+        }
+    }
+
+    Ok(())
+}
+
 struct TestRemoteStore {
     local_store: TestStore,
     server_config: ServerConfiguration,

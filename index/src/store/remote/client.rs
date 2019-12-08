@@ -80,6 +80,7 @@ where
             clock,
             schema,
             transport_out: None,
+            handles_count: 0,
             index_node,
             pending_queries: HashMap::new(),
             watched_queries: HashMap::new(),
@@ -98,10 +99,15 @@ where
     }
 
     pub fn get_handle(&self) -> Result<ClientHandle, Error> {
+        let mut inner = self.inner.write()?;
+
         let start_listener = self
             .start_notifier
             .get_listener()
             .expect("Couldn't get a listener on start notifier");
+
+        inner.handles_count += 1;
+
         Ok(ClientHandle {
             start_listener,
             inner: Arc::downgrade(&self.inner),
@@ -281,6 +287,7 @@ struct Inner {
     clock: Clock,
     schema: Arc<Schema>,
     transport_out: Option<mpsc::UnboundedSender<OutEvent>>,
+    handles_count: usize,
     index_node: Node,
     pending_queries: HashMap<ConsistentTimestamp, PendingRequest<QueryResult>>,
     watched_queries: HashMap<ConsistentTimestamp, WatchedQueryRequest>,
@@ -619,12 +626,31 @@ impl ClientHandle {
             Err(err) => return Err(err.into()),
         };
 
-        inner.pending_queries.remove(&query_id);
         if let Some(query) = inner.watched_queries.remove(&query_id) {
+            debug!("Cancelling watched query {:?}", query_id);
             let _ = inner.send_unwatch_query(query.query.token);
+        } else {
+            debug!("Cancelling query {:?}", query_id);
+            inner.pending_queries.remove(&query_id);
         }
 
         Ok(())
+    }
+}
+
+impl Drop for ClientHandle {
+    fn drop(&mut self) {
+        debug!("Client handle got dropped");
+        if let Some(inner) = self.inner.upgrade() {
+            if let Ok(mut inner) = inner.write() {
+                inner.handles_count -= 1;
+
+                if inner.handles_count == 0 {
+                    info!("Last handle got dropped. Stopping client.");
+                    inner.stop_notifier.complete(Ok(()));
+                }
+            }
+        }
     }
 }
 
