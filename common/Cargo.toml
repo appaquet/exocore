@@ -29,7 +29,7 @@ wasm-timer = "0.1"
 
 [target."cfg(all(target_arch = \"wasm32\", target_os = \"unknown\"))".dependencies]
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] } # serde for serialization from JsValue
-wasm-bindgen-futures = "0.3"
+wasm-bindgen-futures = "0.4"
 
 [target."cfg(not(all(target_arch = \"wasm32\", target_os = \"unknown\")))".dependencies]
 tokio = { version = "0.1", features = ["io"], default-features = false }
