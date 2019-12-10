@@ -14,9 +14,9 @@ use exocore_common::utils::completion_notifier::{
     CompletionError, CompletionListener, CompletionNotifier,
 };
 use exocore_common::utils::futures::spawn_future;
-use futures::prelude::*;
-use futures::sync::mpsc;
-use futures::MapErr;
+use futures01::prelude::*;
+use futures01::sync::mpsc;
+use futures01::MapErr;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock, Weak};

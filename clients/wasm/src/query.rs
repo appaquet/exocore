@@ -2,18 +2,19 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use futures::Future;
+use futures01::Future;
 use wasm_bindgen::prelude::*;
 
 use exocore_index::query::Query;
 use exocore_index::store::remote::ClientHandle;
 use exocore_schema::schema::Schema;
 use exocore_schema::serialization::with_schema;
-use futures::prelude::*;
-use futures::unsync::oneshot;
+use futures01::prelude::*;
+use futures01::unsync::oneshot;
 
 use crate::js::into_js_error;
 use exocore_common::utils::futures::spawn_future_non_send;
+use futures::compat::Future01CompatExt;
 
 #[wasm_bindgen]
 pub struct QueryBuilder {
@@ -79,7 +80,7 @@ impl QueryBuilder {
 
         crate::query::QueryResult {
             schema: self.schema.clone(),
-            promise: wasm_bindgen_futures::future_to_promise(fut_results),
+            promise: wasm_bindgen_futures::future_to_promise(fut_results.compat()),
             result_cell,
         }
     }

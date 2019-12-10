@@ -19,8 +19,8 @@ use exocore_transport::{
     Error as TransportError, InEvent, InMessage, OutEvent, OutMessage, TransportHandle,
     TransportLayer,
 };
-use futures::prelude::*;
-use futures::sync::mpsc;
+use futures01::prelude::*;
+use futures01::sync::mpsc;
 use std;
 use std::sync::{Arc, RwLock, Weak};
 use std::time::Duration;
@@ -376,7 +376,7 @@ where
     fn poll(&mut self) -> Result<Async<()>, Error> {
         // first, make sure transport is started
         if let Some(transport_handle) = &self.transport {
-            try_ready!(transport_handle.on_start().poll());
+            futures01::try_ready!(transport_handle.on_start().poll());
         }
 
         // start the engine if it's not started

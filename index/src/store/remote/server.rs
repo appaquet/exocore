@@ -1,7 +1,7 @@
 use std::sync::{Arc, RwLock, Weak};
 
-use futures::prelude::*;
-use futures::sync::{mpsc, oneshot};
+use futures01::prelude::*;
+use futures01::sync::{mpsc, oneshot};
 
 use exocore_common::cell::Cell;
 use exocore_common::protos::index_transport_capnp::{

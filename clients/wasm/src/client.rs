@@ -1,4 +1,4 @@
-use futures::{Future, Stream};
+use futures01::{Future, Stream};
 use log::Level;
 use wasm_bindgen::prelude::*;
 

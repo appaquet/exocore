@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex, RwLock, Weak};
 
-use futures::prelude::*;
-use futures::sync::{mpsc, oneshot};
+use futures01::prelude::*;
+use futures01::sync::{mpsc, oneshot};
 use tokio::prelude::*;
 
 use exocore_common::utils::completion_notifier::{

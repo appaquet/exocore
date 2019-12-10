@@ -18,8 +18,8 @@ use exocore_schema::schema::Schema;
 use exocore_transport::{
     InEvent, InMessage, OutEvent, OutMessage, TransportHandle, TransportLayer,
 };
-use futures::prelude::*;
-use futures::sync::{mpsc, oneshot};
+use futures01::prelude::*;
+use futures01::sync::{mpsc, oneshot};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Weak};
 use std::time::Duration;
@@ -300,7 +300,7 @@ impl Inner {
         &mut self,
         mutation: Mutation,
     ) -> Result<oneshot::Receiver<Result<MutationResult, Error>>, Error> {
-        let (result_sender, receiver) = futures::oneshot();
+        let (result_sender, receiver) = oneshot::channel();
 
         let request_id = self.clock.consistent_time(self.cell.local_node());
         let request_frame = mutation.to_mutation_request_frame(&self.schema)?;
@@ -333,7 +333,7 @@ impl Inner {
         ),
         Error,
     > {
-        let (result_sender, receiver) = futures::oneshot();
+        let (result_sender, receiver) = oneshot::channel();
 
         let request_id = self.clock.consistent_time(self.cell.local_node());
         let request_frame = query.to_request_frame(&self.schema)?;

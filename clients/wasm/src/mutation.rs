@@ -5,11 +5,12 @@ use exocore_index::store::remote::ClientHandle;
 use exocore_schema::entity::{Entity, FieldValue, RecordBuilder, TraitBuilder};
 use exocore_schema::schema::Schema;
 use exocore_schema::serialization::with_schema;
-use futures::prelude::*;
+use futures01::prelude::*;
 use wasm_bindgen::__rt::std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
 use crate::js::into_js_error;
+use futures::compat::Future01CompatExt;
 
 #[wasm_bindgen]
 pub struct MutationBuilder {
@@ -68,7 +69,7 @@ impl MutationBuilder {
             })
             .map_err(into_js_error);
 
-        wasm_bindgen_futures::future_to_promise(fut_result)
+        wasm_bindgen_futures::future_to_promise(fut_result.compat())
     }
 
     fn jsdata_to_trait_builder(&self, trait_type: &str, data: JsValue) -> TraitBuilder {

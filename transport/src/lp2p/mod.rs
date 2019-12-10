@@ -14,9 +14,9 @@ use exocore_common::utils::completion_notifier::{
     CompletionError, CompletionListener, CompletionNotifier,
 };
 use exocore_common::utils::futures::spawn_future;
-use futures::prelude::*;
-use futures::sync::mpsc;
-use futures::MapErr;
+use futures01::prelude::*;
+use futures01::sync::mpsc;
+use futures01::MapErr;
 use libp2p::core::{Multiaddr, PeerId};
 use libp2p::swarm::Swarm;
 use std::collections::{HashMap, HashSet};
@@ -207,7 +207,7 @@ impl Libp2pTransport {
         let mut nodes_update_interval =
             Interval::new_interval(self.config.swarm_nodes_update_interval);
 
-        spawn_future(futures::future::poll_fn(move || -> Result<_, ()> {
+        spawn_future(futures01::future::poll_fn(move || -> Result<_, ()> {
             {
                 // check if we should still be running
                 if let Ok(inner) = inner.read() {

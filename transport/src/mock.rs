@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
 
-use futures::future;
-use futures::future::FutureResult;
-use futures::prelude::*;
-use futures::stream::Peekable;
-use futures::sync::mpsc;
+use futures01::future;
+use futures01::future::FutureResult;
+use futures01::prelude::*;
+use futures01::stream::Peekable;
+use futures01::sync::mpsc;
 use tokio::runtime::Runtime;
 
 use exocore_common::framing::{CapnpFrameBuilder, FrameBuilder};
@@ -88,7 +88,7 @@ impl TransportHandle for MockTransportHandle {
     type Stream = MpscHandleStream;
 
     fn on_start(&self) -> Self::StartFuture {
-        futures::done(Ok(()))
+        futures01::done(Ok(()))
     }
 
     fn get_sink(&mut self) -> Self::Sink {

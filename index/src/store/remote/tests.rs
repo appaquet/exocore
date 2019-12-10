@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use futures::prelude::*;
+use futures01::prelude::*;
 
 use exocore_common::node::LocalNode;
 use exocore_common::tests_utils::expect_eventually;

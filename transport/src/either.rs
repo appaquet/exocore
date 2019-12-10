@@ -5,8 +5,8 @@ use exocore_common::utils::completion_notifier::{
     CompletionError, CompletionListener, CompletionNotifier,
 };
 use exocore_common::utils::futures::spawn_future;
-use futures::prelude::*;
-use futures::sync::mpsc;
+use futures01::prelude::*;
+use futures01::sync::mpsc;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Weak};
 
@@ -248,7 +248,7 @@ mod tests {
     use crate::TransportLayer::Index;
     use exocore_common::node::LocalNode;
     use exocore_common::tests_utils::{expect_result, result_assert_false, result_assert_true};
-    use futures::future;
+    use futures01::future;
     use tokio::runtime::Runtime;
 
     #[test]

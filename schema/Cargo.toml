@@ -18,6 +18,8 @@ serde_yaml = "0.8"
 uuid = { version = "0.7", features = ["v4", "wasm-bindgen"] }
 chrono = { version = "0.4", features = ["serde"] }
 wasm-timer = "0.1"
+futures = { version = "0.3", features = ["async-await", "compat"] }
+futures01 = { package = "futures", version = "0.1" }
 
 [dev-dependencies]
 tempdir = "0.3"

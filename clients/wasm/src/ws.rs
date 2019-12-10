@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
-use futures::prelude::*;
-use futures::sync::mpsc;
-use futures::MapErr;
+use futures01::prelude::*;
+use futures01::sync::mpsc;
+use futures01::MapErr;
 use js_sys::{ArrayBuffer, Uint8Array};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;

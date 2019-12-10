@@ -15,7 +15,7 @@ use exocore_schema::schema::Schema;
 use exocore_schema::serialization::with_schema;
 use exocore_transport::lp2p::Libp2pTransportConfig;
 use exocore_transport::{Libp2pTransport, TransportHandle, TransportLayer};
-use futures::prelude::*;
+use futures01::prelude::*;
 use libc;
 use std::ffi::CString;
 use std::os::raw::c_void;
