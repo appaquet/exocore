@@ -73,6 +73,8 @@ impl ExocoreClient {
             if let Err(err) = remote_store.run().await {
                 error!("Error starting remote store: {}", err);
             }
+
+            Ok(())
         });
 
         let store_handle1 = store_handle.clone();
@@ -82,6 +84,8 @@ impl ExocoreClient {
                 Ok(_) => info!("Remote store started"),
                 Err(err) => error!("Error starting remote store: {}", err),
             }
+
+            Ok(())
         });
 
         let inner = Arc::new(Mutex::new(Inner {
@@ -98,7 +102,7 @@ impl ExocoreClient {
                 let event = if let Ok(event) = event {
                     event
                 } else {
-                    return;
+                    return Ok(());
                 };
 
                 if let InEvent::NodeStatus(_, status) = event {
@@ -115,6 +119,8 @@ impl ExocoreClient {
                     }
                 }
             }
+
+            Ok(())
         });
 
         transport.start();

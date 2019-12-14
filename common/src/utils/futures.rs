@@ -21,17 +21,9 @@ where
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-pub fn spawn_future_non_send_01<F>(_f: F)
-where
-    F: Future01<Item = (), Error = ()> + 'static,
-{
-    unimplemented!()
-}
-
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub fn spawn_future_non_send<F>(_f: F)
 where
-    F: Future03<Output = ()> + 'static,
+    F: Future03<Output = Result<(), ()>> + 'static,
 {
     unimplemented!()
 }
@@ -53,17 +45,9 @@ where
 }
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-pub fn spawn_future_non_send_01<F>(f: F)
-where
-    F: Future01<Item = (), Error = ()> + 'static,
-{
-    wasm_bindgen_futures::spawn_local(f.compat().unwrap_or_else(|_| ()));
-}
-
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 pub fn spawn_future_non_send<F>(f: F)
 where
-    F: futures::Future<Output = ()> + 'static,
+    F: Future03<Output = Result<(), ()>> + 'static,
 {
-    wasm_bindgen_futures::spawn_local(f);
+    wasm_bindgen_futures::spawn_local(f.unwrap_or_else(|_| ()));
 }

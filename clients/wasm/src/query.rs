@@ -124,13 +124,13 @@ impl QueryBuilder {
                         let result = if let Some(result) = result {
                             result
                         } else {
-                            return;
+                            return Ok(());
                         };
 
                         report_result(result);
                     }
                     _ = drop_receiver => {
-                        return;
+                        return Ok(());
                     }
                 };
             }
