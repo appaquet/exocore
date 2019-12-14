@@ -1,4 +1,3 @@
-use futures01::{Future, Stream};
 use log::Level;
 use wasm_bindgen::prelude::*;
 
@@ -6,13 +5,15 @@ use exocore_common::cell::Cell;
 use exocore_common::crypto::keys::PublicKey;
 use exocore_common::node::{LocalNode, Node};
 use exocore_common::time::Clock;
-use exocore_common::utils::futures::{spawn_future_non_send, spawn_future_non_send_01};
+use exocore_common::utils::futures::spawn_future_non_send;
 use exocore_index::store::remote::{Client, ClientConfiguration, ClientHandle};
 use exocore_schema::schema::Schema;
 use exocore_transport::{InEvent, TransportHandle, TransportLayer};
 
 use crate::ws::BrowserTransportClient;
 use exocore_transport::transport::ConnectionStatus;
+use futures::compat::Stream01CompatExt;
+use futures::StreamExt;
 use std::sync::{Arc, Mutex};
 
 #[wasm_bindgen]
@@ -74,16 +75,14 @@ impl ExocoreClient {
             }
         });
 
-        {
-            let store_handle = store_handle.clone();
-            spawn_future_non_send(async move {
-                let start_future = store_handle.on_start();
-                match start_future.await {
-                    Ok(_) => info!("Remote store started"),
-                    Err(err) => error!("Error starting remote store: {}", err),
-                }
-            });
-        }
+        let store_handle1 = store_handle.clone();
+        spawn_future_non_send(async move {
+            let start_future = store_handle1.on_start();
+            match start_future.await {
+                Ok(_) => info!("Remote store started"),
+                Err(err) => error!("Error starting remote store: {}", err),
+            }
+        });
 
         let inner = Arc::new(Mutex::new(Inner {
             status_change_callback,
@@ -92,28 +91,31 @@ impl ExocoreClient {
         let mut client_transport_handle =
             transport.get_handle(cell.clone(), TransportLayer::Client);
         let inner_clone = inner.clone();
-        spawn_future_non_send_01(
-            client_transport_handle
-                .get_stream()
-                .for_each(move |event| {
-                    if let InEvent::NodeStatus(_, status) = event {
-                        let str_status = match status {
-                            ConnectionStatus::Connecting => "connecting",
-                            ConnectionStatus::Connected => "connected",
-                            ConnectionStatus::Disconnected => "disconnected",
-                        };
+        spawn_future_non_send(async move {
+            let mut stream = client_transport_handle.get_stream().compat();
 
-                        let inner = inner_clone.lock().unwrap();
-                        if let Some(func) = &inner.status_change_callback {
-                            func.call1(&JsValue::null(), &JsValue::from_str(str_status))
-                                .unwrap();
-                        }
+            while let Some(event) = stream.next().await {
+                let event = if let Ok(event) = event {
+                    event
+                } else {
+                    return;
+                };
+
+                if let InEvent::NodeStatus(_, status) = event {
+                    let str_status = match status {
+                        ConnectionStatus::Connecting => "connecting",
+                        ConnectionStatus::Connected => "connected",
+                        ConnectionStatus::Disconnected => "disconnected",
+                    };
+
+                    let inner = inner_clone.lock().unwrap();
+                    if let Some(func) = &inner.status_change_callback {
+                        func.call1(&JsValue::null(), &JsValue::from_str(str_status))
+                            .unwrap();
                     }
-
-                    Ok(())
-                })
-                .map_err(|_| ()),
-        );
+                }
+            }
+        });
 
         transport.start();
 

@@ -3,8 +3,6 @@ use futures01::Future as Future01;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 use futures::compat::Future01CompatExt;
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-use futures::TryFutureExt;
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub fn spawn_future_01<F>(f: F) -> tokio::executor::Spawn
@@ -49,7 +47,7 @@ where
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 pub fn spawn_future<F>(f: F)
 where
-    F: Future03<Output = Result<(), ()>> + 'static,
+    F: Future03<Output = ()> + 'static,
 {
     wasm_bindgen_futures::spawn_local(f);
 }
