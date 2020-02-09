@@ -311,16 +311,9 @@ impl SegmentFile {
     }
 
     fn set_len(&mut self, new_size: u64) -> Result<(), Error> {
-        self.file.set_len(new_size).map_err(|err| {
-            Error::IO(
-                err.kind(),
-                format!("Error setting len of segment file {:?}: {}", self.path, err),
-            )
-        })?;
-
-        // On Windows, we can't have 2 mmap at the same time on the same file. We replace the current mmap so that it can get
-        // closed, then we re-open it.
-        if cfg!(os = "windows") {
+        // On Windows, we can't resize a file while it's currently being mapped. We close the mmap first by replacing it
+        // by an anonymous mmmap.
+        if cfg!(target_os = "windows") {
             self.mmap = memmap::MmapOptions::new()
                 .len(1)
                 .map_anon()
@@ -331,6 +324,13 @@ impl SegmentFile {
                     )
                 })?;
         }
+
+        self.file.set_len(new_size).map_err(|err| {
+            Error::IO(
+                err.kind(),
+                format!("Error setting len of segment file {:?}: {}", self.path, err),
+            )
+        })?;
 
         self.mmap = unsafe {
             memmap::MmapOptions::new()
