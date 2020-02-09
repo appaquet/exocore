@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 use crate::operation::OperationId;
 use segment::DirectorySegment;
 
-use crate::chain::{Block, BlockOffset, BlockRef, ChainStore, Error, Segment, StoredBlockIterator};
+use crate::block::{Block, BlockOffset, BlockRef};
+use crate::chain::{ChainStore, Error, Segment, StoredBlockIterator};
 
 mod operations_index;
 mod segment;

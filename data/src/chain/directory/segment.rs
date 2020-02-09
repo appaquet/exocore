@@ -318,6 +318,20 @@ impl SegmentFile {
             )
         })?;
 
+        // On Windows, we can't have 2 mmap at the same time on the same file. We replace the current mmap so that it can get
+        // closed, then we re-open it.
+        if cfg!(os = "windows") {
+            self.mmap = memmap::MmapOptions::new()
+                .len(1)
+                .map_anon()
+                .map_err(|err| {
+                    Error::IO(
+                        err.kind(),
+                        format!("Error creating anonymous mmap: {}", err),
+                    )
+                })?;
+        }
+
         self.mmap = unsafe {
             memmap::MmapOptions::new()
                 .map_mut(&self.file)
@@ -415,7 +429,7 @@ mod tests {
             assert!(DirectorySegment::open_with_first_offset(
                 Default::default(),
                 &segment_path,
-                100
+                100,
             )
             .is_err());
         }
