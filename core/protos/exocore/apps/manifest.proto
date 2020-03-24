@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package exocore.apps;
+
+message Manifest {
+    string name = 1;
+
+    string public_key = 2;
+
+    repeated Schema schemas_fdset = 3;
+}
+
+message Schema {
+    oneof schema {
+        string file = 1;
+        bytes bytes = 2;
+    }
+}

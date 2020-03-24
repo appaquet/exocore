@@ -4,6 +4,7 @@ use super::{
 };
 use crate::crypto::keys::{Keypair, PublicKey};
 use crate::protos::generated::exocore_core::{CellConfig, LocalNodeConfig};
+use crate::protos::registry::Registry;
 use libp2p_core::PeerId;
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -13,31 +14,21 @@ use std::sync::{Arc, RwLock};
 /// a user are hosted. A Cell resides on multiple nodes.
 #[derive(Clone)]
 pub struct Cell {
-    public_key: Arc<PublicKey>,
+    identity: Arc<CellIdentity>,
+    nodes: Arc<RwLock<HashMap<NodeId, CellNode>>>,
+    schemas: Arc<Registry>,
+}
+
+struct CellIdentity {
+    public_key: PublicKey,
     cell_id: CellId,
     local_node: LocalNode,
     name: String,
-    nodes: Arc<RwLock<HashMap<NodeId, CellNode>>>,
 }
 
 impl Cell {
     pub fn new(public_key: PublicKey, local_node: LocalNode) -> Cell {
-        let cell_id = CellId::from_public_key(&public_key);
-
-        let mut nodes_map = HashMap::new();
-        let local_cell_node = CellNode::new(local_node.node().clone());
-        nodes_map.insert(local_node.id().clone(), local_cell_node);
-
-        // generate a deterministic random name for the cell
-        let name = public_key.generate_name();
-
-        Cell {
-            public_key: Arc::new(public_key),
-            cell_id,
-            local_node,
-            name,
-            nodes: Arc::new(RwLock::new(nodes_map)),
-        }
+        Self::build(public_key, local_node, None)
     }
 
     pub fn new_from_config(config: CellConfig, local_node: LocalNode) -> Result<EitherCell, Error> {
@@ -45,23 +36,25 @@ impl Cell {
             let keypair = Keypair::decode_base58_string(&config.keypair)
                 .map_err(|err| Error::Config(format!("Couldn't parse cell keypair: {}", err)))?;
 
-            let mut full_cell = FullCell::from_keypair(keypair, local_node);
+            let name = if config.name != "" {
+                Some(config.name)
+            } else {
+                None
+            };
 
-            if config.name != "" {
-                full_cell.cell.name = config.name;
-            }
-
+            let full_cell = FullCell::build(keypair, local_node, name);
             EitherCell::Full(Box::new(full_cell))
         } else {
             let public_key = PublicKey::decode_base58_string(&config.public_key)
                 .map_err(|err| Error::Config(format!("Couldn't parse cell public key: {}", err)))?;
 
-            let mut cell = Cell::new(public_key, local_node);
+            let name = if config.name != "" {
+                Some(config.name)
+            } else {
+                None
+            };
 
-            if config.name != "" {
-                cell.name = config.name;
-            }
-
+            let cell = Cell::build(public_key, local_node, name);
             EitherCell::Cell(Box::new(cell))
         };
 
@@ -99,24 +92,45 @@ impl Cell {
         Ok((either_cells, local_node))
     }
 
+    fn build(public_key: PublicKey, local_node: LocalNode, name: Option<String>) -> Cell {
+        let cell_id = CellId::from_public_key(&public_key);
+
+        let mut nodes_map = HashMap::new();
+        let local_cell_node = CellNode::new(local_node.node().clone());
+        nodes_map.insert(local_node.id().clone(), local_cell_node);
+
+        let name = name.unwrap_or_else(|| public_key.generate_name());
+
+        Cell {
+            identity: Arc::new(CellIdentity {
+                public_key,
+                cell_id,
+                local_node,
+                name,
+            }),
+            nodes: Arc::new(RwLock::new(nodes_map)),
+            schemas: Arc::new(Registry::new_with_exocore_types()),
+        }
+    }
+
     #[inline]
     pub fn id(&self) -> &CellId {
-        &self.cell_id
+        &self.identity.cell_id
     }
 
     pub fn name(&self) -> &str {
-        &self.name
+        &self.identity.name
     }
 
     #[inline]
     pub fn local_node(&self) -> &LocalNode {
-        &self.local_node
+        &self.identity.local_node
     }
 
     #[inline]
     pub fn local_node_has_role(&self, role: CellNodeRole) -> bool {
         let nodes = self.nodes();
-        if let Some(cn) = nodes.get(self.local_node.id()) {
+        if let Some(cn) = nodes.get(self.identity.local_node.id()) {
             cn.has_role(role)
         } else {
             false
@@ -125,7 +139,7 @@ impl Cell {
 
     #[inline]
     pub fn public_key(&self) -> &PublicKey {
-        &self.public_key
+        &self.identity.public_key
     }
 
     pub fn nodes(&self) -> CellNodesRead {
@@ -148,7 +162,7 @@ impl Cell {
 impl std::fmt::Display for Cell {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.write_str("Cell{")?;
-        f.write_str(&self.name)?;
+        f.write_str(&self.identity.name)?;
         f.write_str("}")
     }
 }
@@ -203,15 +217,19 @@ pub struct FullCell {
 
 impl FullCell {
     pub fn from_keypair(keypair: Keypair, local_node: LocalNode) -> FullCell {
-        FullCell {
-            cell: Cell::new(keypair.public(), local_node),
-            keypair,
-        }
+        Self::build(keypair, local_node, None)
     }
 
     pub fn generate(local_node: LocalNode) -> FullCell {
         let cell_keypair = Keypair::generate_ed25519();
-        Self::from_keypair(cell_keypair, local_node)
+        Self::build(cell_keypair, local_node, None)
+    }
+
+    fn build(keypair: Keypair, local_node: LocalNode, name: Option<String>) -> FullCell {
+        FullCell {
+            cell: Cell::build(keypair.public(), local_node, name),
+            keypair,
+        }
     }
 
     pub fn keypair(&self) -> &Keypair {

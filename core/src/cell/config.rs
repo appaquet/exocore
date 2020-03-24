@@ -64,6 +64,7 @@ mod tests {
                     }),
                     roles: vec![cell_node_config::Role::InvalidRole.into()],
                 }],
+                applications: vec![],
             }],
             listen_addresses: vec!["maddr".to_string()],
         };
@@ -91,10 +92,13 @@ mod tests {
 
         {
             let nodes = full_cell.nodes();
-            assert_eq!(1, nodes.count());
+            assert_eq!(2, nodes.count());
 
             let nodes_iter = nodes.iter();
-            let node = nodes_iter.all().next().unwrap();
+            let node = nodes_iter
+                .with_role(CellNodeRole::IndexStore)
+                .next()
+                .unwrap();
             assert_eq!(2, node.roles().len());
         }
 
@@ -160,6 +164,30 @@ cells:
             assert!(cell.local_node_has_role(CellNodeRole::Data));
             assert!(!cell.local_node_has_role(CellNodeRole::IndexStore));
         }
+
+        Ok(())
+    }
+
+    #[test]
+    pub fn parse_node_optional_fields_yaml() -> Result<(), failure::Error> {
+        let yaml = r#"
+keypair: ae2oiM2PYznyfqEMPraKbpAuA8LWVhPUiUTgdwjvnwbDjnz9W9FAiE9431NtVjfBaX44nPPoNR8Mv6iYcJdqSfp8eZ
+public_key: peFdPsQsdqzT2H6cPd3WdU1fGdATDmavh4C17VWWacZTMP
+
+listen_addresses:
+  - /ip4/0.0.0.0/tcp/3330
+  - /ip4/0.0.0.0/tcp/3341/ws
+
+cells:
+   - public_key: pe2AgPyBmJNztntK9n4vhLuEYN8P2kRfFXnaZFsiXqWacQ
+     nodes:
+       - node:
+             public_key: peFdPsQsdqzT2H6cPd3WdU1fGdATDmavh4C17VWWacZTMP
+             addresses:
+                - /ip4/192.168.2.67/tcp/3330
+"#;
+
+        node_config_from_yaml(yaml.as_bytes())?;
 
         Ok(())
     }

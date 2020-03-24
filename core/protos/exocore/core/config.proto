@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package exocore.core;
 
+import "exocore/apps/manifest.proto";
+
 message LocalNodeConfig {
     string keypair = 1;
 
@@ -27,11 +29,13 @@ message CellConfig {
 
     string keypair = 2;
 
-    string name = 5;
+    string name = 3;
 
-    string data_directory = 3;
+    string data_directory = 4;
 
-    repeated CellNodeConfig nodes = 4;
+    repeated CellApplication applications = 5;
+
+    repeated CellNodeConfig nodes = 6;
 }
 
 message CellNodeConfig {
@@ -43,5 +47,12 @@ message CellNodeConfig {
         INVALID_ROLE = 0;
         DATA_ROLE = 1;
         INDEX_STORE_ROLE = 2;
+    }
+}
+
+message CellApplication {
+    oneof manifest {
+        exocore.apps.Manifest instance = 1;
+        string yaml_file = 2;
     }
 }
