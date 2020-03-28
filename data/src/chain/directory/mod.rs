@@ -355,9 +355,9 @@ pub struct DirectoryChainStoreConfig {
 impl Default for DirectoryChainStoreConfig {
     fn default() -> Self {
         DirectoryChainStoreConfig {
-            segment_over_allocate_size: 300 * 1024 * 1024, // 300mb
+            segment_over_allocate_size: 100 * 1024 * 1024, // 100mb
             segment_min_free_size: 10 * 1024 * 1024,       // 10mb
-            segment_max_size: 4 * 1024 * 1024 * 1024,      // 4gb
+            segment_max_size: 1 * 1024 * 1024 * 1024,      // 1gb
             operations_index_max_memory_items: 10000,
         }
     }
