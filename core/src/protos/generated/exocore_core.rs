@@ -37,10 +37,10 @@ pub struct CellConfig {
     #[serde(default)]
     pub data_directory: std::string::String,
     #[prost(message, repeated, tag = "5")]
-    #[serde(default)]
-    pub applications: ::std::vec::Vec<CellApplication>,
-    #[prost(message, repeated, tag = "6")]
     pub nodes: ::std::vec::Vec<CellNodeConfig>,
+    #[prost(message, repeated, tag = "6")]
+    #[serde(default)]
+    pub apps: ::std::vec::Vec<CellApplicationConfig>,
 }
 #[derive(Clone, PartialEq, ::prost::Message, Serialize, Deserialize)]
 pub struct CellNodeConfig {
@@ -61,11 +61,11 @@ pub mod cell_node_config {
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message, Serialize, Deserialize)]
-pub struct CellApplication {
-    #[prost(oneof = "cell_application::Manifest", tags = "1, 2")]
-    pub manifest: ::std::option::Option<cell_application::Manifest>,
+pub struct CellApplicationConfig {
+    #[prost(oneof = "cell_application_config::Manifest", tags = "1, 2")]
+    pub manifest: ::std::option::Option<cell_application_config::Manifest>,
 }
-pub mod cell_application {
+pub mod cell_application_config {
     #[derive(Clone, PartialEq, ::prost::Oneof, Serialize, Deserialize)]
     pub enum Manifest {
         #[prost(message, tag = "1")]

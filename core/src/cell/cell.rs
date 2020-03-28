@@ -1,6 +1,6 @@
 use super::{
-    CellNode, CellNodeRole, CellNodes, CellNodesRead, CellNodesWrite, Error, LocalNode, Node,
-    NodeId,
+    CellApplications, CellNode, CellNodeRole, CellNodes, CellNodesRead, CellNodesWrite, Error,
+    LocalNode, Node, NodeId,
 };
 use crate::crypto::keys::{Keypair, PublicKey};
 use crate::protos::generated::exocore_core::{CellConfig, LocalNodeConfig};
@@ -14,12 +14,13 @@ use std::sync::{Arc, RwLock};
 /// a user are hosted. A Cell resides on multiple nodes.
 #[derive(Clone)]
 pub struct Cell {
-    identity: Arc<CellIdentity>,
+    identity: Arc<Identity>,
     nodes: Arc<RwLock<HashMap<NodeId, CellNode>>>,
+    apps: CellApplications,
     schemas: Arc<Registry>,
 }
 
-struct CellIdentity {
+struct Identity {
     public_key: PublicKey,
     cell_id: CellId,
     local_node: LocalNode,
@@ -59,6 +60,7 @@ impl Cell {
         };
 
         {
+            // load nodes from config
             let mut nodes = either_cell.nodes_mut();
             for node_config in &config.nodes {
                 let node = Node::new_from_config(node_config.node.clone().ok_or_else(|| {
@@ -75,6 +77,13 @@ impl Cell {
             }
         }
 
+        {
+            // load apps from config
+            let cell = either_cell.cell();
+            cell.apps
+                .load_from_cell_applications_config(config.apps.iter())?;
+        }
+
         Ok(either_cell)
     }
 
@@ -85,7 +94,7 @@ impl Cell {
 
         let mut either_cells = Vec::new();
         for cell_config in config.cells {
-            let either_cell = Cell::new_from_config(cell_config.clone(), local_node.clone())?;
+            let either_cell = Self::new_from_config(cell_config.clone(), local_node.clone())?;
             either_cells.push(either_cell);
         }
 
@@ -102,12 +111,13 @@ impl Cell {
         let name = name.unwrap_or_else(|| public_key.generate_name());
 
         Cell {
-            identity: Arc::new(CellIdentity {
+            identity: Arc::new(Identity {
                 public_key,
                 cell_id,
                 local_node,
                 name,
             }),
+            apps: CellApplications::new(),
             nodes: Arc::new(RwLock::new(nodes_map)),
             schemas: Arc::new(Registry::new_with_exocore_types()),
         }
@@ -156,6 +166,10 @@ impl Cell {
             .write()
             .expect("Couldn't acquire write lock on nodes");
         CellNodesWrite { cell: self, nodes }
+    }
+
+    pub fn applications(&self) -> &CellApplications {
+        &self.apps
     }
 }
 

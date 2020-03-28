@@ -1,12 +1,16 @@
 #![allow(clippy::module_inception)]
 
+mod app;
 mod cell;
+mod cell_apps;
 mod cell_nodes;
 mod config;
 mod error;
 mod node;
 
+pub use app::{Application, ApplicationId};
 pub use cell::{Cell, CellId, EitherCell, FullCell};
+pub use cell_apps::{CellApplication, CellApplications};
 pub use cell_nodes::{
     CellNode, CellNodeRole, CellNodes, CellNodesIter, CellNodesOwned, CellNodesRead, CellNodesWrite,
 };

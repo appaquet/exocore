@@ -15,7 +15,7 @@ listen_addresses:
 cells:
   - public_key: pe2AgPyBmJNztntK9n4vhLuEYN8P2kRfFXnaZFsiXqWacQ
     keypair: ae55Nfv11ppyFVxCDaYovcxTcaTDaSzSFjiVoiC3VwGARfEuaqGcgoJUdVpqfwKQVDN4rvGKUvt4yqQc6w7it7PCpG
-    data_directory: target/data
+    data_directory: /path/to/data
     name: Optional Cell Name
     nodes:
       - node:
@@ -35,3 +35,12 @@ cells:
       - node:
           name: Some Client Node
           public_key: peHdrwp1ZXicF1v7RQRRC4ursqgE1oM9nuVijCmrf74n7E
+
+    apps:
+      - manifest:
+          Instance:
+            name: Some app
+            public_key: peETu6CjsEtkBGTpTVExSmhjgjcjR5DhdMQ3eVbnQeXKd8
+            schemas_fdset:
+              - schema:
+                  File: /path/to/protobuf/file_descriptor_set.fd

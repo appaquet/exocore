@@ -46,6 +46,7 @@ fn main() {
                 .field_attribute("CellConfig.keypair", "#[serde(default)]")
                 .field_attribute("CellConfig.applications", "#[serde(default)]")
                 .field_attribute("CellConfig.data_directory", "#[serde(default)]")
+                .field_attribute("CellConfig.apps", "#[serde(default)]")
                 .field_attribute("CellNodeConfig.roles", "#[serde(default)]");
 
             config

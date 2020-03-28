@@ -64,7 +64,7 @@ mod tests {
                     }),
                     roles: vec![cell_node_config::Role::InvalidRole.into()],
                 }],
-                applications: vec![],
+                apps: vec![],
             }],
             listen_addresses: vec!["maddr".to_string()],
         };

@@ -33,9 +33,9 @@ message CellConfig {
 
     string data_directory = 4;
 
-    repeated CellApplication applications = 5;
+    repeated CellNodeConfig nodes = 5;
 
-    repeated CellNodeConfig nodes = 6;
+    repeated CellApplicationConfig apps = 6;
 }
 
 message CellNodeConfig {
@@ -50,7 +50,7 @@ message CellNodeConfig {
     }
 }
 
-message CellApplication {
+message CellApplicationConfig {
     oneof manifest {
         exocore.apps.Manifest instance = 1;
         string yaml_file = 2;
