@@ -357,7 +357,7 @@ impl Default for DirectoryChainStoreConfig {
         DirectoryChainStoreConfig {
             segment_over_allocate_size: 100 * 1024 * 1024, // 100mb
             segment_min_free_size: 10 * 1024 * 1024,       // 10mb
-            segment_max_size: 1 * 1024 * 1024 * 1024,      // 1gb
+            segment_max_size: 1024 * 1024 * 1024,          // 1gb
             operations_index_max_memory_items: 10000,
         }
     }

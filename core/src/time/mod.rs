@@ -77,7 +77,6 @@ impl Clock {
             }
         };
 
-
         match &self.source {
             Source::System => {
                 let now_system = SystemTime::now();
@@ -92,10 +91,13 @@ impl Clock {
             Source::Mocked(time) => {
                 let mocked_instant = time.read().expect("Couldn't acquire read lock");
 
-                let unix_elapsed = if let Some((_fixed_instant, fixed_unix_elaps)) = *mocked_instant {
+                let unix_elapsed = if let Some((_fixed_instant, fixed_unix_elaps)) = *mocked_instant
+                {
                     fixed_unix_elaps
                 } else {
-                    SystemTime::now().duration_since(wasm_timer::UNIX_EPOCH).unwrap()
+                    SystemTime::now()
+                        .duration_since(wasm_timer::UNIX_EPOCH)
+                        .unwrap()
                 };
 
                 ConsistentTimestamp::from_context(
@@ -282,8 +284,8 @@ mod tests {
         thread::spawn(move || {
             thread_clock.set_fixed_instant(now);
         })
-            .join()
-            .unwrap();
+        .join()
+        .unwrap();
 
         assert_eq!(mocked_clock.instant(), now);
     }
