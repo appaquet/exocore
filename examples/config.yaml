@@ -37,10 +37,5 @@ cells:
           public_key: peHdrwp1ZXicF1v7RQRRC4ursqgE1oM9nuVijCmrf74n7E
 
     apps:
-      - manifest:
-          Instance:
-            name: Some app
-            public_key: peETu6CjsEtkBGTpTVExSmhjgjcjR5DhdMQ3eVbnQeXKd8
-            schemas_fdset:
-              - schema:
-                  File: /path/to/protobuf/file_descriptor_set.fd
+      - location:
+          Directory: ./app

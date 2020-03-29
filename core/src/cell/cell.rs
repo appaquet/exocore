@@ -8,6 +8,7 @@ use crate::protos::registry::Registry;
 use libp2p_core::PeerId;
 use std::collections::HashMap;
 use std::ops::Deref;
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 /// A Cell represents a private enclosure in which the data and applications of
@@ -25,11 +26,12 @@ struct Identity {
     cell_id: CellId,
     local_node: LocalNode,
     name: String,
+    path: Option<PathBuf>,
 }
 
 impl Cell {
     pub fn new(public_key: PublicKey, local_node: LocalNode) -> Cell {
-        Self::build(public_key, local_node, None)
+        Self::build(public_key, local_node, None, None)
     }
 
     pub fn new_from_config(config: CellConfig, local_node: LocalNode) -> Result<EitherCell, Error> {
@@ -38,24 +40,36 @@ impl Cell {
                 .map_err(|err| Error::Config(format!("Couldn't parse cell keypair: {}", err)))?;
 
             let name = if config.name != "" {
-                Some(config.name)
+                Some(config.name.clone())
             } else {
                 None
             };
 
-            let full_cell = FullCell::build(keypair, local_node, name);
+            let path = if !config.path.is_empty() {
+                Some(PathBuf::from(config.path.clone()))
+            } else {
+                None
+            };
+
+            let full_cell = FullCell::build(keypair, local_node, name, path);
             EitherCell::Full(Box::new(full_cell))
         } else {
             let public_key = PublicKey::decode_base58_string(&config.public_key)
                 .map_err(|err| Error::Config(format!("Couldn't parse cell public key: {}", err)))?;
 
             let name = if config.name != "" {
-                Some(config.name)
+                Some(config.name.clone())
             } else {
                 None
             };
 
-            let cell = Cell::build(public_key, local_node, name);
+            let path = if !config.path.is_empty() {
+                Some(PathBuf::from(config.path.clone()))
+            } else {
+                None
+            };
+
+            let cell = Cell::build(public_key, local_node, name, path);
             EitherCell::Cell(Box::new(cell))
         };
 
@@ -81,7 +95,7 @@ impl Cell {
             // load apps from config
             let cell = either_cell.cell();
             cell.apps
-                .load_from_cell_applications_config(config.apps.iter())?;
+                .load_from_cell_applications_config(&config, config.apps.iter())?;
         }
 
         Ok(either_cell)
@@ -93,7 +107,11 @@ impl Cell {
         let local_node = LocalNode::new_from_config(config.clone())?;
 
         let mut either_cells = Vec::new();
-        for cell_config in config.cells {
+        for mut cell_config in config.cells {
+            let cell_path =
+                super::config::to_absolute_from_parent_path(&config.path, &cell_config.path);
+            cell_config.path = cell_path.to_string_lossy().to_string();
+
             let either_cell = Self::new_from_config(cell_config.clone(), local_node.clone())?;
             either_cells.push(either_cell);
         }
@@ -101,7 +119,12 @@ impl Cell {
         Ok((either_cells, local_node))
     }
 
-    fn build(public_key: PublicKey, local_node: LocalNode, name: Option<String>) -> Cell {
+    fn build(
+        public_key: PublicKey,
+        local_node: LocalNode,
+        name: Option<String>,
+        path: Option<PathBuf>,
+    ) -> Cell {
         let cell_id = CellId::from_public_key(&public_key);
 
         let mut nodes_map = HashMap::new();
@@ -110,20 +133,22 @@ impl Cell {
 
         let name = name.unwrap_or_else(|| public_key.generate_name());
 
+        let schemas = Arc::new(Registry::new_with_exocore_types());
+
         Cell {
             identity: Arc::new(Identity {
                 public_key,
                 cell_id,
                 local_node,
                 name,
+                path,
             }),
-            apps: CellApplications::new(),
+            apps: CellApplications::new(schemas.clone()),
             nodes: Arc::new(RwLock::new(nodes_map)),
-            schemas: Arc::new(Registry::new_with_exocore_types()),
+            schemas,
         }
     }
 
-    #[inline]
     pub fn id(&self) -> &CellId {
         &self.identity.cell_id
     }
@@ -132,12 +157,10 @@ impl Cell {
         &self.identity.name
     }
 
-    #[inline]
     pub fn local_node(&self) -> &LocalNode {
         &self.identity.local_node
     }
 
-    #[inline]
     pub fn local_node_has_role(&self, role: CellNodeRole) -> bool {
         let nodes = self.nodes();
         if let Some(cn) = nodes.get(self.identity.local_node.id()) {
@@ -147,7 +170,6 @@ impl Cell {
         }
     }
 
-    #[inline]
     pub fn public_key(&self) -> &PublicKey {
         &self.identity.public_key
     }
@@ -168,8 +190,32 @@ impl Cell {
         CellNodesWrite { cell: self, nodes }
     }
 
+    pub fn schemas(&self) -> &Arc<Registry> {
+        &self.schemas
+    }
+
     pub fn applications(&self) -> &CellApplications {
         &self.apps
+    }
+
+    pub fn chain_directory(&self) -> Option<PathBuf> {
+        if let Some(path) = &self.identity.path {
+            let mut chain_dir = PathBuf::from(path);
+            chain_dir.push("chain");
+            Some(chain_dir)
+        } else {
+            None
+        }
+    }
+
+    pub fn index_directory(&self) -> Option<PathBuf> {
+        if let Some(path) = &self.identity.path {
+            let mut index_dir = PathBuf::from(path);
+            index_dir.push("index");
+            Some(index_dir)
+        } else {
+            None
+        }
     }
 }
 
@@ -231,17 +277,22 @@ pub struct FullCell {
 
 impl FullCell {
     pub fn from_keypair(keypair: Keypair, local_node: LocalNode) -> FullCell {
-        Self::build(keypair, local_node, None)
+        Self::build(keypair, local_node, None, None)
     }
 
     pub fn generate(local_node: LocalNode) -> FullCell {
         let cell_keypair = Keypair::generate_ed25519();
-        Self::build(cell_keypair, local_node, None)
+        Self::build(cell_keypair, local_node, None, None)
     }
 
-    fn build(keypair: Keypair, local_node: LocalNode, name: Option<String>) -> FullCell {
+    fn build(
+        keypair: Keypair,
+        local_node: LocalNode,
+        name: Option<String>,
+        path: Option<PathBuf>,
+    ) -> FullCell {
         FullCell {
-            cell: Cell::build(keypair.public(), local_node, name),
+            cell: Cell::build(keypair.public(), local_node, name, path),
             keypair,
         }
     }
@@ -255,8 +306,18 @@ impl FullCell {
     }
 
     #[cfg(any(test, feature = "tests_utils"))]
-    pub fn clone_for_local_node(&self, local_node: LocalNode) -> FullCell {
-        FullCell::from_keypair(self.keypair.clone(), local_node)
+    pub fn with_local_node(self, local_node: LocalNode) -> FullCell {
+        FullCell::from_keypair(self.keypair, local_node)
+    }
+
+    #[cfg(any(test, feature = "tests_utils"))]
+    pub fn with_path(self, path: PathBuf) -> FullCell {
+        Self::build(
+            self.keypair,
+            self.cell.local_node().clone(),
+            None,
+            Some(path),
+        )
     }
 }
 

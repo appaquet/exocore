@@ -4,7 +4,7 @@ mod app;
 mod cell;
 mod cell_apps;
 mod cell_nodes;
-mod config;
+pub(crate) mod config;
 mod error;
 mod node;
 

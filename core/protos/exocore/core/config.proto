@@ -11,6 +11,8 @@ message LocalNodeConfig {
 
     string name = 5;
 
+    string path = 6;
+
     repeated CellConfig cells = 3;
 
     repeated string listen_addresses = 4;
@@ -31,7 +33,7 @@ message CellConfig {
 
     string name = 3;
 
-    string data_directory = 4;
+    string path = 4;
 
     repeated CellNodeConfig nodes = 5;
 
@@ -51,8 +53,8 @@ message CellNodeConfig {
 }
 
 message CellApplicationConfig {
-    oneof manifest {
+    oneof location {
         exocore.apps.Manifest instance = 1;
-        string yaml_file = 2;
+        string directory = 2;
     }
 }

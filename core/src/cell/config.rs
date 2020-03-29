@@ -1,18 +1,22 @@
 use super::Error;
 use crate::protos::generated::exocore_core::{CellNodeConfig, LocalNodeConfig};
-use std::fs::OpenOptions;
+use std::fs::File;
 use std::path::Path;
+use std::path::PathBuf;
 
 pub fn node_config_from_yaml_file<P: AsRef<Path>>(path: P) -> Result<LocalNodeConfig, Error> {
-    let file = OpenOptions::new()
-        .read(true)
-        .write(false)
-        .create(false)
-        .open(path.as_ref())
-        .map_err(Error::ConfigIO)
+    let file = File::open(path.as_ref())
         .map_err(|err| Error::Config(format!("Couldn't open YAML node file: {}", err)))?;
 
-    node_config_from_yaml(file)
+    let mut config = node_config_from_yaml(file)?;
+
+    if config.path.is_empty() {
+        let mut node_path = path.as_ref().to_path_buf();
+        node_path.pop();
+        config.path = node_path.to_string_lossy().to_string();
+    }
+
+    Ok(config)
 }
 
 pub fn node_config_from_yaml<R: std::io::Read>(bytes: R) -> Result<LocalNodeConfig, Error> {
@@ -36,6 +40,16 @@ pub fn cell_config_from_yaml<R: std::io::Read>(bytes: R) -> Result<CellNodeConfi
     Ok(config)
 }
 
+pub(crate) fn to_absolute_from_parent_path(parent_path: &str, child_path: &str) -> PathBuf {
+    let child_path_buf = PathBuf::from(child_path);
+    if parent_path.is_empty() || child_path_buf.is_absolute() {
+        return child_path_buf;
+    }
+
+    let parent_path_buf = PathBuf::from(parent_path);
+    parent_path_buf.join(child_path_buf)
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::{Cell, CellNodeRole, CellNodes};
@@ -51,11 +65,12 @@ mod tests {
             keypair: "keypair".to_string(),
             public_key: "pk".to_string(),
             name: "node_name".to_string(),
+            path: "path".to_string(),
             cells: vec![CellConfig {
                 public_key: "pk".to_string(),
                 keypair: "kp".to_string(),
                 name: "cell_name".to_string(),
-                data_directory: "data".to_string(),
+                path: "path".to_string(),
                 nodes: vec![CellNodeConfig {
                     node: Some(NodeConfig {
                         public_key: "pk".to_string(),
@@ -123,12 +138,17 @@ cells:
      data_directory: target/data/cell1
      nodes:
        - node:
-             name: node name
-             public_key: peFdPsQsdqzT2H6cPd3WdU1fGdATDmavh4C17VWWacZTMP
-             addresses:
-                - /ip4/192.168.2.67/tcp/3330
+           name: node name
+           public_key: peFdPsQsdqzT2H6cPd3WdU1fGdATDmavh4C17VWWacZTMP
+           addresses:
+             - /ip4/192.168.2.67/tcp/3330
          roles:
            - 1
+     apps:
+       - location:
+           Instance:
+             name: some application
+             public_key: peHZC1CM51uAugeMNxbXkVukFzCwMJY52m1xDCfLmm1pc1
 "#;
 
         let config = node_config_from_yaml(yaml.as_bytes())?;

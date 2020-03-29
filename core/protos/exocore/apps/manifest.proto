@@ -7,11 +7,13 @@ message Manifest {
 
     string public_key = 2;
 
-    repeated Schema schemas_fdset = 3;
+    string path = 3;
+
+    repeated ManifestSchema schemas = 4;
 }
 
-message Schema {
-    oneof schema {
+message ManifestSchema {
+    oneof source {
         string file = 1;
         bytes bytes = 2;
     }

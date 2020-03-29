@@ -7,6 +7,9 @@ pub struct LocalNodeConfig {
     #[prost(string, tag = "5")]
     #[serde(default)]
     pub name: std::string::String,
+    #[prost(string, tag = "6")]
+    #[serde(default)]
+    pub path: std::string::String,
     #[prost(message, repeated, tag = "3")]
     pub cells: ::std::vec::Vec<CellConfig>,
     #[prost(string, repeated, tag = "4")]
@@ -35,7 +38,7 @@ pub struct CellConfig {
     pub name: std::string::String,
     #[prost(string, tag = "4")]
     #[serde(default)]
-    pub data_directory: std::string::String,
+    pub path: std::string::String,
     #[prost(message, repeated, tag = "5")]
     pub nodes: ::std::vec::Vec<CellNodeConfig>,
     #[prost(message, repeated, tag = "6")]
@@ -62,15 +65,15 @@ pub mod cell_node_config {
 }
 #[derive(Clone, PartialEq, ::prost::Message, Serialize, Deserialize)]
 pub struct CellApplicationConfig {
-    #[prost(oneof = "cell_application_config::Manifest", tags = "1, 2")]
-    pub manifest: ::std::option::Option<cell_application_config::Manifest>,
+    #[prost(oneof = "cell_application_config::Location", tags = "1, 2")]
+    pub location: ::std::option::Option<cell_application_config::Location>,
 }
 pub mod cell_application_config {
     #[derive(Clone, PartialEq, ::prost::Oneof, Serialize, Deserialize)]
-    pub enum Manifest {
+    pub enum Location {
         #[prost(message, tag = "1")]
         Instance(super::super::apps::Manifest),
         #[prost(string, tag = "2")]
-        YamlFile(std::string::String),
+        Directory(std::string::String),
     }
 }

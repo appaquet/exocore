@@ -40,14 +40,16 @@ fn main() {
             // default fields
             config
                 .field_attribute("LocalNodeConfig.name", "#[serde(default)]")
+                .field_attribute("LocalNodeConfig.path", "#[serde(default)]")
                 .field_attribute("NodeConfig.name", "#[serde(default)]")
                 .field_attribute("NodeConfig.addresses", "#[serde(default)]")
                 .field_attribute("CellConfig.name", "#[serde(default)]")
                 .field_attribute("CellConfig.keypair", "#[serde(default)]")
-                .field_attribute("CellConfig.applications", "#[serde(default)]")
-                .field_attribute("CellConfig.data_directory", "#[serde(default)]")
+                .field_attribute("CellConfig.path", "#[serde(default)]")
                 .field_attribute("CellConfig.apps", "#[serde(default)]")
-                .field_attribute("CellNodeConfig.roles", "#[serde(default)]");
+                .field_attribute("CellNodeConfig.roles", "#[serde(default)]")
+                .field_attribute("Manifest.schemas", "#[serde(default)]")
+                .field_attribute("Manifest.path", "#[serde(default)]");
 
             config
                 .compile_protos(&prost_protos_file, &["protos/"])
