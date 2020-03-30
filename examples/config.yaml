@@ -1,4 +1,3 @@
-
 # Node's keypair and public key
 # Use `exo keys generate` to generate node's keys
 name: Optional Node Name
@@ -13,29 +12,31 @@ listen_addresses:
 # Cells that the node is part of
 # Use `exo keys generate` to generate cell's keys
 cells:
-  - public_key: pe2AgPyBmJNztntK9n4vhLuEYN8P2kRfFXnaZFsiXqWacQ
-    keypair: ae55Nfv11ppyFVxCDaYovcxTcaTDaSzSFjiVoiC3VwGARfEuaqGcgoJUdVpqfwKQVDN4rvGKUvt4yqQc6w7it7PCpG
-    data_directory: /path/to/data
-    name: Optional Cell Name
-    nodes:
-      - node:
-          name: Optional Node Name
-          public_key: peFdPsQsdqzT2H6cPd3WdU1fGdATDmavh4C17VWWacZTMP
-          addresses:
-            - /ip4/127.0.0.1/tcp/3330
-            - /ip4/127.0.0.1/tcp/3341/ws
+  - location:
+      Instance:
+        public_key: pe2AgPyBmJNztntK9n4vhLuEYN8P2kRfFXnaZFsiXqWacQ
+        keypair: ae55Nfv11ppyFVxCDaYovcxTcaTDaSzSFjiVoiC3VwGARfEuaqGcgoJUdVpqfwKQVDN4rvGKUvt4yqQc6w7it7PCpG
+        data_directory: /path/to/data
+        name: Optional Cell Name
+        nodes:
+          - node:
+              name: Optional Node Name
+              public_key: peFdPsQsdqzT2H6cPd3WdU1fGdATDmavh4C17VWWacZTMP
+              addresses:
+                - /ip4/127.0.0.1/tcp/3330
+                - /ip4/127.0.0.1/tcp/3341/ws
 
-        # Role of the node
-        # Data = 1
-        # Index store = 2
-        roles:
-          - 1
-          - 2
+            # Role of the node
+            # Data = 1
+            # Index store = 2
+            roles:
+              - 1
+              - 2
 
-      - node:
-          name: Some Client Node
-          public_key: peHdrwp1ZXicF1v7RQRRC4ursqgE1oM9nuVijCmrf74n7E
+          - node:
+              name: Some Client Node
+              public_key: peHdrwp1ZXicF1v7RQRRC4ursqgE1oM9nuVijCmrf74n7E
 
-    apps:
-      - location:
-          Directory: ./app
+        apps:
+          - location:
+              Directory: ./app

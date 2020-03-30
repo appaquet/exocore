@@ -31,7 +31,7 @@ impl CellApplications {
     {
         for cell_app in iter {
             let app_location = cell_app.location.as_ref().ok_or_else(|| {
-                Error::Config("CellApplication needs a manifest to be definied".to_string())
+                Error::Cell("CellApplication needs a manifest to be definied".to_string())
             })?;
 
             match app_location {

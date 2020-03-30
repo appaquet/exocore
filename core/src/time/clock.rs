@@ -1,4 +1,4 @@
-use super::{ConsistentTimestamp, Duration, Instant, SystemTime};
+use super::{ConsistentTimestamp, Instant, SystemTime};
 use crate::cell::Node;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -124,7 +124,7 @@ impl Clock {
     }
 
     #[cfg(any(test, feature = "tests_utils"))]
-    pub fn add_fixed_instant_duration(&self, duration: Duration) {
+    pub fn add_fixed_instant_duration(&self, duration: super::Duration) {
         if let Source::Mocked(mocked_instant) = &self.source {
             let mut mocked_instant = mocked_instant.write().expect("Couldn't acquire write lock");
             if let Some((current_instant, unix_elapsed)) = *mocked_instant {
@@ -156,17 +156,16 @@ impl Default for Clock {
 enum Source {
     System,
     #[cfg(any(test, feature = "tests_utils"))]
-    Mocked(std::sync::Arc<std::sync::RwLock<Option<(Instant, Duration)>>>),
+    Mocked(std::sync::Arc<std::sync::RwLock<Option<(Instant, super::Duration)>>>),
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-    use std::thread;
-    use std::time::Duration;
-
+    use super::super::Duration;
     use super::*;
     use crate::cell::LocalNode;
+    use std::sync::Arc;
+    use std::thread;
 
     #[test]
     fn non_mocked_clock() {

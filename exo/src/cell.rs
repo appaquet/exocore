@@ -1,5 +1,5 @@
 use crate::options;
-use exocore_core::cell::{Cell, LocalNode};
+use exocore_core::cell::Cell;
 use exocore_core::protos::generated::data_chain_capnp::block_header;
 use exocore_data::block::Block;
 use exocore_data::chain::ChainStore;
@@ -9,17 +9,12 @@ pub fn create_genesis_block(
     _opt: &options::Options,
     cell_opts: &options::CellOptions,
 ) -> Result<(), failure::Error> {
-    let node_config = exocore_core::cell::node_config_from_yaml_file(&cell_opts.config)?;
-    let cell_config = node_config
-        .cells
-        .iter()
-        .find(|config| config.public_key == cell_opts.public_key)
-        .expect("Couldn't find cell with given public key");
-
-    let local_node = LocalNode::new_from_config(node_config.clone())
-        .expect("Couldn't create local node instance");
-    let full_cell = Cell::new_from_config(cell_config.clone(), local_node)
-        .expect("Couldn't create cell instance")
+    let config = exocore_core::cell::node_config_from_yaml_file(&cell_opts.config)?;
+    let (either_cells, _local_node) = Cell::new_from_local_node_config(config)?;
+    let full_cell = either_cells
+        .into_iter()
+        .find(|c| c.cell().public_key().encode_base58_string() == cell_opts.public_key)
+        .expect("Couldn't find cell with given public key")
         .unwrap_full();
 
     let chain_dir = full_cell
@@ -43,18 +38,14 @@ pub fn check_chain(
     _opt: &options::Options,
     cell_opts: &options::CellOptions,
 ) -> Result<(), failure::Error> {
-    let node_config = exocore_core::cell::node_config_from_yaml_file(&cell_opts.config)?;
-    let cell_config = node_config
-        .cells
-        .iter()
-        .find(|config| config.public_key == cell_opts.public_key)
-        .expect("Couldn't find cell with given public key");
-
-    let local_node = LocalNode::new_from_config(node_config.clone())
-        .expect("Couldn't create local node instance");
-    let cell = Cell::new_from_config(cell_config.clone(), local_node)
-        .expect("Couldn't create cell instance")
+    let config = exocore_core::cell::node_config_from_yaml_file(&cell_opts.config)?;
+    let (either_cells, _local_node) = Cell::new_from_local_node_config(config)?;
+    let cell = either_cells
+        .into_iter()
+        .find(|c| c.cell().public_key().encode_base58_string() == cell_opts.public_key)
+        .expect("Couldn't find cell with given public key")
         .unwrap_cell();
+
     let chain_dir = cell
         .chain_directory()
         .expect("Cell doesn't have a path configured");

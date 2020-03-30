@@ -38,7 +38,7 @@ impl Node {
 
     pub fn new_from_config(config: NodeConfig) -> Result<Node, Error> {
         let public_key = PublicKey::decode_base58_string(&config.public_key)
-            .map_err(|err| Error::Config(format!("Couldn't decode node public key: {}", err)))?;
+            .map_err(|err| Error::Cell(format!("Couldn't decode node public key: {}", err)))?;
 
         let name = if !config.name.is_empty() {
             Some(config.name)
@@ -51,7 +51,7 @@ impl Node {
         for addr in config.addresses {
             let maddr = addr
                 .parse()
-                .map_err(|err| Error::Config(format!("Couldn't parse multi-address: {}", err)))?;
+                .map_err(|err| Error::Cell(format!("Couldn't parse multi-address: {}", err)))?;
             node.add_address(maddr);
         }
 
@@ -175,13 +175,13 @@ impl LocalNode {
 
     pub fn new_from_config(config: LocalNodeConfig) -> Result<Self, Error> {
         let keypair = Keypair::decode_base58_string(&config.keypair)
-            .map_err(|err| Error::Config(format!("Couldn't decode local node keypair: {}", err)))?;
+            .map_err(|err| Error::Cell(format!("Couldn't decode local node keypair: {}", err)))?;
 
         let node = Self::new_from_keypair(keypair);
 
         for addr in config.listen_addresses {
             let maddr = addr.parse().map_err(|err| {
-                Error::Config(format!("Couldn't parse local node address: {}", err))
+                Error::Cell(format!("Couldn't parse local node address: {}", err))
             })?;
             node.add_address(maddr);
         }

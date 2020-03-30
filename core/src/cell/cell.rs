@@ -1,14 +1,17 @@
+use super::config::to_absolute_from_parent_path;
 use super::{
     CellApplications, CellNode, CellNodeRole, CellNodes, CellNodesRead, CellNodesWrite, Error,
     LocalNode, Node, NodeId,
 };
+use crate::cell::cell_config_from_node_cell;
+use crate::cell::config::cell_config_from_yaml_file;
 use crate::crypto::keys::{Keypair, PublicKey};
 use crate::protos::generated::exocore_core::{CellConfig, LocalNodeConfig};
 use crate::protos::registry::Registry;
 use libp2p_core::PeerId;
 use std::collections::HashMap;
 use std::ops::Deref;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
 /// A Cell represents a private enclosure in which the data and applications of
@@ -37,7 +40,7 @@ impl Cell {
     pub fn new_from_config(config: CellConfig, local_node: LocalNode) -> Result<EitherCell, Error> {
         let either_cell = if !config.keypair.is_empty() {
             let keypair = Keypair::decode_base58_string(&config.keypair)
-                .map_err(|err| Error::Config(format!("Couldn't parse cell keypair: {}", err)))?;
+                .map_err(|err| Error::Cell(format!("Couldn't parse cell keypair: {}", err)))?;
 
             let name = if config.name != "" {
                 Some(config.name.clone())
@@ -55,7 +58,7 @@ impl Cell {
             EitherCell::Full(Box::new(full_cell))
         } else {
             let public_key = PublicKey::decode_base58_string(&config.public_key)
-                .map_err(|err| Error::Config(format!("Couldn't parse cell public key: {}", err)))?;
+                .map_err(|err| Error::Cell(format!("Couldn't parse cell public key: {}", err)))?;
 
             let name = if config.name != "" {
                 Some(config.name.clone())
@@ -78,7 +81,7 @@ impl Cell {
             let mut nodes = either_cell.nodes_mut();
             for node_config in &config.nodes {
                 let node = Node::new_from_config(node_config.node.clone().ok_or_else(|| {
-                    Error::Config("Cell node config node is not defined".to_string())
+                    Error::Cell("Cell node config node is not defined".to_string())
                 })?)?;
 
                 let mut cell_node = CellNode::new(node);
@@ -101,18 +104,33 @@ impl Cell {
         Ok(either_cell)
     }
 
+    pub fn new_from_directory<P: AsRef<Path>>(
+        directory: P,
+        local_node: LocalNode,
+    ) -> Result<EitherCell, Error> {
+        let mut config_path = directory.as_ref().to_path_buf();
+        config_path.push("config.yaml");
+
+        let cell_config = cell_config_from_yaml_file(config_path)?;
+
+        Self::new_from_config(cell_config, local_node)
+    }
+
     pub fn new_from_local_node_config(
         config: LocalNodeConfig,
     ) -> Result<(Vec<EitherCell>, LocalNode), Error> {
         let local_node = LocalNode::new_from_config(config.clone())?;
 
         let mut either_cells = Vec::new();
-        for mut cell_config in config.cells {
-            let cell_path =
-                super::config::to_absolute_from_parent_path(&config.path, &cell_config.path);
-            cell_config.path = cell_path.to_string_lossy().to_string();
+        for node_cell_config in &config.cells {
+            let mut cell_config = cell_config_from_node_cell(node_cell_config)?;
 
-            let either_cell = Self::new_from_config(cell_config.clone(), local_node.clone())?;
+            if cell_config.path.is_empty() {
+                let cell_path = to_absolute_from_parent_path(&config.path, &cell_config.path);
+                cell_config.path = cell_path.to_string_lossy().to_string();
+            }
+
+            let either_cell = Self::new_from_config(cell_config, local_node.clone())?;
             either_cells.push(either_cell);
         }
 

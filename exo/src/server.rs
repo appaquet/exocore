@@ -20,10 +20,9 @@ pub fn start(
     server_opts: &options::ServerOptions,
 ) -> Result<(), failure::Error> {
     let config = exocore_core::cell::node_config_from_yaml_file(&server_opts.config)?;
-    let mut rt = Runtime::new()?;
-
     let (either_cells, local_node) = Cell::new_from_local_node_config(config)?;
 
+    let mut rt = Runtime::new()?;
     let mut engines_handle = Vec::new();
 
     // create transport

@@ -9,21 +9,20 @@ message LocalNodeConfig {
 
     string public_key = 2;
 
-    string name = 5;
+    string name = 3;
 
-    string path = 6;
+    string path = 4;
 
-    repeated CellConfig cells = 3;
+    repeated string listen_addresses = 5;
 
-    repeated string listen_addresses = 4;
+    repeated NodeCellConfig cells = 6;
 }
 
-message NodeConfig {
-    string public_key = 1;
-
-    repeated string addresses = 2;
-
-    string name = 3;
+message NodeCellConfig {
+    oneof location {
+       CellConfig instance = 1;
+       string directory = 2;
+    }
 }
 
 message CellConfig {
@@ -50,6 +49,14 @@ message CellNodeConfig {
         DATA_ROLE = 1;
         INDEX_STORE_ROLE = 2;
     }
+}
+
+message NodeConfig {
+    string public_key = 1;
+
+    repeated string addresses = 2;
+
+    string name = 3;
 }
 
 message CellApplicationConfig {

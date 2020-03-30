@@ -243,7 +243,7 @@ impl CellNodeRole {
         match config {
             cell_node_config::Role::DataRole => Ok(CellNodeRole::Data),
             cell_node_config::Role::IndexStoreRole => Ok(CellNodeRole::IndexStore),
-            v => Err(Error::Config(format!("Invalid cell node role: {:?}", v))),
+            v => Err(Error::Cell(format!("Invalid cell node role: {:?}", v))),
         }
     }
 }

@@ -1,4 +1,4 @@
-use super::Error;
+use super::{app_manifest_from_yaml_file, Error};
 use crate::crypto::keys::PublicKey;
 use crate::protos::generated::exocore_apps::manifest_schema::Source;
 use crate::protos::generated::exocore_apps::Manifest;
@@ -24,7 +24,7 @@ impl Application {
         let mut manifest_path = dir.as_ref().to_path_buf();
         manifest_path.push("manifest.yaml");
 
-        let mut manifest = read_file_yaml_manifest(manifest_path)?;
+        let mut manifest = app_manifest_from_yaml_file(manifest_path)?;
         manifest.path = dir.as_ref().to_string_lossy().to_string();
 
         Self::build(manifest)
@@ -171,27 +171,4 @@ fn read_file_descriptor_set_file<P: AsRef<Path>>(
     })?;
 
     Ok(fdset)
-}
-
-fn read_file_yaml_manifest<P: AsRef<Path>>(path: P) -> Result<Manifest, Error> {
-    let path = path.as_ref();
-
-    let file = File::open(path).map_err(|err| {
-        Error::Application(
-            String::new(),
-            format!(
-                "Couldn't open application manifest at path {:?}: {}",
-                path, err
-            ),
-        )
-    })?;
-
-    let manifest = serde_yaml::from_reader(file).map_err(|err| {
-        Error::Application(
-            String::new(),
-            format!("Couldn't decode YAML manifest at path {:?}: {}", path, err),
-        )
-    })?;
-
-    Ok(manifest)
 }

@@ -1,7 +1,7 @@
 #[derive(Debug, Fail)]
 pub enum Error {
     #[fail(display = "Configuration error: {}", _0)]
-    Config(String),
+    Cell(String),
 
     #[fail(display = "Application '{}' error: {}", _0, _1)]
     Application(String, String),
