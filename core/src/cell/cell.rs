@@ -123,7 +123,7 @@ impl Cell {
 
         let mut either_cells = Vec::new();
         for node_cell_config in &config.cells {
-            let mut cell_config = cell_config_from_node_cell(node_cell_config)?;
+            let mut cell_config = cell_config_from_node_cell(node_cell_config, &config)?;
 
             if cell_config.path.is_empty() {
                 let cell_path = to_absolute_from_parent_path(&config.path, &cell_config.path);
