@@ -9,8 +9,6 @@ use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 
-// TODO: Encryption/signature ticket: https://github.com/appaquet/exocore/issues/46
-
 /// Represents a machine / process on which Exocore runs. A node can host
 /// multiple `Cell`.
 #[derive(Clone)]
@@ -70,7 +68,6 @@ impl Node {
             .to_peer_id()
             .expect("Couldn't convert node_id to peer_id");
 
-        // TODO: used for consistent time and to be fixed for real in https://github.com/appaquet/exocore/issues/6
         let node_id_bytes = node_id.0.as_bytes();
         let node_id_bytes_len = node_id_bytes.len();
         let consistent_clock_id = u16::from_le_bytes([

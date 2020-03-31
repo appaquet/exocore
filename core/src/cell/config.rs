@@ -194,6 +194,13 @@ mod tests {
             assert_eq!(2, node.roles().len());
         }
 
+        {
+            let schemas = full_cell
+                .schemas()
+                .get_message_descriptor("exocore.example_app.Task");
+            assert!(schemas.is_ok());
+        }
+
         Ok(())
     }
 

@@ -1,6 +1,6 @@
 #[derive(Debug, Fail)]
 pub enum Error {
-    #[fail(display = "Configuration error: {}", _0)]
+    #[fail(display = "Cell error: {}", _0)]
     Cell(String),
 
     #[fail(display = "Application '{}' error: {}", _0, _1)]
@@ -9,6 +9,6 @@ pub enum Error {
     #[fail(display = "Key error: {}", _0)]
     Key(crate::crypto::keys::Error),
 
-    #[fail(display = "{}", _0)]
-    Other(String),
+    #[fail(display = "Node error: {}", _0)]
+    Node(String),
 }

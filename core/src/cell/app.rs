@@ -7,6 +7,7 @@ use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
 
+/// Application that extends the capability of the cell by providing schemas and WebAssembly logic.
 #[derive(Clone)]
 pub struct Application {
     identity: Arc<Identity>,
@@ -50,8 +51,8 @@ impl Application {
                 Some(Source::File(rel_path)) => {
                     let schema_path =
                         super::config::to_absolute_from_parent_path(&manifest.path, rel_path);
-                    let fdset = read_file_descriptor_set_file(&manifest.name, schema_path)?;
-                    schemas.push(fdset);
+                    let fd_set = read_file_descriptor_set_file(&manifest.name, schema_path)?;
+                    schemas.push(fd_set);
                 }
                 Some(Source::Bytes(bytes)) => {
                     let bytes = bytes.as_slice();

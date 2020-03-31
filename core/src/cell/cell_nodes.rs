@@ -255,7 +255,7 @@ impl FromStr for CellNodeRole {
         match s.to_lowercase().as_str() {
             "data" => Ok(CellNodeRole::Data),
             "index_store" => Ok(CellNodeRole::IndexStore),
-            o => Err(super::Error::Other(format!("Invalid role name: {}", o))),
+            o => Err(super::Error::Node(format!("Invalid role name: {}", o))),
         }
     }
 }

@@ -7,6 +7,7 @@ use crate::protos::registry::Registry;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+/// Applications installed in a cell.
 #[derive(Clone)]
 pub struct CellApplications {
     applications: Arc<RwLock<HashMap<ApplicationId, CellApplication>>>,
@@ -31,7 +32,7 @@ impl CellApplications {
     {
         for cell_app in iter {
             let app_location = cell_app.location.as_ref().ok_or_else(|| {
-                Error::Cell("CellApplication needs a manifest to be definied".to_string())
+                Error::Cell("CellApplication needs a manifest to be defined".to_string())
             })?;
 
             match app_location {
