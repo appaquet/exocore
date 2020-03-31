@@ -81,7 +81,7 @@ impl Cell {
             let mut nodes = either_cell.nodes_mut();
             for node_config in &config.nodes {
                 let node = Node::new_from_config(node_config.node.clone().ok_or_else(|| {
-                    Error::Cell("Cell node config node is not defined".to_string())
+                    Error::Config("Cell node config node is not defined".to_string())
                 })?)?;
 
                 let mut cell_node = CellNode::new(node);
