@@ -74,7 +74,7 @@ jobs:
       - name: Install build dependencies
         run: |
           set -e
-          apt update && apt install -y clang curl pkg-config libssl-dev
+          apt update && apt install -y clang curl pkg-config libssl-dev openssl
           curl -sL https://deb.nodesource.com/setup_13.x | bash -
           apt-get install -y nodejs
       - uses: actions-rs/toolchain@v1
