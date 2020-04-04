@@ -67,8 +67,8 @@ jobs:
 
   wasm_build:
     runs-on: ubuntu-latest
-    container:
-      image: ubuntu:19.04 # required for clang with wasm
+    #container:
+    #  image: ubuntu:19.04 # required for clang with wasm
     steps:
       - uses: actions/checkout@v2
       - name: Install build dependencies
@@ -90,7 +90,7 @@ jobs:
         run: |
           set -e
 
-          cd $GITHUB_WORKSPACE/clients/wasm
+          cd $GITHUB_WORKSPACE/clients/web
           wasm-pack build
           npm install
 
