@@ -1,5 +1,6 @@
 # Exocore
 [![codecov](https://codecov.io/gh/appaquet/exocore/branch/master/graph/badge.svg?token=OKZAHfPlaP)](https://codecov.io/gh/appaquet/exocore)
+![Build](https://github.com/appaquet/exocore/workflows/Push%20tester/badge.svg)
 
 **Warning: Exocore is at a very early development stage, hence incomplete, unstable and probably totally unsafe. Use at your own risk.**
 

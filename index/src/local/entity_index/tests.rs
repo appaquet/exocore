@@ -29,7 +29,7 @@ fn index_full_pending_to_chain() -> Result<(), failure::Error> {
     let chain_res = count_results_source(&res, EntityResultSource::Chain);
     assert_eq!(pending_res + chain_res, 5);
 
-    // index a few traits, wait for first block ot be committed
+    // index a few traits, wait for first block to be committed
     let second_ops_id = test_index.put_test_traits(5..=9)?;
     test_index.wait_operations_emitted(&second_ops_id);
     test_index.wait_operations_committed(&first_ops_id);
