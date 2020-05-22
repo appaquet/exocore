@@ -865,7 +865,7 @@ dependencies = [
  "failure",
  "futures 0.3.5",
  "libp2p",
- "libp2p-wasm-ext",
+ "libp2p-wasm-ext 0.19.0",
  "log",
  "pin-project",
  "wasm-bindgen",
@@ -1438,18 +1438,18 @@ dependencies = [
  "bytes",
  "futures 0.3.5",
  "lazy_static",
- "libp2p-core",
+ "libp2p-core 0.18.0",
  "libp2p-core-derive",
  "libp2p-dns",
  "libp2p-mplex",
  "libp2p-secio",
  "libp2p-swarm",
  "libp2p-tcp",
- "libp2p-wasm-ext",
+ "libp2p-wasm-ext 0.18.0",
  "libp2p-websocket",
  "libp2p-yamux",
- "multihash",
- "parity-multiaddr",
+ "multihash 0.10.1",
+ "parity-multiaddr 0.8.0",
  "parking_lot 0.10.2",
  "pin-project",
  "smallvec 1.4.0",
@@ -1472,9 +1472,43 @@ dependencies = [
  "lazy_static",
  "libsecp256k1",
  "log",
- "multihash",
+ "multihash 0.10.1",
  "multistream-select",
- "parity-multiaddr",
+ "parity-multiaddr 0.8.0",
+ "parking_lot 0.10.2",
+ "pin-project",
+ "prost",
+ "prost-build",
+ "rand 0.7.3",
+ "ring",
+ "rw-stream-sink",
+ "sha2",
+ "smallvec 1.4.0",
+ "thiserror",
+ "unsigned-varint",
+ "void",
+ "zeroize",
+]
+
+[[package]]
+name = "libp2p-core"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "80a6000296bdbff540b6c00ef82108ef23aa68d195b9333823ea491562c338d7"
+dependencies = [
+ "asn1_der",
+ "bs58",
+ "ed25519-dalek",
+ "either",
+ "fnv",
+ "futures 0.3.5",
+ "futures-timer 3.0.2",
+ "lazy_static",
+ "libsecp256k1",
+ "log",
+ "multihash 0.11.2",
+ "multistream-select",
+ "parity-multiaddr 0.9.0",
  "parking_lot 0.10.2",
  "pin-project",
  "prost",
@@ -1507,7 +1541,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c0d0993481203d68e5ce2f787d033fb0cac6b850659ed6c784612db678977c71"
 dependencies = [
  "futures 0.3.5",
- "libp2p-core",
+ "libp2p-core 0.18.0",
  "log",
 ]
 
@@ -1521,7 +1555,7 @@ dependencies = [
  "fnv",
  "futures 0.3.5",
  "futures_codec",
- "libp2p-core",
+ "libp2p-core 0.18.0",
  "log",
  "parking_lot 0.10.2",
  "unsigned-varint",
@@ -1539,7 +1573,7 @@ dependencies = [
  "hmac",
  "js-sys",
  "lazy_static",
- "libp2p-core",
+ "libp2p-core 0.18.0",
  "log",
  "parity-send-wrapper",
  "pin-project",
@@ -1564,7 +1598,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "44ab289ae44cc691da0a6fe96aefa43f26c86c6c7813998e203f6d80f1860f18"
 dependencies = [
  "futures 0.3.5",
- "libp2p-core",
+ "libp2p-core 0.18.0",
  "log",
  "rand 0.7.3",
  "smallvec 1.4.0",
@@ -1583,7 +1617,7 @@ dependencies = [
  "futures-timer 3.0.2",
  "get_if_addrs",
  "ipnet",
- "libp2p-core",
+ "libp2p-core 0.18.0",
  "log",
 ]
 
@@ -1595,7 +1629,21 @@ checksum = "e3ac7dbde0f88cad191dcdfd073b8bae28d01823e8ca313f117b6ecb914160c3"
 dependencies = [
  "futures 0.3.5",
  "js-sys",
- "libp2p-core",
+ "libp2p-core 0.18.0",
+ "parity-send-wrapper",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
+name = "libp2p-wasm-ext"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f59fdbb5706f2723ca108c088b1c7a37f735a8c328021f0508007162627e9885"
+dependencies = [
+ "futures 0.3.5",
+ "js-sys",
+ "libp2p-core 0.19.0",
  "parity-send-wrapper",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -1611,7 +1659,7 @@ dependencies = [
  "bytes",
  "either",
  "futures 0.3.5",
- "libp2p-core",
+ "libp2p-core 0.18.0",
  "log",
  "quicksink",
  "rustls",
@@ -1629,7 +1677,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "02f91aea50f6571e0bc6c058dc0e9b270afd41ec28dd94e9e4bf607e78b9ab87"
 dependencies = [
  "futures 0.3.5",
- "libp2p-core",
+ "libp2p-core 0.18.0",
  "parking_lot 0.10.2",
  "thiserror",
  "yamux",
@@ -1857,6 +1905,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "multihash"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f75db05d738947aa5389863aadafbcf2e509d7ba099dc2ddcdf4fc66bf7a9e03"
+dependencies = [
+ "blake2b_simd",
+ "blake2s_simd",
+ "digest",
+ "sha-1",
+ "sha2",
+ "sha3",
+ "unsigned-varint",
+]
+
+[[package]]
 name = "multimap"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2023,7 +2086,25 @@ dependencies = [
  "bs58",
  "byteorder",
  "data-encoding",
- "multihash",
+ "multihash 0.10.1",
+ "percent-encoding",
+ "serde",
+ "static_assertions",
+ "unsigned-varint",
+ "url",
+]
+
+[[package]]
+name = "parity-multiaddr"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "12ca96399f4a01aa89c59220c4f52ac371940eb4e53e3ce990da796f364bdf69"
+dependencies = [
+ "arrayref",
+ "bs58",
+ "byteorder",
+ "data-encoding",
+ "multihash 0.11.2",
  "percent-encoding",
  "serde",
  "static_assertions",
