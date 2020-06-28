@@ -92,9 +92,9 @@ jobs:
           set -e
           export PATH=$PATH:`pwd`
 
-          cd $GITHUB_WORKSPACE/clients/web
-          wasm-pack build --dev
+          cd $GITHUB_WORKSPACE/
           npm ci
+          npm run build_dev
 
           cd $GITHUB_WORKSPACE/examples/web
           npm ci

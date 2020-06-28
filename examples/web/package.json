@@ -9,9 +9,6 @@
     "build": "webpack",
     "build_dev": "webpack --mode development"
   },
-  "bin": {
-    "create-rust-webpack": ".bin/create-rust-webpack.js"
-  },
   "devDependencies": {
     "@babel/core": "^7.9.0",
     "@babel/plugin-syntax-async-generators": "^7.2.0",

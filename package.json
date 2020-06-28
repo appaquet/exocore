@@ -6,7 +6,8 @@
   "license": "MIT",
   "scripts": {
     "prepare": "rm -f clients/web/pkg/package.json clients/web/pkg/.gitignore",
-    "build": "cd clients/web && wasm-pack build && tsc && rm pkg/package.json pkg/.gitignore"
+    "build": "cd clients/web && wasm-pack build && tsc && rm pkg/package.json pkg/.gitignore",
+    "build_dev": "cd clients/web && wasm-pack build --dev && tsc && rm pkg/package.json pkg/.gitignore"
   },
   "main": "clients/web/tsp/index.js",
   "types": "clients/web/tsp/index.d.ts",
@@ -14,7 +15,8 @@
     "clients/web/js/*",
     "clients/web/ts/*",
     "clients/web/tsp/*",
-    "clients/web/pkg/**"
+    "clients/web/pkg/**",
+    "README.md"
   ],
   "devDependencies": {
     "typescript": "^3.9.5"
