@@ -3,7 +3,7 @@
   "name": "exocore-examples-web",
   "version": "0.1.0",
   "repository": "https://github.com/appaquet/exocore",
-  "license": "(MIT OR Apache-2.0)",
+  "license": "MIT",
   "scripts": {
     "start": "webpack-dev-server -d",
     "build": "webpack",
@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "core-js": "^3.2.1",
-    "exocore": "file:./../../clients/web",
+    "exocore": "file:./../..",
     "react": "^16.13.1",
     "react-dom": "^16.13.1",
     "regenerator-runtime": "^0.13.5"
