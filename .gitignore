@@ -33,4 +33,3 @@ tarpaulin*
 cobertura*
 flamegraph*
 perf.*
-pkg
