@@ -147,7 +147,7 @@ jobs:
           pod install
           xcodebuild -workspace exocore-client-ios.xcworkspace -scheme exocore-client-ios -destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO
 
-  markdown-link-check:
+  markdown_links_check:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@master
