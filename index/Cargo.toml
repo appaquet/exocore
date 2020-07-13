@@ -17,7 +17,8 @@ local-store = ["tantivy", "exocore-chain/engine", "crc"]
 exocore-chain = { path = "../chain", default-features = false }
 exocore-transport = { path = "../transport", default-features = false }
 exocore-core = { path = "../core" }
-failure = "0.1"
+thiserror = "1.0"
+anyhow = "1.0"
 itertools = "0.9"
 log = "0.4"
 futures = "0.3"

@@ -737,21 +737,21 @@ impl BlockSignature {
 }
 
 /// Block related errors
-#[derive(Clone, Debug, Fail)]
+#[derive(Clone, Debug, thiserror::Error)]
 pub enum Error {
-    #[fail(display = "Block integrity error: {}", _0)]
+    #[error("Block integrity error: {0}")]
     Integrity(String),
-    #[fail(display = "An offset is out of the block data: {}", _0)]
+    #[error("An offset is out of the block data: {0}")]
     OutOfBound(String),
-    #[fail(display = "Operations related error: {}", _0)]
-    Operation(#[fail(cause)] crate::operation::Error),
-    #[fail(display = "Framing error: {}", _0)]
-    Framing(#[fail(cause)] exocore_core::framing::Error),
-    #[fail(display = "Error in capnp serialization: kind={:?} msg={}", _0, _1)]
+    #[error("Operations related error: {0}")]
+    Operation(#[from] crate::operation::Error),
+    #[error("Framing error: {0}")]
+    Framing(#[from] exocore_core::framing::Error),
+    #[error("Error in capnp serialization: kind={0:?} msg={1}")]
     Serialization(capnp::ErrorKind, String),
-    #[fail(display = "Field is not in capnp schema: code={}", _0)]
+    #[error("Field is not in capnp schema: code={0}")]
     SerializationNotInSchema(u16),
-    #[fail(display = "Other operation error: {}", _0)]
+    #[error("Other operation error: {0}")]
     Other(String),
 }
 
@@ -767,12 +767,6 @@ impl From<capnp::NotInSchema> for Error {
     }
 }
 
-impl From<exocore_core::framing::Error> for Error {
-    fn from(err: exocore_core::framing::Error) -> Self {
-        Error::Framing(err)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -783,7 +777,7 @@ mod tests {
     use exocore_core::framing::FrameReader;
 
     #[test]
-    fn block_create_and_read() -> Result<(), failure::Error> {
+    fn block_create_and_read() -> Result<(), anyhow::Error> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node.clone());
 
@@ -850,7 +844,7 @@ mod tests {
     }
 
     #[test]
-    fn block_operations() -> Result<(), failure::Error> {
+    fn block_operations() -> Result<(), anyhow::Error> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node.clone());
         let genesis = BlockOwned::new_genesis(&cell)?;
@@ -877,7 +871,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allocate_signatures_space_for_nodes() -> Result<(), failure::Error> {
+    fn should_allocate_signatures_space_for_nodes() -> Result<(), anyhow::Error> {
         let local_node = LocalNode::generate();
         let full_cell = FullCell::generate(local_node.clone());
         let cell = full_cell.cell();
@@ -916,7 +910,7 @@ mod tests {
     }
 
     #[test]
-    fn should_pad_signatures_from_block_signature_size() -> Result<(), failure::Error> {
+    fn should_pad_signatures_from_block_signature_size() -> Result<(), anyhow::Error> {
         let local_node = LocalNode::generate();
         let full_cell = FullCell::generate(local_node);
         let cell = full_cell.cell();

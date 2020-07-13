@@ -54,10 +54,10 @@ impl OperationsIndex {
         let metadata_path = Metadata::file_path(directory_path);
         let metadata_store = JsonDiskStore::<Metadata>::new(&metadata_path).map_err(|err| {
             Error::IO(
-                err.kind(),
+                Arc::new(err),
                 format!(
-                    "Error creating operations index metadata file {:?}: {}",
-                    metadata_path, err
+                    "Error creating operations index metadata file {:?}",
+                    metadata_path
                 ),
             )
         })?;
@@ -90,10 +90,10 @@ impl OperationsIndex {
         let metadata_path = Metadata::file_path(directory_path);
         let metadata_store = JsonDiskStore::<Metadata>::new(&metadata_path).map_err(|err| {
             Error::IO(
-                err.kind(),
+                Arc::new(err),
                 format!(
-                    "Error creating operations index metadata file {:?}: {}",
-                    metadata_path, err
+                    "Error creating operations index metadata file {:?}",
+                    metadata_path
                 ),
             )
         })?;
@@ -102,10 +102,10 @@ impl OperationsIndex {
             .read()
             .map_err(|err| {
                 Error::IO(
-                    err.kind(),
+                    Arc::new(err),
                     format!(
-                        "Error reading operations index metadata file {:?}: {}",
-                        metadata_path, err
+                        "Error reading operations index metadata file {:?}",
+                        metadata_path
                     ),
                 )
             })?
@@ -337,8 +337,8 @@ impl OperationsIndex {
 
         self.metadata_store.write(&metadata).map_err(|err| {
             Error::IO(
-                err.kind(),
-                format!("Error storing into operations index metadata file: {}", err),
+                Arc::new(err),
+                "Error storing into operations index metadata file".to_string(),
             )
         })
     }
@@ -431,7 +431,7 @@ mod tests {
     use exocore_core::cell::LocalNode;
 
     #[test]
-    fn create_from_iterator() -> Result<(), failure::Error> {
+    fn create_from_iterator() -> Result<(), anyhow::Error> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
         let dir = tempfile::tempdir()?;
@@ -458,7 +458,7 @@ mod tests {
     }
 
     #[test]
-    fn open_existing() -> Result<(), failure::Error> {
+    fn open_existing() -> Result<(), anyhow::Error> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
         let dir = tempfile::tempdir()?;
@@ -499,7 +499,7 @@ mod tests {
     }
 
     #[test]
-    fn truncate_from_offset_memory() -> Result<(), failure::Error> {
+    fn truncate_from_offset_memory() -> Result<(), anyhow::Error> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
         let dir = tempfile::tempdir()?;
@@ -520,7 +520,7 @@ mod tests {
     }
 
     #[test]
-    fn truncate_from_offset_disk() -> Result<(), failure::Error> {
+    fn truncate_from_offset_disk() -> Result<(), anyhow::Error> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
         let dir = tempfile::tempdir()?;

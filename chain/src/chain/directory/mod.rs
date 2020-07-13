@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::operation::OperationId;
 use segment::DirectorySegment;
@@ -11,7 +12,6 @@ mod operations_index;
 mod segment;
 
 use operations_index::OperationsIndex;
-use std::sync::Arc;
 
 /// Directory based chain persistence. The chain is split in segments with
 /// configurable maximum size. This maximum size allows using mmap on 32bit
@@ -33,11 +33,10 @@ impl DirectoryChainStore {
     ) -> Result<DirectoryChainStore, Error> {
         let paths = std::fs::read_dir(directory_path).map_err(|err| {
             Error::IO(
-                err.kind(),
+                Arc::new(err),
                 format!(
-                    "Error listing directory {}: {}",
+                    "Error listing directory {}",
                     directory_path.to_string_lossy(),
-                    err
                 ),
             )
         })?;
@@ -62,11 +61,10 @@ impl DirectoryChainStore {
 
         let paths = std::fs::read_dir(directory_path).map_err(|err| {
             Error::IO(
-                err.kind(),
+                Arc::new(err),
                 format!(
-                    "Error listing directory {}: {}",
+                    "Error listing directory {}",
                     directory_path.to_string_lossy(),
-                    err
                 ),
             )
         })?;
@@ -102,17 +100,16 @@ impl DirectoryChainStore {
         let mut segments = Vec::new();
         let paths = std::fs::read_dir(directory_path).map_err(|err| {
             Error::IO(
-                err.kind(),
+                Arc::new(err),
                 format!(
-                    "Error listing directory {}: {}",
+                    "Error listing directory {}",
                     directory_path.to_string_lossy(),
-                    err
                 ),
             )
         })?;
         for path in paths {
             let path = path.map_err(|err| {
-                Error::IO(err.kind(), format!("Error getting directory entry {}", err))
+                Error::IO(Arc::new(err), "Error getting directory entry".to_string())
             })?;
 
             if DirectorySegment::is_segment_file(&path.path()) {
@@ -434,11 +431,11 @@ impl<'pers> Iterator for DirectoryBlockIterator<'pers> {
 }
 
 /// Directory chain store specific errors
-#[derive(Clone, Debug, Fail)]
+#[derive(Clone, Debug, thiserror::Error)]
 pub enum DirectoryError {
-    #[fail(display = "Error building operations index: {:?}", _0)]
+    #[error("Error building operations index: {0:?}")]
     OperationsIndexBuild(Arc<extindex::BuilderError>),
-    #[fail(display = "Error reading operations index: {:?}", _0)]
+    #[error("Error reading operations index: {0:?}")]
     OperationsIndexRead(Arc<extindex::ReaderError>),
 }
 
@@ -454,7 +451,7 @@ pub mod tests {
     use exocore_core::cell::FullCell;
 
     #[test]
-    fn directory_chain_create_and_open() -> Result<(), failure::Error> {
+    fn directory_chain_create_and_open() -> Result<(), anyhow::Error> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
         let dir = tempfile::tempdir()?;
@@ -503,7 +500,7 @@ pub mod tests {
     }
 
     #[test]
-    fn directory_chain_invalid_path() -> Result<(), failure::Error> {
+    fn directory_chain_invalid_path() -> Result<(), anyhow::Error> {
         let config: DirectoryChainStoreConfig = Default::default();
 
         {
@@ -525,14 +522,14 @@ pub mod tests {
     }
 
     #[test]
-    fn directory_chain_write_until_second_segment() -> Result<(), failure::Error> {
+    fn directory_chain_write_until_second_segment() -> Result<(), anyhow::Error> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
         let dir = tempfile::tempdir()?;
         let mut config: DirectoryChainStoreConfig = Default::default();
         config.segment_max_size = 350_000;
 
-        fn validate_directory(directory_chain: &DirectoryChainStore) -> Result<(), failure::Error> {
+        fn validate_directory(directory_chain: &DirectoryChainStore) -> Result<(), anyhow::Error> {
             let segments = directory_chain
                 .segments()
                 .iter()
@@ -592,7 +589,7 @@ pub mod tests {
     }
 
     #[test]
-    fn directory_chain_truncate() -> Result<(), failure::Error> {
+    fn directory_chain_truncate() -> Result<(), anyhow::Error> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
         let mut config: DirectoryChainStoreConfig = Default::default();
@@ -671,7 +668,7 @@ pub mod tests {
     }
 
     #[test]
-    fn directory_chain_truncate_all() -> Result<(), failure::Error> {
+    fn directory_chain_truncate_all() -> Result<(), anyhow::Error> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
         let dir = tempfile::tempdir()?;
@@ -753,7 +750,7 @@ pub mod tests {
 
     fn validate_directory_operations_index(
         store: &DirectoryChainStore,
-    ) -> Result<(), failure::Error> {
+    ) -> Result<(), anyhow::Error> {
         let all_blocks_offsets = store
             .blocks_iter(0)?
             .map(|block| block.offset)

@@ -682,15 +682,16 @@ dependencies = [
 name = "exo"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "exocore-chain",
  "exocore-core",
  "exocore-index",
  "exocore-transport",
- "failure",
  "futures 0.3.5",
  "log",
  "log4rs",
  "structopt",
+ "thiserror",
 ]
 
 [[package]]
@@ -707,11 +708,11 @@ dependencies = [
 name = "exocore-chain"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "byteorder",
  "exocore-core",
  "exocore-transport",
  "extindex",
- "failure",
  "futures 0.3.5",
  "itertools 0.9.0",
  "log",
@@ -719,16 +720,18 @@ dependencies = [
  "serde",
  "serde_derive",
  "tempfile",
+ "thiserror",
 ]
 
 [[package]]
 name = "exocore-client-android"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "exocore-core",
  "exocore-index",
  "exocore-transport",
- "failure",
+ "thiserror",
 ]
 
 [[package]]
@@ -751,15 +754,16 @@ dependencies = [
 name = "exocore-client-web"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "console_error_panic_hook",
  "exocore-core",
  "exocore-index",
  "exocore-transport",
- "failure",
  "futures 0.3.5",
  "js-sys",
  "log",
  "prost",
+ "thiserror",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-logger",
@@ -769,6 +773,7 @@ dependencies = [
 name = "exocore-core"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "bs58",
  "byteorder",
  "bytes",
@@ -776,7 +781,6 @@ dependencies = [
  "capnpc",
  "chrono",
  "criterion_bencher_compat",
- "failure",
  "futures 0.3.5",
  "libp2p",
  "log",
@@ -793,6 +797,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "tempfile",
+ "thiserror",
  "tokio",
  "uuid",
  "wasm-bindgen",
@@ -804,13 +809,13 @@ dependencies = [
 name = "exocore-index"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "bytes",
  "chrono",
  "crc",
  "exocore-chain",
  "exocore-core",
  "exocore-transport",
- "failure",
  "futures 0.3.5",
  "itertools 0.9.0",
  "log",
@@ -818,20 +823,22 @@ dependencies = [
  "smallvec 1.4.1",
  "tantivy",
  "tempfile",
+ "thiserror",
 ]
 
 [[package]]
 name = "exocore-transport"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "byteorder",
  "exocore-core",
- "failure",
  "futures 0.3.5",
  "libp2p",
  "libp2p-wasm-ext",
  "log",
  "pin-project",
+ "thiserror",
  "wasm-bindgen",
 ]
 

@@ -5,7 +5,7 @@ use exocore_core::crypto::keys::Keypair;
 pub fn generate(
     _opt: &options::Options,
     keys_opts: &options::KeysOptions,
-) -> Result<(), failure::Error> {
+) -> Result<(), anyhow::Error> {
     let keypair = match keys_opts.algorithm {
         options::KeyAlgorithm::Ed25519 => Keypair::generate_ed25519(),
         options::KeyAlgorithm::Rsa => unimplemented!(),
