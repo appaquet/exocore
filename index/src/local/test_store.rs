@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use tempdir::TempDir;
+use tempfile::TempDir;
 
 use exocore_chain::tests_utils::TestChainCluster;
 use exocore_chain::{DirectoryChainStore, MemoryPendingStore};
@@ -33,7 +33,7 @@ impl TestStore {
     pub fn new() -> Result<TestStore, failure::Error> {
         let cluster = TestChainCluster::new_single_and_start()?;
 
-        let temp_dir = tempdir::TempDir::new("store")?;
+        let temp_dir = tempfile::tempdir()?;
         let registry = Arc::new(Registry::new_with_exocore_types());
 
         let index_config = EntityIndexConfig {

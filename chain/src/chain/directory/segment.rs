@@ -359,7 +359,7 @@ mod tests {
     fn directory_segment_create_and_open() -> Result<(), failure::Error> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
-        let dir = tempdir::TempDir::new("test")?;
+        let dir = tempfile::tempdir()?;
 
         let segment_id = 1234;
         let block = create_block(&cell, 1234);
@@ -396,7 +396,7 @@ mod tests {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
 
-        let dir = tempdir::TempDir::new("test")?;
+        let dir = tempfile::tempdir()?;
 
         {
             let block = create_block(&cell, 1234);
@@ -413,7 +413,7 @@ mod tests {
 
     #[test]
     fn directory_segment_open_invalid() -> Result<(), failure::Error> {
-        let dir = tempdir::TempDir::new("test")?;
+        let dir = tempfile::tempdir()?;
 
         {
             let segment_path = dir.path().join("some_file");
@@ -439,7 +439,7 @@ mod tests {
     fn directory_segment_append_block() -> Result<(), failure::Error> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
-        let dir = tempdir::TempDir::new("test")?;
+        let dir = tempfile::tempdir()?;
 
         let offset1 = 0;
         let block = create_block(&cell, offset1);
@@ -484,7 +484,7 @@ mod tests {
     fn directory_segment_non_zero_offset_write() -> Result<(), failure::Error> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
-        let dir = tempdir::TempDir::new("test")?;
+        let dir = tempfile::tempdir()?;
         let config = Default::default();
         let segment_first_block_offset = 1234;
 
@@ -526,7 +526,7 @@ mod tests {
         let mut config: DirectoryChainStoreConfig = Default::default();
         config.segment_over_allocate_size = 100_000;
 
-        let dir = tempdir::TempDir::new("test")?;
+        let dir = tempfile::tempdir()?;
         let mut next_offset = 0;
 
         let block = create_block(&cell, next_offset);
@@ -558,7 +558,7 @@ mod tests {
     fn directory_segment_truncate_from_segment() -> Result<(), failure::Error> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
-        let dir = tempdir::TempDir::new("test")?;
+        let dir = tempfile::tempdir()?;
         let mut config: DirectoryChainStoreConfig = Default::default();
         config.segment_over_allocate_size = 100_000;
 
@@ -589,7 +589,7 @@ mod tests {
 
     #[test]
     fn segment_file_create() -> Result<(), failure::Error> {
-        let dir = tempdir::TempDir::new("test")?;
+        let dir = tempfile::tempdir()?;
         let segment_path = dir.path().join("segment_0.seg");
 
         let segment_file = SegmentFile::open(&segment_path, 1000)?;

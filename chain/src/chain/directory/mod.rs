@@ -457,7 +457,7 @@ pub mod tests {
     fn directory_chain_create_and_open() -> Result<(), failure::Error> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
-        let dir = tempdir::TempDir::new("test")?;
+        let dir = tempfile::tempdir()?;
         let config: DirectoryChainStoreConfig = Default::default();
 
         let init_segments = {
@@ -516,7 +516,7 @@ pub mod tests {
 
         {
             // directory should be empty
-            let dir = tempdir::TempDir::new("test")?;
+            let dir = tempfile::tempdir()?;
             std::fs::write(dir.path().join("some_file"), "hello")?;
             assert!(DirectoryChainStore::create(config, dir.path()).is_err());
         }
@@ -528,7 +528,7 @@ pub mod tests {
     fn directory_chain_write_until_second_segment() -> Result<(), failure::Error> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
-        let dir = tempdir::TempDir::new("test")?;
+        let dir = tempfile::tempdir()?;
         let mut config: DirectoryChainStoreConfig = Default::default();
         config.segment_max_size = 350_000;
 
@@ -601,7 +601,7 @@ pub mod tests {
 
         // we cutoff the directory at different position to make sure of its integrity
         for cutoff in 1..30 {
-            let dir = tempdir::TempDir::new("test")?;
+            let dir = tempfile::tempdir()?;
 
             let (segments_before, block_n_offset, block_n_plus_offset) = {
                 let mut directory_chain = DirectoryChainStore::create(config, dir.path())?;
@@ -674,7 +674,7 @@ pub mod tests {
     fn directory_chain_truncate_all() -> Result<(), failure::Error> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
-        let dir = tempdir::TempDir::new("test")?;
+        let dir = tempfile::tempdir()?;
         let mut config: DirectoryChainStoreConfig = Default::default();
         config.segment_max_size = 3000;
         config.segment_over_allocate_size = 3500;

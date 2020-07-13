@@ -6,6 +6,7 @@ use std::time::Duration;
 use failure::err_msg;
 use futures::prelude::*;
 use itertools::Itertools;
+use tempfile::TempDir;
 
 use exocore_core::cell::{CellNode, CellNodeRole, LocalNode};
 use exocore_core::futures::Runtime;
@@ -23,7 +24,7 @@ use exocore_transport::TransportLayer;
 
 /// exocore-chain testing utility
 pub struct TestChainCluster {
-    pub tempdir: tempdir::TempDir,
+    pub tempdir: TempDir,
     pub runtime: Runtime,
     pub transport_hub: MockTransport,
 
@@ -47,7 +48,7 @@ pub struct ClusterSpec {
 
 impl TestChainCluster {
     pub fn new(count: usize) -> Result<TestChainCluster, failure::Error> {
-        let tempdir = tempdir::TempDir::new("engine_tests")?;
+        let tempdir = tempfile::tempdir()?;
 
         let runtime = Runtime::new()?;
 

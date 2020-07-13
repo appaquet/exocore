@@ -434,7 +434,7 @@ mod tests {
     fn create_from_iterator() -> Result<(), failure::Error> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
-        let dir = tempdir::TempDir::new("ops")?;
+        let dir = tempfile::tempdir()?;
         let config = DirectoryChainStoreConfig {
             operations_index_max_memory_items: 100,
             ..DirectoryChainStoreConfig::default()
@@ -461,7 +461,7 @@ mod tests {
     fn open_existing() -> Result<(), failure::Error> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
-        let dir = tempdir::TempDir::new("ops")?;
+        let dir = tempfile::tempdir()?;
         let config = DirectoryChainStoreConfig {
             operations_index_max_memory_items: 100,
             ..DirectoryChainStoreConfig::default()
@@ -502,7 +502,7 @@ mod tests {
     fn truncate_from_offset_memory() -> Result<(), failure::Error> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
-        let dir = tempdir::TempDir::new("ops")?;
+        let dir = tempfile::tempdir()?;
         let config = DirectoryChainStoreConfig {
             operations_index_max_memory_items: 100,
             ..DirectoryChainStoreConfig::default()
@@ -523,7 +523,7 @@ mod tests {
     fn truncate_from_offset_disk() -> Result<(), failure::Error> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
-        let dir = tempdir::TempDir::new("ops")?;
+        let dir = tempfile::tempdir()?;
         let config = DirectoryChainStoreConfig {
             operations_index_max_memory_items: 100,
             ..DirectoryChainStoreConfig::default()

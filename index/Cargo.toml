@@ -31,6 +31,6 @@ tantivy = { version = "0.12", optional = true }
 crc = { version = "1.8", optional = true }
 
 [dev-dependencies]
-tempdir = "0.3"
+tempfile = "3.1"
 exocore-chain = { path = "../chain", features = ["tests-utils"] }
 exocore-core = { path = "../core", features = ["tests-utils"] }

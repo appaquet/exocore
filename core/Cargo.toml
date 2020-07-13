@@ -61,7 +61,7 @@ capnpc = { version = "0.13", git = "https://github.com/appaquet/capnproto-rust.g
 prost-build = "0.6"
 
 [dev-dependencies]
-tempdir = "0.3"
+tempfile = "3.1"
 log4rs = "0.12"
 criterion_bencher_compat = "0.3"
 
