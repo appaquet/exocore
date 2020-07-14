@@ -71,7 +71,7 @@ impl TestStore {
         })
     }
 
-    pub fn start_store(&mut self) -> Result<(), anyhow::Error> {
+    pub fn start_store(&mut self) -> anyhow::Result<()> {
         let store = self.store.take().unwrap();
         self.cluster.runtime.spawn(async move {
             match store.run().await {

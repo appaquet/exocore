@@ -39,6 +39,10 @@ impl Error {
             _ => false,
         }
     }
+
+    pub fn new_io<S: Into<String>>(io: std::io::Error, msg: S) -> Error {
+        Error::IO(std::sync::Arc::new(io), msg.into())
+    }
 }
 
 impl<T> From<std::sync::PoisonError<T>> for Error {

@@ -17,7 +17,7 @@ use crate::remote::server::{Server, ServerConfiguration};
 use super::*;
 
 #[test]
-fn mutation_and_query() -> Result<(), anyhow::Error> {
+fn mutation_and_query() -> anyhow::Result<()> {
     let mut test_remote_store = TestRemoteStore::new()?;
     test_remote_store.start_server()?;
     test_remote_store.start_client()?;
@@ -37,7 +37,7 @@ fn mutation_and_query() -> Result<(), anyhow::Error> {
 }
 
 #[test]
-fn mutation_error_propagation() -> Result<(), anyhow::Error> {
+fn mutation_error_propagation() -> anyhow::Result<()> {
     let mut test_remote_store = TestRemoteStore::new()?;
     test_remote_store.start_server()?;
     test_remote_store.start_client()?;
@@ -50,7 +50,7 @@ fn mutation_error_propagation() -> Result<(), anyhow::Error> {
 }
 
 #[test]
-fn query_error_propagation() -> Result<(), anyhow::Error> {
+fn query_error_propagation() -> anyhow::Result<()> {
     let mut test_remote_store = TestRemoteStore::new()?;
     test_remote_store.start_server()?;
     test_remote_store.start_client()?;
@@ -68,7 +68,7 @@ fn query_error_propagation() -> Result<(), anyhow::Error> {
 }
 
 #[test]
-fn query_timeout() -> Result<(), anyhow::Error> {
+fn query_timeout() -> anyhow::Result<()> {
     let client_config = ClientConfiguration {
         query_timeout: Duration::from_millis(500),
         ..ClientConfiguration::default()
@@ -88,7 +88,7 @@ fn query_timeout() -> Result<(), anyhow::Error> {
 }
 
 #[test]
-fn mutation_timeout() -> Result<(), anyhow::Error> {
+fn mutation_timeout() -> anyhow::Result<()> {
     let client_config = ClientConfiguration {
         mutation_timeout: Duration::from_millis(500),
         ..ClientConfiguration::default()
@@ -110,7 +110,7 @@ fn mutation_timeout() -> Result<(), anyhow::Error> {
 }
 
 #[test]
-fn watched_query() -> Result<(), anyhow::Error> {
+fn watched_query() -> anyhow::Result<()> {
     let mut test_remote_store = TestRemoteStore::new()?;
     test_remote_store.start_server()?;
     test_remote_store.start_client()?;
@@ -138,7 +138,7 @@ fn watched_query() -> Result<(), anyhow::Error> {
 }
 
 #[test]
-fn watched_query_error_propagation() -> Result<(), anyhow::Error> {
+fn watched_query_error_propagation() -> anyhow::Result<()> {
     let mut test_remote_store = TestRemoteStore::new()?;
     test_remote_store.start_server()?;
     test_remote_store.start_client()?;
@@ -157,7 +157,7 @@ fn watched_query_error_propagation() -> Result<(), anyhow::Error> {
 }
 
 #[test]
-fn watched_query_timeout() -> Result<(), anyhow::Error> {
+fn watched_query_timeout() -> anyhow::Result<()> {
     let server_config = ServerConfiguration {
         management_timer_interval: Duration::from_millis(100),
         watched_queries_register_timeout: Duration::from_millis(1000),
@@ -205,7 +205,7 @@ fn watched_query_timeout() -> Result<(), anyhow::Error> {
 }
 
 #[test]
-fn watched_drop_unregisters() -> Result<(), anyhow::Error> {
+fn watched_drop_unregisters() -> anyhow::Result<()> {
     let mut test_remote_store = TestRemoteStore::new()?;
     test_remote_store.start_server()?;
     test_remote_store.start_client()?;
@@ -232,7 +232,7 @@ fn watched_drop_unregisters() -> Result<(), anyhow::Error> {
 }
 
 #[test]
-fn watched_cancel() -> Result<(), anyhow::Error> {
+fn watched_cancel() -> anyhow::Result<()> {
     let mut test_remote_store = TestRemoteStore::new()?;
     test_remote_store.start_server()?;
     test_remote_store.start_client()?;
@@ -259,7 +259,7 @@ fn watched_cancel() -> Result<(), anyhow::Error> {
 }
 
 #[test]
-fn client_drop_stops_watched_stream() -> Result<(), anyhow::Error> {
+fn client_drop_stops_watched_stream() -> anyhow::Result<()> {
     let mut test_remote_store = TestRemoteStore::new()?;
     test_remote_store.start_server()?;
     test_remote_store.start_client()?;
@@ -325,7 +325,7 @@ impl TestRemoteStore {
         })
     }
 
-    fn start_server(&mut self) -> Result<(), anyhow::Error> {
+    fn start_server(&mut self) -> anyhow::Result<()> {
         let store_handle = self.local_store.store.as_ref().unwrap().get_handle();
 
         self.local_store.start_store()?;
@@ -345,7 +345,7 @@ impl TestRemoteStore {
         Ok(())
     }
 
-    fn start_client(&mut self) -> Result<(), anyhow::Error> {
+    fn start_client(&mut self) -> anyhow::Result<()> {
         let client = self.client.take().unwrap();
         self.local_store.cluster.runtime.spawn(async move {
             let res = client.run().await;

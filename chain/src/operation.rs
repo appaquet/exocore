@@ -190,20 +190,18 @@ impl crate::operation::Operation for NewOperation {
 pub enum Error {
     #[error("The operation is not any entry operation")]
     NotAnEntry,
+
     #[error("Framing error: {0}")]
     Framing(#[from] exocore_core::framing::Error),
-    #[error("Error in capnp serialization: kind={0:?} msg={1}")]
-    Serialization(capnp::ErrorKind, String),
+
+    #[error("Error in capnp serialization: {0}")]
+    Serialization(#[from] capnp::Error),
+
     #[error("Field is not in capnp schema: code={0}")]
     SerializationNotInSchema(u16),
+
     #[error("Other operation error: {0}")]
     Other(String),
-}
-
-impl From<capnp::Error> for Error {
-    fn from(err: capnp::Error) -> Self {
-        Error::Serialization(err.kind, err.description)
-    }
 }
 
 impl From<capnp::NotInSchema> for Error {

@@ -13,10 +13,7 @@ use exocore_transport::{Libp2pTransport, TransportHandle, TransportLayer};
 use crate::options;
 
 /// Starts servers based on given command line options
-pub fn start(
-    _opts: &options::Options,
-    server_opts: &options::ServerOptions,
-) -> Result<(), anyhow::Error> {
+pub fn start(_opts: &options::Options, server_opts: &options::ServerOptions) -> anyhow::Result<()> {
     let config = exocore_core::cell::node_config_from_yaml_file(&server_opts.config)?;
     let (either_cells, local_node) = Cell::new_from_local_node_config(config)?;
 
@@ -129,7 +126,7 @@ fn create_local_store<T: TransportHandle>(
     full_cell: FullCell,
     clock: Clock,
     entities_index: EntityIndex<DirectoryChainStore, MemoryPendingStore>,
-) -> Result<(), anyhow::Error> {
+) -> anyhow::Result<()> {
     let store_config = Default::default();
     let local_store = Store::new(
         store_config,

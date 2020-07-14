@@ -143,7 +143,7 @@ mod tests {
     use std::time::Duration;
 
     #[test]
-    fn propagate_spawned_result() -> Result<(), anyhow::Error> {
+    fn propagate_spawned_result() -> anyhow::Result<()> {
         let mut ret = Runtime::new()?;
         ret.block_on(async move {
             let spawned = owned_spawn(async move { 1 + 1 });
@@ -155,7 +155,7 @@ mod tests {
     }
 
     #[test]
-    fn owner_drop_cancels_spawned() -> Result<(), anyhow::Error> {
+    fn owner_drop_cancels_spawned() -> anyhow::Result<()> {
         let mut ret = Runtime::new()?;
         ret.block_on(async move {
             let dropper = Dropper::default();
@@ -182,7 +182,7 @@ mod tests {
     }
 
     #[test]
-    fn spawn_set_cleanup() -> Result<(), anyhow::Error> {
+    fn spawn_set_cleanup() -> anyhow::Result<()> {
         let mut ret = Runtime::new()?;
         ret.block_on(async move {
             let mut set = OwnedSpawnSet::<i32>::new();

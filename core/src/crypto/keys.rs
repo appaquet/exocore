@@ -203,9 +203,7 @@ fn decode_base58(input: &str) -> Result<Vec<u8>, Error> {
     let mut output = vec![0; (input_bytes.len() / 8 + 1) * 6];
     output[0..2].copy_from_slice(&input_bytes[0..2]);
 
-    let len = bs58::decode(&input[2..])
-        .into(&mut output[2..])
-        .map_err(Error::Base58Decode)?;
+    let len = bs58::decode(&input[2..]).into(&mut output[2..])?;
 
     output.truncate(len + 2);
 
@@ -247,16 +245,22 @@ impl Algorithm {
 pub enum Error {
     #[error("Given bytes to decode doesn't have the right size")]
     DecodeInvalidSize,
+
     #[error("Given bytes to decode wasn't a keypair")]
     DecodeExpectedPair,
+
     #[error("Given bytes to decode wasn't a public key")]
     DecodeExpectedPublic,
+
     #[error("Given bytes couldn't be decoded by libp2p: {0}")]
     Libp2pDecode(String),
+
     #[error("Couldn't decode base58 string into bytes: {0}")]
-    Base58Decode(bs58::decode::Error),
+    Base58Decode(#[from] bs58::decode::Error),
+
     #[error("Algorithm code is invalid: {0}")]
     InvalidAlgorithmCode(u8),
+
     #[error("Libp2p signing error: {0}")]
     Libp2pSigning(String),
 }
@@ -266,7 +270,7 @@ mod tests {
     use super::*;
 
     #[test]
-    pub fn ed25519_keypair_encode_decode() -> Result<(), anyhow::Error> {
+    pub fn ed25519_keypair_encode_decode() -> anyhow::Result<()> {
         let keypair = Keypair::generate_ed25519();
 
         let mut encoded = keypair.encode();
@@ -282,7 +286,7 @@ mod tests {
     }
 
     #[test]
-    pub fn ed25519_keypair_base58_encode_decode() -> Result<(), anyhow::Error> {
+    pub fn ed25519_keypair_base58_encode_decode() -> anyhow::Result<()> {
         let keypair = Keypair::generate_ed25519();
 
         let encoded_bytes = keypair.encode();
@@ -303,7 +307,7 @@ mod tests {
     }
 
     #[test]
-    pub fn ed25519_public_key_encode_decode() -> Result<(), anyhow::Error> {
+    pub fn ed25519_public_key_encode_decode() -> anyhow::Result<()> {
         let keypair = Keypair::generate_ed25519();
 
         let encoded = keypair.public().encode();
@@ -320,7 +324,7 @@ mod tests {
     }
 
     #[test]
-    pub fn ed25519_public_key_base58_encode_decode() -> Result<(), anyhow::Error> {
+    pub fn ed25519_public_key_base58_encode_decode() -> anyhow::Result<()> {
         let keypair = Keypair::generate_ed25519();
 
         let encoded_bytes = keypair.public().encode();
@@ -341,7 +345,7 @@ mod tests {
     }
 
     #[test]
-    pub fn signature_and_verification() -> Result<(), anyhow::Error> {
+    pub fn signature_and_verification() -> anyhow::Result<()> {
         let keypair = Keypair::generate_ed25519();
 
         let msg = String::from("hello world").into_bytes();

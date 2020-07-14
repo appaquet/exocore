@@ -1,7 +1,6 @@
 use std::fs::{File, OpenOptions};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use super::Error;
 use crate::block::{Block, BlockOffset, BlockRef, ChainBlockIterator};
@@ -217,8 +216,8 @@ impl DirectorySegment {
         let segment_path = self.segment_path.clone();
         drop(self);
         std::fs::remove_file(&segment_path).map_err(|err| {
-            Error::IO(
-                Arc::new(err),
+            Error::new_io(
+                err,
                 format!("Couldn't delete segment file {:?}", segment_path),
             )
         })?;
@@ -277,8 +276,8 @@ impl SegmentFile {
             .create(true)
             .open(path)
             .map_err(|err| {
-                Error::IO(
-                    Arc::new(err),
+                Error::new_io(
+                    err,
                     format!("Error opening/creating segment file {:?}", path),
                 )
             })?;
@@ -287,19 +286,13 @@ impl SegmentFile {
         if current_size < minimum_size {
             current_size = minimum_size;
             file.set_len(minimum_size).map_err(|err| {
-                Error::IO(
-                    Arc::new(err),
-                    format!("Error setting len of segment file {:?}", path),
-                )
+                Error::new_io(err, format!("Error setting len of segment file {:?}", path))
             })?;
         }
 
         let mmap = unsafe {
             memmap::MmapOptions::new().map_mut(&file).map_err(|err| {
-                Error::IO(
-                    Arc::new(err),
-                    format!("Error mmaping segment file {:?}", path),
-                )
+                Error::new_io(err, format!("Error mmaping segment file {:?}", path))
             })?
         };
 
@@ -318,14 +311,12 @@ impl SegmentFile {
             self.mmap = memmap::MmapOptions::new()
                 .len(1)
                 .map_anon()
-                .map_err(|err| {
-                    Error::IO(Arc::new(err), "Error creating anonymous mmap".to_string())
-                })?;
+                .map_err(|err| Error::new_io(err, "Error creating anonymous mmap"))?;
         }
 
         self.file.set_len(new_size).map_err(|err| {
-            Error::IO(
-                Arc::new(err),
+            Error::new_io(
+                err,
                 format!("Error setting len of segment file {:?}", self.path),
             )
         })?;
@@ -334,10 +325,7 @@ impl SegmentFile {
             memmap::MmapOptions::new()
                 .map_mut(&self.file)
                 .map_err(|err| {
-                    Error::IO(
-                        Arc::new(err),
-                        format!("Error mmaping segment file {:?}", self.path),
-                    )
+                    Error::new_io(err, format!("Error mmaping segment file {:?}", self.path))
                 })?
         };
 
@@ -354,7 +342,7 @@ mod tests {
     use exocore_core::cell::LocalNode;
 
     #[test]
-    fn directory_segment_create_and_open() -> Result<(), anyhow::Error> {
+    fn directory_segment_create_and_open() -> anyhow::Result<()> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
         let dir = tempfile::tempdir()?;
@@ -390,7 +378,7 @@ mod tests {
     }
 
     #[test]
-    fn directory_segment_create_already_exist() -> Result<(), anyhow::Error> {
+    fn directory_segment_create_already_exist() -> anyhow::Result<()> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
 
@@ -410,7 +398,7 @@ mod tests {
     }
 
     #[test]
-    fn directory_segment_open_invalid() -> Result<(), anyhow::Error> {
+    fn directory_segment_open_invalid() -> anyhow::Result<()> {
         let dir = tempfile::tempdir()?;
 
         {
@@ -434,7 +422,7 @@ mod tests {
     }
 
     #[test]
-    fn directory_segment_append_block() -> Result<(), anyhow::Error> {
+    fn directory_segment_append_block() -> anyhow::Result<()> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
         let dir = tempfile::tempdir()?;
@@ -479,7 +467,7 @@ mod tests {
     }
 
     #[test]
-    fn directory_segment_non_zero_offset_write() -> Result<(), anyhow::Error> {
+    fn directory_segment_non_zero_offset_write() -> anyhow::Result<()> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
         let dir = tempfile::tempdir()?;
@@ -518,7 +506,7 @@ mod tests {
     }
 
     #[test]
-    fn directory_segment_grow_and_truncate() -> Result<(), anyhow::Error> {
+    fn directory_segment_grow_and_truncate() -> anyhow::Result<()> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
         let mut config: DirectoryChainStoreConfig = Default::default();
@@ -553,7 +541,7 @@ mod tests {
     }
 
     #[test]
-    fn directory_segment_truncate_from_segment() -> Result<(), anyhow::Error> {
+    fn directory_segment_truncate_from_segment() -> anyhow::Result<()> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
         let dir = tempfile::tempdir()?;
@@ -586,7 +574,7 @@ mod tests {
     }
 
     #[test]
-    fn segment_file_create() -> Result<(), anyhow::Error> {
+    fn segment_file_create() -> anyhow::Result<()> {
         let dir = tempfile::tempdir()?;
         let segment_path = dir.path().join("segment_0.seg");
 

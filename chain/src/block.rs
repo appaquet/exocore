@@ -741,24 +741,24 @@ impl BlockSignature {
 pub enum Error {
     #[error("Block integrity error: {0}")]
     Integrity(String),
+
     #[error("An offset is out of the block data: {0}")]
     OutOfBound(String),
+
     #[error("Operations related error: {0}")]
     Operation(#[from] crate::operation::Error),
+
     #[error("Framing error: {0}")]
     Framing(#[from] exocore_core::framing::Error),
-    #[error("Error in capnp serialization: kind={0:?} msg={1}")]
-    Serialization(capnp::ErrorKind, String),
+
+    #[error("Error in capnp serialization: {0}")]
+    Serialization(#[from] capnp::Error),
+
     #[error("Field is not in capnp schema: code={0}")]
     SerializationNotInSchema(u16),
+
     #[error("Other operation error: {0}")]
     Other(String),
-}
-
-impl From<capnp::Error> for Error {
-    fn from(err: capnp::Error) -> Self {
-        Error::Serialization(err.kind, err.description)
-    }
 }
 
 impl From<capnp::NotInSchema> for Error {
@@ -777,7 +777,7 @@ mod tests {
     use exocore_core::framing::FrameReader;
 
     #[test]
-    fn block_create_and_read() -> Result<(), anyhow::Error> {
+    fn block_create_and_read() -> anyhow::Result<()> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node.clone());
 
@@ -844,7 +844,7 @@ mod tests {
     }
 
     #[test]
-    fn block_operations() -> Result<(), anyhow::Error> {
+    fn block_operations() -> anyhow::Result<()> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node.clone());
         let genesis = BlockOwned::new_genesis(&cell)?;
@@ -871,7 +871,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allocate_signatures_space_for_nodes() -> Result<(), anyhow::Error> {
+    fn should_allocate_signatures_space_for_nodes() -> anyhow::Result<()> {
         let local_node = LocalNode::generate();
         let full_cell = FullCell::generate(local_node.clone());
         let cell = full_cell.cell();
@@ -910,7 +910,7 @@ mod tests {
     }
 
     #[test]
-    fn should_pad_signatures_from_block_signature_size() -> Result<(), anyhow::Error> {
+    fn should_pad_signatures_from_block_signature_size() -> anyhow::Result<()> {
         let local_node = LocalNode::generate();
         let full_cell = FullCell::generate(local_node);
         let cell = full_cell.cell();

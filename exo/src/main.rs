@@ -16,7 +16,7 @@ use log::LevelFilter;
 use std::str::FromStr;
 use structopt::StructOpt;
 
-fn main() -> Result<(), anyhow::Error> {
+fn main() -> anyhow::Result<()> {
     let opt: options::Options = options::Options::from_args();
     exocore_core::logging::setup(Some(LevelFilter::from_str(&opt.logging_level)?));
 

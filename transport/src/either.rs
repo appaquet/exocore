@@ -246,7 +246,7 @@ mod tests {
     use exocore_core::tests_utils::{expect_result, result_assert_false, result_assert_true};
 
     #[test]
-    fn test_send_and_receive() -> Result<(), anyhow::Error> {
+    fn test_send_and_receive() -> anyhow::Result<()> {
         let mut rt = Runtime::new()?;
 
         let mock_transport1 = MockTransport::default();

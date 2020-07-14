@@ -34,9 +34,6 @@ pub enum EngineError {
     #[error("Field is not in capnp schema: code={0}")]
     SerializationNotInSchema(u16),
 
-    #[error("Item not found: {0}")]
-    NotFound(String),
-
     #[error("Local node not found in nodes list")]
     MyNodeNotFound,
 

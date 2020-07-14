@@ -160,7 +160,7 @@ impl TestChainCluster {
             .join(self.nodes[node_idx].id().to_string())
     }
 
-    pub fn create_node(&mut self, node_idx: usize) -> Result<(), anyhow::Error> {
+    pub fn create_node(&mut self, node_idx: usize) -> anyhow::Result<()> {
         let data_dir = self.node_data_dir(node_idx);
         let data_exists = std::fs::metadata(&data_dir).is_ok();
 
@@ -394,7 +394,7 @@ impl TestChainCluster {
         })
     }
 
-    pub fn restart_node(&mut self, node_idx: usize) -> Result<(), anyhow::Error> {
+    pub fn restart_node(&mut self, node_idx: usize) -> anyhow::Result<()> {
         self.stop_node(node_idx);
         self.create_node(node_idx)?;
         self.start_engine(node_idx);

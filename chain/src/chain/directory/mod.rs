@@ -32,8 +32,8 @@ impl DirectoryChainStore {
         directory_path: &Path,
     ) -> Result<DirectoryChainStore, Error> {
         let paths = std::fs::read_dir(directory_path).map_err(|err| {
-            Error::IO(
-                Arc::new(err),
+            Error::new_io(
+                err,
                 format!(
                     "Error listing directory {}",
                     directory_path.to_string_lossy(),
@@ -60,8 +60,8 @@ impl DirectoryChainStore {
         }
 
         let paths = std::fs::read_dir(directory_path).map_err(|err| {
-            Error::IO(
-                Arc::new(err),
+            Error::new_io(
+                err,
                 format!(
                     "Error listing directory {}",
                     directory_path.to_string_lossy(),
@@ -99,8 +99,8 @@ impl DirectoryChainStore {
 
         let mut segments = Vec::new();
         let paths = std::fs::read_dir(directory_path).map_err(|err| {
-            Error::IO(
-                Arc::new(err),
+            Error::new_io(
+                err,
                 format!(
                     "Error listing directory {}",
                     directory_path.to_string_lossy(),
@@ -108,9 +108,7 @@ impl DirectoryChainStore {
             )
         })?;
         for path in paths {
-            let path = path.map_err(|err| {
-                Error::IO(Arc::new(err), "Error getting directory entry".to_string())
-            })?;
+            let path = path.map_err(|err| Error::new_io(err, "Error getting directory entry"))?;
 
             if DirectorySegment::is_segment_file(&path.path()) {
                 let segment = DirectorySegment::open(config, &path.path())?;
@@ -435,6 +433,7 @@ impl<'pers> Iterator for DirectoryBlockIterator<'pers> {
 pub enum DirectoryError {
     #[error("Error building operations index: {0:?}")]
     OperationsIndexBuild(Arc<extindex::BuilderError>),
+
     #[error("Error reading operations index: {0:?}")]
     OperationsIndexRead(Arc<extindex::ReaderError>),
 }
@@ -451,7 +450,7 @@ pub mod tests {
     use exocore_core::cell::FullCell;
 
     #[test]
-    fn directory_chain_create_and_open() -> Result<(), anyhow::Error> {
+    fn directory_chain_create_and_open() -> anyhow::Result<()> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
         let dir = tempfile::tempdir()?;
@@ -500,7 +499,7 @@ pub mod tests {
     }
 
     #[test]
-    fn directory_chain_invalid_path() -> Result<(), anyhow::Error> {
+    fn directory_chain_invalid_path() -> anyhow::Result<()> {
         let config: DirectoryChainStoreConfig = Default::default();
 
         {
@@ -522,14 +521,14 @@ pub mod tests {
     }
 
     #[test]
-    fn directory_chain_write_until_second_segment() -> Result<(), anyhow::Error> {
+    fn directory_chain_write_until_second_segment() -> anyhow::Result<()> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
         let dir = tempfile::tempdir()?;
         let mut config: DirectoryChainStoreConfig = Default::default();
         config.segment_max_size = 350_000;
 
-        fn validate_directory(directory_chain: &DirectoryChainStore) -> Result<(), anyhow::Error> {
+        fn validate_directory(directory_chain: &DirectoryChainStore) -> anyhow::Result<()> {
             let segments = directory_chain
                 .segments()
                 .iter()
@@ -589,7 +588,7 @@ pub mod tests {
     }
 
     #[test]
-    fn directory_chain_truncate() -> Result<(), anyhow::Error> {
+    fn directory_chain_truncate() -> anyhow::Result<()> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
         let mut config: DirectoryChainStoreConfig = Default::default();
@@ -668,7 +667,7 @@ pub mod tests {
     }
 
     #[test]
-    fn directory_chain_truncate_all() -> Result<(), anyhow::Error> {
+    fn directory_chain_truncate_all() -> anyhow::Result<()> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
         let dir = tempfile::tempdir()?;
@@ -748,9 +747,7 @@ pub mod tests {
         assert_eq!(last_block_offset.unwrap(), expect_last_offset);
     }
 
-    fn validate_directory_operations_index(
-        store: &DirectoryChainStore,
-    ) -> Result<(), anyhow::Error> {
+    fn validate_directory_operations_index(store: &DirectoryChainStore) -> anyhow::Result<()> {
         let all_blocks_offsets = store
             .blocks_iter(0)?
             .map(|block| block.offset)
