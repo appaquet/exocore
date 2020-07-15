@@ -1,13 +1,21 @@
 use super::super::mutation_index::{MutationMetadata, MutationType, PutTraitMetadata};
-use super::result_hasher;
 use crate::entity::TraitId;
 use crate::error::Error;
-use crate::query::ResultHash;
+use crate::{ordering::OrderingValueWrapper, query::ResultHash};
 use exocore_chain::operation::OperationId;
+use exocore_core::protos::generated::exocore_index::EntityResult as EntityResultProto;
 use exocore_core::time::ConsistentTimestamp;
 use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
-use std::hash::Hasher;
+use std::{hash::Hasher, rc::Rc};
+
+/// Matched mutation from mutations index wrapper.
+pub struct EntityResult {
+    pub matched_mutation: MutationMetadata,
+    pub ordering_value: Rc<OrderingValueWrapper>,
+    pub proto: EntityResultProto,
+    pub mutations: Rc<MutationAggregator>,
+}
 
 /// Aggregates mutations metadata of an entity retrieved from the mutations
 /// index. Once merged, only the latest / active mutations are remaining, and
@@ -158,6 +166,10 @@ impl MutationAggregator {
             put_trait.modification_date = modification_date;
         }
     }
+}
+
+pub fn result_hasher() -> impl std::hash::Hasher {
+    crc::crc64::Digest::new(crc::crc64::ECMA)
 }
 
 #[cfg(test)]
