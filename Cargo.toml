@@ -49,3 +49,7 @@ members = [
 exclude = [
     "3rd"
 ]
+
+[profile.release]
+lto = "fat"
+codegen-units = 1

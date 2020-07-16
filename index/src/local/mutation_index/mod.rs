@@ -11,8 +11,8 @@ use tantivy::directory::MmapDirectory;
 use tantivy::query::{AllQuery, BooleanQuery, Occur, PhraseQuery, Query, QueryParser, TermQuery};
 use tantivy::schema::{Field, IndexRecordOption};
 use tantivy::{
-    DocAddress, Document, Index as TantivyIndex, IndexReader, IndexWriter, Searcher, SegmentReader,
-    Term,
+    DocAddress, Document, Index as TantivyIndex, IndexReader, IndexWriter, ReloadPolicy, Searcher,
+    SegmentReader, Term,
 };
 
 pub use config::*;
@@ -72,7 +72,11 @@ impl MutationIndex {
 
         fields.register_tokenizers(&index);
 
-        let index_reader = index.reader()?;
+        let index_reader = index
+            .reader_builder()
+            .reload_policy(ReloadPolicy::Manual) // we do our own reload after each commit for faster availability
+            .try_into()?;
+
         let index_writer = if let Some(nb_threads) = config.indexer_num_threads {
             index.writer_with_num_threads(nb_threads, config.indexer_heap_size_bytes)?
         } else {
@@ -99,7 +103,11 @@ impl MutationIndex {
         let index = TantivyIndex::create_in_ram(tantivy_schema);
         fields.register_tokenizers(&index);
 
-        let index_reader = index.reader()?;
+        let index_reader = index
+            .reader_builder()
+            .reload_policy(ReloadPolicy::Manual) // we do our own reload after each commit for faster availability
+            .try_into()?;
+
         let index_writer = if let Some(nb_threads) = config.indexer_num_threads {
             index.writer_with_num_threads(nb_threads, config.indexer_heap_size_bytes)?
         } else {
