@@ -3,7 +3,7 @@
   "name": "exocore-examples-web",
   "version": "0.1.0",
   "repository": "https://github.com/appaquet/exocore",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "scripts": {
     "start": "webpack-dev-server -d",
     "build": "webpack --mode development"

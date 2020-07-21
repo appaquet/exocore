@@ -167,7 +167,7 @@ message OrderingValue {
 message EntityResults {
     repeated EntityResult entities = 1;
 
-    bool summary = 2;
+    bool summary = 2 [deprecated = true];
 
     uint32 estimated_count = 3;
 
