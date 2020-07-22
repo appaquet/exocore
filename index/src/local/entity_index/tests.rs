@@ -601,7 +601,7 @@ fn query_ordering() -> anyhow::Result<()> {
 }
 
 #[test]
-fn summary_query() -> anyhow::Result<()> {
+fn skip_results_hash() -> anyhow::Result<()> {
     let config = TestEntityIndex::create_test_config();
     let mut test_index = TestEntityIndex::new_with_config(config)?;
 
@@ -610,18 +610,13 @@ fn summary_query() -> anyhow::Result<()> {
     test_index.wait_operations_committed(&[op1, op2]);
     test_index.handle_engine_events()?;
 
-    let query = Q::matches("name").only_summary().build();
-    let res = test_index.index.search(query)?;
-    assert!(res.summary);
-    assert!(res.entities[0].entity.as_ref().unwrap().traits.is_empty());
-
     let query = Q::matches("name").build();
     let res = test_index.index.search(query)?;
-    assert!(!res.summary);
+    assert!(!res.skipped_hash);
 
-    let query = Q::matches("name").only_summary_if_equals(res.hash).build();
+    let query = Q::matches("name").skip_if_results_equals(res.hash).build();
     let res = test_index.index.search(query)?;
-    assert!(res.summary);
+    assert!(res.skipped_hash);
 
     Ok(())
 }

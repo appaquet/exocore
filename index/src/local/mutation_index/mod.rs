@@ -808,6 +808,8 @@ impl MutationIndex {
                     put_trait.modification_date =
                         schema::get_doc_opt_u64_value(&doc, self.fields.modification_date)
                             .map(|ts| Utc.timestamp_nanos(ts as i64));
+                    put_trait.trait_type =
+                        schema::get_doc_opt_string_value(&doc, self.fields.trait_type);
                 }
 
                 let result = MutationMetadata {

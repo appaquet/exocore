@@ -11,7 +11,8 @@ use exocore_core::protos::generated::index_transport_capnp::watched_query_reques
 use exocore_core::protos::generated::index_transport_capnp::{query_request, query_response};
 use exocore_core::protos::{
     index::{AllPredicate, IdsPredicate, OperationsPredicate},
-    prost::{NamedMessage, ProstMessageExt},
+    message::NamedMessage,
+    prost::ProstMessageExt,
 };
 
 use crate::entity::{EntityId, TraitId};
@@ -173,12 +174,7 @@ impl QueryBuilder {
         self
     }
 
-    pub fn only_summary(mut self) -> Self {
-        self.query.summary = true;
-        self
-    }
-
-    pub fn only_summary_if_equals(mut self, result_hash: ResultHash) -> Self {
+    pub fn skip_if_results_equals(mut self, result_hash: ResultHash) -> Self {
         self.query.result_hash = result_hash;
         self
     }

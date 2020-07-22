@@ -252,7 +252,7 @@ where
                 {
                     mutations.clone()
                 } else {
-                    let entity_mutations = self
+                    let mut entity_mutations = self
                         .fetch_entity_mutations_metadata(&entity_id)
                         .map_err(|err| {
                             error!(
@@ -263,6 +263,12 @@ where
                         })
                         .ok()?;
 
+                    if !query.projections.is_empty() {
+                        entity_mutations.annotate_projections(query.projections.as_slice());
+                    }
+
+                    let entity_mutations = Rc::new(entity_mutations);
+
                     entity_mutations_cache
                         .insert(entity_id.clone(), entity_mutations.clone());
 
@@ -272,7 +278,7 @@ where
                 let operation_still_present = entity_mutations
                     .active_operations
                     .contains(&matched_mutation.operation_id);
-                if (entity_mutations.traits.is_empty() || !operation_still_present)
+                if (entity_mutations.trait_mutations.is_empty() || !operation_still_present)
                     && !query_include_deleted
                 {
                     // no traits remaining means that entity is now deleted
@@ -346,17 +352,18 @@ where
             None
         };
 
-        // TODO: Support for summary https://github.com/appaquet/exocore/issues/142
+        // if query had a previous result hash and that new results have the same hash
+        // we don't fetch results' data
         let results_hash = hasher.finish();
-        let summary = query.summary || results_hash == query.result_hash;
-        if !summary {
-            self.populate_entity_results_traits(&mut entity_results);
+        let skipped_hash = results_hash == query.result_hash;
+        if !skipped_hash {
+            self.populate_results_traits(&mut entity_results);
         }
 
         let entities = entity_results.into_iter().map(|res| res.proto).collect();
         Ok(EntityResults {
             entities,
-            summary,
+            skipped_hash,
             next_page,
             current_page: Some(current_page),
             estimated_count: total_estimated as u32,
@@ -590,8 +597,7 @@ where
                     );
                     smallvec![]
                 }
-                Err(err) => {
-                    error!(
+                Err(err) => { error!(
                         "An event from chain layer contained that couldn't be fetched from pending operation: {}",
                         err
                     );
@@ -621,7 +627,7 @@ where
     fn fetch_entity_mutations_metadata(
         &self,
         entity_id: &str,
-    ) -> Result<Rc<MutationAggregator>, Error> {
+    ) -> Result<MutationAggregator, Error> {
         let pending_results = self.pending_index.fetch_entity_mutations(entity_id)?;
         let chain_results = self.chain_index.fetch_entity_mutations(entity_id)?;
         let ordered_traits_metadata = pending_results
@@ -629,12 +635,12 @@ where
             .into_iter()
             .chain(chain_results.mutations.into_iter());
 
-        MutationAggregator::new(ordered_traits_metadata).map(Rc::new)
+        MutationAggregator::new(ordered_traits_metadata)
     }
 
     /// Populate traits in the EntityResult by fetching each entity's traits
     /// from the chain layer.
-    fn populate_entity_results_traits(&self, entity_results: &mut Vec<EntityResult>) {
+    fn populate_results_traits(&self, entity_results: &mut Vec<EntityResult>) {
         for entity_result in entity_results {
             let traits = self.fetch_entity_traits(&entity_result.mutations);
             if let Some(entity) = entity_result.proto.entity.as_mut() {
@@ -644,12 +650,20 @@ where
     }
 
     /// Fetch traits data from chain layer.
-    fn fetch_entity_traits(&self, entity_mutations: &Rc<MutationAggregator>) -> Vec<Trait> {
+    fn fetch_entity_traits(&self, entity_mutations: &MutationAggregator) -> Vec<Trait> {
         entity_mutations
-            .traits
-            .values()
-            .flat_map(|merged_metadata| {
-                let mutation = self.fetch_mutation_operation(
+            .trait_mutations
+            .iter()
+            .flat_map(|(trait_id, merged_metadata)| {
+                let projection = entity_mutations.trait_projections.get(trait_id);
+                if let Some(projection) = projection {
+                    if projection.skip {
+                        // TODO: should we just return empty trait ?
+                        return None;
+                    }
+                }
+
+                let mutation = self.fetch_chain_mutation_operation(
                     merged_metadata.operation_id,
                     merged_metadata.block_offset,
                 );
@@ -673,13 +687,18 @@ where
                     | Mutation::Test(_) => return None,
                 }?;
 
+                if let Some(projection) = projection {
+                    // TODO: run projection on trait instance
+                }
+
                 // update the trait with creation & modification date that got merged from
                 // metadata
-                if let MutationType::TraitPut(put_mut) = &merged_metadata.mutation_type {
+                if let MutationType::TraitPut(put_mutation) = &merged_metadata.mutation_type {
                     trait_instance.creation_date =
-                        put_mut.creation_date.map(|d| d.to_proto_timestamp());
-                    trait_instance.modification_date =
-                        put_mut.modification_date.map(|d| d.to_proto_timestamp());
+                        put_mutation.creation_date.map(|d| d.to_proto_timestamp());
+                    trait_instance.modification_date = put_mutation
+                        .modification_date
+                        .map(|d| d.to_proto_timestamp());
                 }
 
                 Some(trait_instance)
@@ -689,7 +708,7 @@ where
 
     /// Fetch an operation from the chain layer by the given operation id and
     /// optional block offset.
-    fn fetch_mutation_operation(
+    fn fetch_chain_mutation_operation(
         &self,
         operation_id: OperationId,
         block_offset: Option<BlockOffset>,
