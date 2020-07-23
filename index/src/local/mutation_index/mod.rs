@@ -496,8 +496,8 @@ impl MutationIndex {
 
         let message_mappings = self.fields.dynamic_mappings.get(message_dyn.full_name());
 
-        for field in message_dyn.fields() {
-            let field_value = match message_dyn.get_field_value(field) {
+        for (field_id, field) in message_dyn.fields() {
+            let field_value = match message_dyn.get_field_value(*field_id) {
                 Ok(fv) => fv,
                 Err(err) => {
                     debug!("Couldn't get value of field {:?}: {}", field, err);

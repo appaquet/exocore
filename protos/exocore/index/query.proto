@@ -43,16 +43,14 @@ message Projection {
     /// If ends with a dollar sign "$", an exact match is required (ex: `some.package.Name$` will only match this message)
     repeated string package = 1;
 
-    /// If specified, only return fields in traits that have `detail_level` value lower
-    /// than this value. See `options.proto`.`detail_level`
-    uint32 maximum_detail_level = 2;
-
-    /// If specified, only return fields in traits that have `detail_level` value higher
-    /// than this value. See `options.proto`.`detail_level`
-    uint32 minimum_detail_level = 3;
-
     /// Skips the trait if the projection matches.
-    bool skip = 4;
+    bool skip = 2;
+
+    /// If specified, only return these fields.
+    repeated uint32 field_ids = 4;
+
+    /// If specified, only return fields annotated with `options.proto`.`field_group_id`
+    repeated uint32 field_group_ids = 5;
 }
 
 /// Query entities by text match on all indexed fields across all traits.

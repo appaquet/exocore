@@ -1,4 +1,3 @@
-use protobuf::ProtobufError;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -16,7 +15,7 @@ pub enum Error {
     NotSupported,
 
     #[error("Protobuf error: {0}")]
-    StepanProtobuf(#[from] Arc<ProtobufError>),
+    StepanProtobuf(#[source] Arc<protobuf::ProtobufError>),
 
     #[error("Protobuf encode error: {0}")]
     ProstEncodeError(#[from] prost::EncodeError),
@@ -25,8 +24,8 @@ pub enum Error {
     ProstDecodeError(#[from] prost::DecodeError),
 }
 
-impl From<ProtobufError> for Error {
-    fn from(err: ProtobufError) -> Self {
+impl From<protobuf::ProtobufError> for Error {
+    fn from(err: protobuf::ProtobufError) -> Self {
         Error::StepanProtobuf(Arc::new(err))
     }
 }

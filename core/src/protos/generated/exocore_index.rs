@@ -69,21 +69,19 @@ pub mod entity_query {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Projection {
-    //// If specified, this projection matches the given Protobuf packages prefix.
-    //// If a dollar sign "$" is added at the end of the package, full comparison will be done instead of prefix.
+    //// If specified, a prefix match will be done against traits' Protobuf full name (`some.package.Name`).
+    //// If ends with a dollar sign "$", an exact match is required (ex: `some.package.Name$` will only match this message)
     #[prost(string, repeated, tag = "1")]
     pub package: ::std::vec::Vec<std::string::String>,
-    //// If specified, only return fields in traits that have `detail_level` value lower
-    //// than this value. See `options.proto`.`detail_level`
-    #[prost(uint32, tag = "2")]
-    pub maximum_detail_level: u32,
-    //// If specified, only return fields in traits that have `detail_level` value higher
-    //// than this value. See `options.proto`.`detail_level`
-    #[prost(uint32, tag = "3")]
-    pub minimum_detail_level: u32,
     //// Skips the trait if the projection matches.
-    #[prost(bool, tag = "4")]
+    #[prost(bool, tag = "2")]
     pub skip: bool,
+    //// If specified, only return these fields.
+    #[prost(uint32, repeated, tag = "4")]
+    pub field_ids: ::std::vec::Vec<u32>,
+    //// If specified, only return fields annotated with `options.proto`.`field_group_id`
+    #[prost(uint32, repeated, tag = "5")]
+    pub field_group_ids: ::std::vec::Vec<u32>,
 }
 //// Query entities by text match on all indexed fields across all traits.
 #[derive(Clone, PartialEq, ::prost::Message)]

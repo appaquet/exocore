@@ -6,11 +6,13 @@ use exocore_chain::operation::OperationId;
 use exocore_core::protos::{
     generated::exocore_index::EntityResult as EntityResultProto,
     index::{Projection, Trait},
+    reflect::{FieldId, MutableReflectMessage, ReflectMessage},
     registry::Registry,
 };
 use exocore_core::time::ConsistentTimestamp;
 use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
+use std::iter::FromIterator;
 use std::{hash::Hasher, rc::Rc};
 
 /// Wrapper for entity result with matched mutation from index layer along aggregated traits.
@@ -218,9 +220,9 @@ fn projection_matches_trait(trait_type: Option<&str>, projection: &Projection) -
     };
 
     for package in &projection.package {
-        if package.ends_with("$") && Some(trait_type) == package.strip_suffix("$") {
-            return true;
-        } else if trait_type.starts_with(package) {
+        if (package.ends_with('$') && Some(trait_type) == package.strip_suffix('$'))
+            || trait_type.starts_with(package)
+        {
             return true;
         }
     }
@@ -228,7 +230,7 @@ fn projection_matches_trait(trait_type: Option<&str>, projection: &Projection) -
     false
 }
 
-fn project_trait(
+pub fn project_trait(
     registry: &Registry,
     trt: &mut Trait,
     projection: &Projection,
@@ -239,11 +241,34 @@ fn project_trait(
         return Ok(());
     };
 
-    // TODO: May not need to dyn msg if no field projections
+    if projection.field_ids.is_empty() && projection.field_group_ids.is_empty() {
+        return Ok(());
+    }
 
-    let dyn_msg = exocore_core::protos::reflect::from_prost_any(registry, any_msg)?;
+    let mut dyn_msg = exocore_core::protos::reflect::from_prost_any(registry, any_msg)?;
 
-    // TODO:
+    let field_ids_set: HashSet<FieldId> = HashSet::from_iter(projection.field_ids.iter().cloned());
+    let field_groups_set: HashSet<FieldId> =
+        HashSet::from_iter(projection.field_group_ids.iter().cloned());
+
+    let mut fields_clear = Vec::new();
+    for (field_id, field) in dyn_msg.fields() {
+        if !field_ids_set.contains(field_id)
+            && !field
+                .groups
+                .iter()
+                .any(|group_id| field_groups_set.contains(group_id))
+        {
+            fields_clear.push(*field_id);
+        }
+    }
+
+    if !fields_clear.is_empty() {
+        for field_id in fields_clear {
+            let _ = dyn_msg.clear_field_value(field_id);
+        }
+        trt.message = Some(dyn_msg.encode_to_prost_any()?);
+    }
 
     Ok(())
 }
@@ -253,7 +278,9 @@ mod tests {
     use super::*;
     use crate::ordering::OrderingValueWrapper;
     use exocore_chain::block::BlockOffset;
-    use exocore_core::protos::index::OrderingValue;
+    use exocore_core::protos::prost::ProstAnyPackMessageExt;
+    use exocore_core::protos::{index::OrderingValue, reflect::FieldGroupId, test::TestMessage};
+    use prost::Message;
     use std::rc::Rc;
 
     const TYPE1: &str = "exocore.test.TestMessage";
@@ -455,18 +482,12 @@ mod tests {
     }
 
     #[test]
-    fn traits_projection() {
+    fn traits_projection_annotation() {
         let t1 = "t1";
         let t2 = "t2";
 
         fn assert_projection_id(em: &MutationAggregator, trait_id: &str, id: u32) {
-            assert_eq!(
-                em.trait_projections
-                    .get(trait_id)
-                    .unwrap()
-                    .minimum_detail_level,
-                id,
-            );
+            assert_eq!(em.trait_projections.get(trait_id).unwrap().field_ids[0], id,);
         }
 
         {
@@ -478,7 +499,7 @@ mod tests {
             let mut em = MutationAggregator::new(mutations.into_iter()).unwrap();
             em.annotate_projections(&[Projection {
                 package: vec!["exocore.test".to_string()],
-                minimum_detail_level: 1,
+                field_ids: vec![1],
                 ..Default::default()
             }]);
 
@@ -496,11 +517,11 @@ mod tests {
             em.annotate_projections(&[
                 Projection {
                     package: vec![format!("{}$", TYPE1)],
-                    minimum_detail_level: 1,
+                    field_ids: vec![1],
                     ..Default::default()
                 },
                 Projection {
-                    minimum_detail_level: 2,
+                    field_ids: vec![2],
                     ..Default::default()
                 },
             ]);
@@ -508,6 +529,76 @@ mod tests {
             assert_projection_id(&em, t1, 1);
             assert_projection_id(&em, t2, 2);
         }
+    }
+
+    #[test]
+    fn traits_projection() -> anyhow::Result<()> {
+        let registry = Registry::new_with_exocore_types();
+
+        let msg = TestMessage {
+            string1: "string1".to_string(),
+            string2: "string2".to_string(),
+            grouped1: "grouped1".to_string(),
+            grouped2: "grouped2".to_string(),
+            ..Default::default()
+        };
+
+        let project = |fields: Vec<FieldId>, groups: Vec<FieldGroupId>| -> TestMessage {
+            let mut trt = Trait {
+                message: Some(msg.pack_to_any().unwrap()),
+                ..Default::default()
+            };
+
+            project_trait(
+                &registry,
+                &mut trt,
+                &Projection {
+                    field_ids: fields,
+                    field_group_ids: groups,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+            TestMessage::decode(trt.message.as_ref().unwrap().value.as_slice()).unwrap()
+        };
+
+        assert_eq!(
+            project(vec![1], vec![]),
+            TestMessage {
+                string1: "string1".to_string(),
+                ..Default::default()
+            }
+        );
+
+        assert_eq!(
+            project(vec![1, 2], vec![]),
+            TestMessage {
+                string1: "string1".to_string(),
+                string2: "string2".to_string(),
+                ..Default::default()
+            }
+        );
+
+        assert_eq!(
+            project(vec![2], vec![1]),
+            TestMessage {
+                string2: "string2".to_string(),
+                grouped1: "grouped1".to_string(),
+                grouped2: "grouped2".to_string(),
+                ..Default::default()
+            }
+        );
+
+        assert_eq!(
+            project(vec![], vec![2]),
+            TestMessage {
+                grouped2: "grouped2".to_string(),
+                ..Default::default()
+            }
+        );
+
+        Ok(())
     }
 
     fn assert_creation_date(mutation: &MutationMetadata, time_op_id: Option<OperationId>) {

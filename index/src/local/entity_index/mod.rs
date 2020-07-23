@@ -658,7 +658,6 @@ where
                 let projection = entity_mutations.trait_projections.get(trait_id);
                 if let Some(projection) = projection {
                     if projection.skip {
-                        // TODO: should we just return empty trait ?
                         return None;
                     }
                 }
@@ -688,7 +687,18 @@ where
                 }?;
 
                 if let Some(projection) = projection {
-                    // TODO: run projection on trait instance
+                    let res = project_trait(
+                        self.cell.schemas().as_ref(),
+                        &mut trait_instance,
+                        projection.as_ref(),
+                    );
+
+                    if let Err(err) = res {
+                        error!(
+                            "Couldn't run projection on trait_id={} of entity_id={}: {:?}",
+                            trait_id, merged_metadata.entity_id, err,
+                        );
+                    }
                 }
 
                 // update the trait with creation & modification date that got merged from
