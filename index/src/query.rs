@@ -72,15 +72,7 @@ impl QueryBuilder {
     }
 
     pub fn with_trait<T: NamedMessage>() -> QueryBuilder {
-        QueryBuilder {
-            query: EntityQuery {
-                predicate: Some(entity_query::Predicate::Trait(TraitPredicate {
-                    trait_name: T::full_name().to_string(),
-                    ..Default::default()
-                })),
-                ..Default::default()
-            },
-        }
+        Self::with_trait_name(T::full_name())
     }
 
     pub fn with_trait_name_query<T: Into<String>>(
@@ -99,15 +91,7 @@ impl QueryBuilder {
     }
 
     pub fn with_trait_query<T: NamedMessage>(query: TraitQuery) -> QueryBuilder {
-        QueryBuilder {
-            query: EntityQuery {
-                predicate: Some(entity_query::Predicate::Trait(TraitPredicate {
-                    trait_name: T::full_name().into(),
-                    query: Some(query),
-                })),
-                ..Default::default()
-            },
-        }
+        Self::with_trait_name_query(T::full_name(), query)
     }
 
     pub fn with_entity_id<E: Into<String>>(id: E) -> QueryBuilder {
@@ -177,7 +161,6 @@ impl QueryBuilder {
 
     pub fn with_projection<P: Into<ProjectionWrapper>>(mut self, projection: P) -> Self {
         self.query.projections.push(projection.into().0);
-
         self
     }
 
@@ -320,6 +303,10 @@ impl ProjectionBuilder {
                 ..Default::default()
             },
         }
+    }
+
+    pub fn for_trait<T: NamedMessage>() -> ProjectionBuilder {
+        Self::for_trait_name(T::full_name())
     }
 
     pub fn for_all() -> ProjectionBuilder {

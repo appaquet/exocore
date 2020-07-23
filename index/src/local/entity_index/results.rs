@@ -15,7 +15,8 @@ use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 use std::{hash::Hasher, rc::Rc};
 
-/// Wrapper for entity result with matched mutation from index layer along aggregated traits.
+/// Wrapper for entity result with matched mutation from index layer along
+/// aggregated traits.
 pub struct EntityResult {
     pub matched_mutation: MutationMetadata,
     pub ordering_value: Rc<OrderingValueWrapper>,
@@ -130,9 +131,11 @@ impl MutationAggregator {
         })
     }
 
-    /// Annotate each trait with projections that are matching them in a query.
+    /// Annotates each trait with projections that are matching them in a query.
     ///
-    /// Projections allow returning only a subset of the traits or a part of its data.
+    /// Projections allow returning only a subset of the traits or a part of its
+    /// data. See `project_trait` method for the actual projections no the data of
+    /// a retrieved trait.
     pub fn annotate_projections(&mut self, projections: &[Projection]) {
         if projections.is_empty() {
             return;
@@ -241,6 +244,7 @@ pub fn project_trait(
         return Ok(());
     };
 
+    // early exit if nothing to project since unmarshal+marshal is costly
     if projection.field_ids.is_empty() && projection.field_group_ids.is_empty() {
         return Ok(());
     }
@@ -251,20 +255,21 @@ pub fn project_trait(
     let field_groups_set: HashSet<FieldId> =
         HashSet::from_iter(projection.field_group_ids.iter().cloned());
 
-    let mut fields_clear = Vec::new();
+    let mut fields_to_clear = Vec::new();
     for (field_id, field) in dyn_msg.fields() {
-        if !field_ids_set.contains(field_id)
-            && !field
-                .groups
-                .iter()
-                .any(|group_id| field_groups_set.contains(group_id))
-        {
-            fields_clear.push(*field_id);
+        let direct_field_match = field_ids_set.contains(field_id);
+        let group_field_match = field
+            .groups
+            .iter()
+            .any(|gid| field_groups_set.contains(gid));
+
+        if !direct_field_match && !group_field_match {
+            fields_to_clear.push(*field_id);
         }
     }
 
-    if !fields_clear.is_empty() {
-        for field_id in fields_clear {
+    if !fields_to_clear.is_empty() {
+        for field_id in fields_to_clear {
             let _ = dyn_msg.clear_field_value(field_id);
         }
         trt.message = Some(dyn_msg.encode_to_prost_any()?);

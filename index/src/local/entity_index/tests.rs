@@ -1,6 +1,6 @@
 use exocore_core::protos::generated::exocore_index::Paging;
 use exocore_core::protos::generated::exocore_test::TestMessage;
-use exocore_core::protos::prost::ProstTimestampExt;
+use exocore_core::protos::{prost::ProstTimestampExt, test::TestMessage2};
 use test_index::*;
 
 use crate::local::mutation_index::MutationResults;
@@ -25,7 +25,7 @@ fn index_full_pending_to_chain() -> anyhow::Result<()> {
     test_index.handle_engine_events()?;
     let res = test_index
         .index
-        .search(Q::with_trait_name("exocore.test.TestMessage").build())?;
+        .search(Q::with_trait::<TestMessage>().build())?;
     let pending_res = count_results_source(&res, EntityResultSource::Pending);
     let chain_res = count_results_source(&res, EntityResultSource::Chain);
     assert_eq!(pending_res + chain_res, 5);
@@ -37,7 +37,7 @@ fn index_full_pending_to_chain() -> anyhow::Result<()> {
     test_index.handle_engine_events()?;
     let res = test_index
         .index
-        .search(Q::with_trait_name("exocore.test.TestMessage").build())?;
+        .search(Q::with_trait::<TestMessage>().build())?;
     let pending_res = count_results_source(&res, EntityResultSource::Pending);
     let chain_res = count_results_source(&res, EntityResultSource::Chain);
     assert_eq!(pending_res + chain_res, 10);
@@ -48,7 +48,7 @@ fn index_full_pending_to_chain() -> anyhow::Result<()> {
     test_index.handle_engine_events()?;
     let res = test_index
         .index
-        .search(Q::with_trait_name("exocore.test.TestMessage").build())?;
+        .search(Q::with_trait::<TestMessage>().build())?;
     let pending_res = count_results_source(&res, EntityResultSource::Pending);
     let chain_res = count_results_source(&res, EntityResultSource::Chain);
     assert!(chain_res >= 5, "was equal to {}", chain_res);
@@ -77,7 +77,7 @@ fn reopen_chain_index() -> anyhow::Result<()> {
     // traits should still be indexed
     let res = test_index
         .index
-        .search(Q::with_trait_name("exocore.test.TestMessage").build())?;
+        .search(Q::with_trait::<TestMessage>().build())?;
     assert_eq!(res.entities.len(), 10);
 
     Ok(())
@@ -92,9 +92,7 @@ fn reopen_chain_and_pending_transition() -> anyhow::Result<()> {
     };
 
     let mut test_index = TestEntityIndex::new_with_config(config)?;
-    let query = Q::with_trait_name("exocore.test.TestMessage")
-        .with_count(100)
-        .build();
+    let query = Q::with_trait::<TestMessage>().with_count(100).build();
 
     let mut range_from = 0;
     for i in 1..=3 {
@@ -131,7 +129,7 @@ fn reindex_pending_on_discontinuity() -> anyhow::Result<()> {
 
     let res = test_index
         .index
-        .search(Q::with_trait_name("exocore.test.TestMessage").build())?;
+        .search(Q::with_trait::<TestMessage>().build())?;
     assert_eq!(res.entities.len(), 0);
 
     // trigger discontinuity, which should force reindex
@@ -142,7 +140,7 @@ fn reindex_pending_on_discontinuity() -> anyhow::Result<()> {
     // pending is indexed
     let res = test_index
         .index
-        .search(Q::with_trait_name("exocore.test.TestMessage").build())?;
+        .search(Q::with_trait::<TestMessage>().build())?;
     assert_eq!(res.entities.len(), 6);
 
     Ok(())
@@ -171,7 +169,7 @@ fn chain_divergence() -> anyhow::Result<()> {
         .handle_chain_engine_event(Event::ChainDiverged(0))?;
     let res = test_index
         .index
-        .search(Q::with_trait_name("exocore.test.TestMessage").build())?;
+        .search(Q::with_trait::<TestMessage>().build())?;
     assert_eq!(res.entities.len(), 10);
 
     // divergence at an offset not indexed yet will just re-index pending
@@ -185,7 +183,7 @@ fn chain_divergence() -> anyhow::Result<()> {
         .handle_chain_engine_event(Event::ChainDiverged(chain_last_offset + 1))?;
     let res = test_index
         .index
-        .search(Q::with_trait_name("exocore.test.TestMessage").build())?;
+        .search(Q::with_trait::<TestMessage>().build())?;
     assert_eq!(res.entities.len(), 10);
 
     // divergence at an offset indexed in chain index will fail
@@ -437,7 +435,7 @@ fn query_paging() -> anyhow::Result<()> {
     test_index.handle_engine_events()?;
 
     // first page
-    let query_builder = Q::with_trait_name("exocore.test.TestMessage").with_count(10);
+    let query_builder = Q::with_trait::<TestMessage>().with_count(10);
     let res = test_index.index.search(query_builder.clone().build())?;
     let entities_id = extract_results_entities_id(&res);
 
@@ -529,7 +527,7 @@ fn query_multiple_mutations_paging() -> anyhow::Result<()> {
     test_index.handle_engine_events()?;
 
     // first page should contain the 2 just-modified entities
-    let query_builder = Q::with_trait_name("exocore.test.TestMessage")
+    let query_builder = Q::with_trait::<TestMessage>()
         .order_by_operations(false)
         .include_deleted()
         .with_count(10);
@@ -631,12 +629,9 @@ fn query_projection() -> anyhow::Result<()> {
     test_index.wait_operations_committed(&[op1, op2]);
     test_index.handle_engine_events()?;
 
-    let type1 = "exocore.test.TestMessage";
-    let type2 = "exocore.test.TestMessage2";
-
     {
         // project field #1, should return `string1`
-        let proj = ProjectionBuilder::for_trait_name(type1).return_fields(vec![1]);
+        let proj = ProjectionBuilder::for_trait::<TestMessage>().return_fields(vec![1]);
         let query = Q::matches("name").with_projection(proj).build();
         let res = test_index.index.search(query)?;
         let ent = res.entities[0].entity.as_ref().unwrap();
@@ -647,7 +642,7 @@ fn query_projection() -> anyhow::Result<()> {
 
     {
         // project field #2, should not return `string1`
-        let proj = ProjectionBuilder::for_trait_name(type1).return_fields(vec![2]);
+        let proj = ProjectionBuilder::for_trait::<TestMessage>().return_fields(vec![2]);
         let query = Q::matches("name").with_projection(proj).build();
         let res = test_index.index.search(query)?;
         let ent = res.entities[0].entity.as_ref().unwrap();
@@ -658,7 +653,7 @@ fn query_projection() -> anyhow::Result<()> {
 
     {
         // project field on another message type, shouldn't include any traits
-        let proj = ProjectionBuilder::for_trait_name(type2).return_fields(vec![2]);
+        let proj = ProjectionBuilder::for_trait::<TestMessage2>().return_fields(vec![2]);
         let proj_skip = ProjectionBuilder::for_all().skip();
         let query = Q::matches("name")
             .with_projections(vec![proj, proj_skip])

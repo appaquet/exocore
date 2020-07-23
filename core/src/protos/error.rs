@@ -1,3 +1,4 @@
+use super::reflect::FieldId;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -5,8 +6,8 @@ pub enum Error {
     #[error("Message type is not in registry: {0}")]
     NotInRegistry(String),
 
-    #[error("Field doesn't exist")]
-    NoSuchField,
+    #[error("Field doesn't exist: {0}")]
+    NoSuchField(FieldId),
 
     #[error("Invalid field type")]
     InvalidFieldType,

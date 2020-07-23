@@ -49,7 +49,7 @@ message Projection {
     /// If specified, only return these fields.
     repeated uint32 field_ids = 4;
 
-    /// If specified, only return fields annotated with `options.proto`.`field_group_id`
+    /// If specified, only return fields annotated with `options.proto`.`field_group_id` matching ids.
     repeated uint32 field_group_ids = 5;
 }
 

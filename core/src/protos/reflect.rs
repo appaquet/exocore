@@ -55,47 +55,51 @@ impl ReflectMessage for DynamicMessage {
     }
 
     fn get_field_value(&self, field_id: FieldId) -> Result<FieldValue, Error> {
-        let field = self.get_field(field_id).ok_or_else(|| Error::NoSuchField)?;
+        let field = self
+            .get_field(field_id)
+            .ok_or_else(|| Error::NoSuchField(field_id))?;
         let value = self
             .message
             .unknown_fields
             .get(field_id)
-            .ok_or(Error::NoSuchField)?;
+            .ok_or(Error::NoSuchField(field_id))?;
 
         match field.field_type {
             FieldType::String => {
-                let value =
-                    ProtobufTypeString::get_from_unknown(value).ok_or(Error::NoSuchField)?;
+                let value = ProtobufTypeString::get_from_unknown(value)
+                    .ok_or(Error::NoSuchField(field_id))?;
                 Ok(FieldValue::String(value))
             }
             FieldType::Int32 => {
-                let value = ProtobufTypeInt32::get_from_unknown(value).ok_or(Error::NoSuchField)?;
+                let value = ProtobufTypeInt32::get_from_unknown(value)
+                    .ok_or(Error::NoSuchField(field_id))?;
                 Ok(FieldValue::Int32(value))
             }
             FieldType::Uint32 => {
-                let value =
-                    ProtobufTypeUint32::get_from_unknown(value).ok_or(Error::NoSuchField)?;
+                let value = ProtobufTypeUint32::get_from_unknown(value)
+                    .ok_or(Error::NoSuchField(field_id))?;
                 Ok(FieldValue::Uint32(value))
             }
             FieldType::Int64 => {
-                let value = ProtobufTypeInt64::get_from_unknown(value).ok_or(Error::NoSuchField)?;
+                let value = ProtobufTypeInt64::get_from_unknown(value)
+                    .ok_or(Error::NoSuchField(field_id))?;
                 Ok(FieldValue::Int64(value))
             }
             FieldType::Uint64 => {
-                let value =
-                    ProtobufTypeUint64::get_from_unknown(value).ok_or(Error::NoSuchField)?;
+                let value = ProtobufTypeUint64::get_from_unknown(value)
+                    .ok_or(Error::NoSuchField(field_id))?;
                 Ok(FieldValue::Uint64(value))
             }
             FieldType::DateTime => {
                 let value = ProtobufTypeMessage::<Timestamp>::get_from_unknown(value)
-                    .ok_or(Error::NoSuchField)?;
+                    .ok_or(Error::NoSuchField(field_id))?;
                 Ok(FieldValue::DateTime(
                     crate::time::timestamp_parts_to_datetime(value.seconds, value.nanos),
                 ))
             }
             FieldType::Reference => {
                 let ref_msg = ProtobufTypeMessage::<Empty>::get_from_unknown(value)
-                    .ok_or(Error::NoSuchField)?;
+                    .ok_or(Error::NoSuchField(field_id))?;
 
                 let entity_id_value = ref_msg
                     .unknown_fields
@@ -114,7 +118,7 @@ impl ReflectMessage for DynamicMessage {
                     trait_id,
                 }))
             }
-            _ => Err(Error::NoSuchField),
+            _ => Err(Error::NoSuchField(field_id)),
         }
     }
 
@@ -283,12 +287,11 @@ mod tests {
             }),
             ..Default::default()
         };
-        let msg_any = msg.pack_to_stepan_any()?;
 
+        let msg_any = msg.pack_to_stepan_any()?;
         let dyn_msg = from_stepan_any(&registry, &msg_any)?;
 
         assert_eq!("exocore.test.TestMessage", dyn_msg.full_name());
-
         assert!(dyn_msg.fields().len() > 10);
 
         let field1 = dyn_msg.get_field(1).unwrap();
@@ -323,8 +326,8 @@ mod tests {
             string1: "val1".to_string(),
             ..Default::default()
         };
-        let msg_any = msg.pack_to_stepan_any()?;
 
+        let msg_any = msg.pack_to_stepan_any()?;
         let mut dyn_msg = from_stepan_any(&registry, &msg_any)?;
 
         assert!(dyn_msg.get_field_value(1).is_ok());
@@ -344,9 +347,10 @@ mod tests {
             string1: "val1".to_string(),
             ..Default::default()
         };
-        let msg_any = msg.pack_to_stepan_any()?;
 
+        let msg_any = msg.pack_to_stepan_any()?;
         let dyn_msg = from_stepan_any(&registry, &msg_any)?;
+
         let bytes = dyn_msg.encode()?;
         assert_eq!(bytes, msg_any.value);
 
