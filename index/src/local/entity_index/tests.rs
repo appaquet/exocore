@@ -6,7 +6,7 @@ use test_index::*;
 use crate::local::mutation_index::MutationResults;
 use crate::mutation::MutationBuilder;
 use crate::ordering::{value_from_u64, value_max};
-use crate::query::QueryBuilder as Q;
+use crate::query::{ProjectionBuilder, QueryBuilder as Q};
 
 use super::*;
 
@@ -617,6 +617,56 @@ fn skip_results_hash() -> anyhow::Result<()> {
     let query = Q::matches("name").skip_if_results_equals(res.hash).build();
     let res = test_index.index.search(query)?;
     assert!(res.skipped_hash);
+
+    Ok(())
+}
+
+#[test]
+fn query_projection() -> anyhow::Result<()> {
+    let config = TestEntityIndex::create_test_config();
+    let mut test_index = TestEntityIndex::new_with_config(config)?;
+
+    let op1 = test_index.put_test_trait("entity1", "trait1", "name 1")?;
+    let op2 = test_index.put_test_trait("entity2", "trait1", "name 2")?;
+    test_index.wait_operations_committed(&[op1, op2]);
+    test_index.handle_engine_events()?;
+
+    let type1 = "exocore.test.TestMessage";
+    let type2 = "exocore.test.TestMessage2";
+
+    {
+        // project field #1, should return `string1`
+        let proj = ProjectionBuilder::for_trait_name(type1).return_fields(vec![1]);
+        let query = Q::matches("name").with_projection(proj).build();
+        let res = test_index.index.search(query)?;
+        let ent = res.entities[0].entity.as_ref().unwrap();
+        let trt = &ent.traits[0];
+        let msg = TestMessage::decode(trt.message.as_ref().unwrap().value.as_slice())?;
+        assert_eq!(msg.string1, "name 2");
+    }
+
+    {
+        // project field #2, should not return `string1`
+        let proj = ProjectionBuilder::for_trait_name(type1).return_fields(vec![2]);
+        let query = Q::matches("name").with_projection(proj).build();
+        let res = test_index.index.search(query)?;
+        let ent = res.entities[0].entity.as_ref().unwrap();
+        let trt = &ent.traits[0];
+        let msg = TestMessage::decode(trt.message.as_ref().unwrap().value.as_slice())?;
+        assert!(msg.string1.is_empty());
+    }
+
+    {
+        // project field on another message type, shouldn't include any traits
+        let proj = ProjectionBuilder::for_trait_name(type2).return_fields(vec![2]);
+        let proj_skip = ProjectionBuilder::for_all().skip();
+        let query = Q::matches("name")
+            .with_projections(vec![proj, proj_skip])
+            .build();
+        let res = test_index.index.search(query)?;
+        let ent = res.entities[0].entity.as_ref().unwrap();
+        assert!(ent.traits.is_empty());
+    }
 
     Ok(())
 }
