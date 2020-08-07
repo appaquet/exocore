@@ -227,17 +227,6 @@ mod tests {
     }
 
     #[test]
-    fn consistent_time_close_to_real_time() {
-        let clock = Clock::new();
-
-        for _i in 0..100 {
-            let local_node = LocalNode::generate();
-            let current_time = clock.consistent_time(local_node.node());
-            println!("{:?}", current_time.to_datetime());
-        }
-    }
-
-    #[test]
     fn fixed_future_consistent_time() {
         let mocked_clock = Clock::new_fixed_mocked(Instant::now() + Duration::from_secs(10));
         let local_node = LocalNode::generate();
