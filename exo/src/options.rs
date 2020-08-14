@@ -100,6 +100,10 @@ pub struct ChainExportOptions {
 pub struct ChainImportOptions {
     // File from which chain will be imported
     pub file: PathBuf,
+
+    // Number of operations per blocks
+    #[structopt(default_value = "30")]
+    pub operations_per_block: usize,
 }
 
 /// Configs related options
