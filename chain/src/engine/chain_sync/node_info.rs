@@ -23,6 +23,8 @@ pub struct NodeSyncInfo {
 
 impl NodeSyncInfo {
     pub fn new(node_id: NodeId, config: ChainSyncConfig, clock: Clock) -> NodeSyncInfo {
+        let request_tracker_config = config.request_tracker;
+
         NodeSyncInfo {
             config,
             node_id,
@@ -31,7 +33,7 @@ impl NodeSyncInfo {
             last_common_is_known: false,
             last_known_block: None,
 
-            request_tracker: RequestTracker::new_with_clock(clock, config.request_tracker),
+            request_tracker: RequestTracker::new_with_clock(clock, request_tracker_config),
         }
     }
 

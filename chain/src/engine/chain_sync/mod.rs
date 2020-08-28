@@ -236,15 +236,7 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
                 None
             };
 
-            let headers = BlockMeta::from_sampled_chain_slice(
-                store,
-                from_offset,
-                to_offset_opt,
-                self.config.headers_sync_begin_count,
-                self.config.headers_sync_end_count,
-                self.config.headers_sync_sampled_count,
-            )?;
-
+            let headers = BlockMeta::from_store(store, from_offset, to_offset_opt, &self.config)?;
             let response = Self::create_sync_response_for_headers(from_offset, to_offset, headers)?;
             sync_context.push_chain_sync_response(from_node.id().clone(), response);
         } else if requested_details == chain_sync_request::RequestedDetails::Blocks {
@@ -710,7 +702,7 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
             return self.nodes_info.get_mut(node_id).unwrap();
         }
 
-        let config = self.config;
+        let config = self.config.clone();
         let clock = self.clock.clone();
         self.nodes_info
             .entry(node_id.clone())

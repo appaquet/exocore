@@ -1,7 +1,8 @@
 use super::ChainSyncError;
 use crate::block::{Block, BlockHeight, BlockOffset, BlockSignaturesSize};
 use crate::chain;
-use crate::engine::EngineError;
+use crate::{engine::EngineError, ChainSyncConfig};
+use chain::Segments;
 use exocore_core::framing::FrameReader;
 use exocore_core::protos::generated::data_chain_capnp::{block_header, block_partial_header};
 
@@ -20,8 +21,61 @@ pub struct BlockMeta {
 }
 
 impl BlockMeta {
+    pub fn from_store<CS: chain::ChainStore>(
+        store: &CS,
+        from_offset: BlockOffset,
+        to_offset: Option<BlockOffset>,
+        config: &ChainSyncConfig,
+    ) -> Result<Vec<BlockMeta>, EngineError> {
+        // TODO:
+
+        let range_segments = store
+            .segments()
+            .filter_in_range(Some(from_offset), to_offset);
+
+        if range_segments.is_empty() {
+            Ok(Vec::new())
+        } else if range_segments.len() > 5 {
+            debug!(
+                "Using segment boundaries for header sync request from {} to {:?} with {} segments",
+                from_offset,
+                to_offset,
+                range_segments.len(),
+            );
+            BlockMeta::from_segment_boundaries(store, range_segments)
+        } else {
+            BlockMeta::from_sampled_chain_slice(
+                store,
+                from_offset,
+                to_offset,
+                config.headers_sync_begin_count,
+                config.headers_sync_end_count,
+                config.headers_sync_sampled_count,
+            )
+        }
+    }
+
+    /// Returns a collection of `BlockPartialHeader` with each segment in the given range.
+    pub fn from_segment_boundaries<CS: chain::ChainStore>(
+        store: &CS,
+        segments: Segments,
+    ) -> Result<Vec<BlockMeta>, EngineError> {
+        let mut headers = Vec::new();
+
+        // TODO: Should send beginning blocks & ending blocks
+
+        for segment in segments.into_iter() {
+            let first_segment_block = segment.range.start;
+            let current_block = store.get_block(first_segment_block)?;
+            let block_partial_header = BlockMeta::from_stored_block(current_block)?;
+            headers.push(block_partial_header);
+        }
+
+        Ok(headers)
+    }
+
     /// Samples the local chain and returns a collection of `BlockPartialHeader`
-    /// at different position in the asked range.
+    /// at different positions in the asked range.
     ///
     /// `from_offset` and `to_offset` are best efforts and fallback to begin/end
     /// of chain if they don't exist. `begin_count` and `end_count` are
@@ -37,11 +91,6 @@ impl BlockMeta {
         sampled_count: BlockOffset,
     ) -> Result<Vec<BlockMeta>, EngineError> {
         let mut headers = Vec::new();
-
-        let segments_range = store.segments();
-        if segments_range.is_empty() {
-            return Ok(headers);
-        }
 
         let last_block = match to_offset {
             Some(offset) => store.get_block(offset).map(Some).or_else(|_| {

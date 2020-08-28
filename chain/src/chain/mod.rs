@@ -11,7 +11,7 @@ pub use error::Error;
 
 /// Persistence for the chain
 pub trait ChainStore: Send + Sync + 'static {
-    fn segments(&self) -> Vec<Segment>;
+    fn segments(&self) -> Segments;
 
     fn write_block<B: Block>(&mut self, block: &B) -> Result<BlockOffset, Error>;
 
@@ -45,5 +45,72 @@ pub struct Segment {
     pub range: Range<BlockOffset>,
 }
 
+/// Collection of all segments of the chain.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Segments(pub Vec<Segment>);
+
+impl From<Vec<Segment>> for Segments {
+    fn from(segments: Vec<Segment>) -> Self {
+        Segments(segments)
+    }
+}
+
+impl Into<Vec<Segment>> for Segments {
+    fn into(self) -> Vec<Segment> {
+        self.0
+    }
+}
+
+impl Segments {
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Segment> {
+        self.0.iter()
+    }
+
+    pub fn filter_in_range(
+        self,
+        from_offset: Option<BlockOffset>,
+        to_offset: Option<BlockOffset>,
+    ) -> Segments {
+        let from_offset = from_offset.unwrap_or(std::u64::MIN);
+        let to_offset = to_offset.unwrap_or(std::u64::MAX);
+
+        Segments(
+            self.0
+                .into_iter()
+                .filter(|segment| {
+                    from_offset <= segment.range.end && segment.range.start <= to_offset
+                })
+                .collect(),
+        )
+    }
+}
+
+impl std::iter::IntoIterator for Segments {
+    type Item = Segment;
+
+    type IntoIter = std::vec::IntoIter<Segment>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
 /// Iterator over stored blocks.
 type StoredBlockIterator<'pers> = Box<dyn Iterator<Item = BlockRef<'pers>> + 'pers>;
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    fn segments_filter_in_range() {
+        // TODO:
+    }
+}

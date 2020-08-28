@@ -2,7 +2,7 @@ use crate::block::{BlockHeight, BlockOffset};
 use crate::engine::request_tracker;
 
 /// Chain synchronizer's configuration
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct ChainSyncConfig {
     /// Config for requests timing tracker
     pub request_tracker: request_tracker::RequestTrackerConfig,
