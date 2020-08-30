@@ -6,7 +6,7 @@ use crate::chain::ChainStore;
 use crate::engine::error::EngineError;
 use crate::engine::request_tracker::RequestTracker;
 
-use super::BlockMeta;
+use super::BlockMetadata;
 use super::ChainSyncConfig;
 
 /// Synchronization information about a remote node
@@ -14,9 +14,9 @@ pub struct NodeSyncInfo {
     pub config: ChainSyncConfig,
     pub node_id: NodeId,
 
-    pub(super) last_common_block: Option<BlockMeta>,
+    pub(super) last_common_block: Option<BlockMetadata>,
     pub last_common_is_known: bool,
-    pub(super) last_known_block: Option<BlockMeta>,
+    pub(super) last_known_block: Option<BlockMetadata>,
 
     pub request_tracker: RequestTracker,
 }

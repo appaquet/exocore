@@ -108,9 +108,28 @@ type StoredBlockIterator<'pers> = Box<dyn Iterator<Item = BlockRef<'pers>> + 'pe
 
 #[cfg(test)]
 mod tests {
+    use super::*;
 
     #[test]
     fn segments_filter_in_range() {
-        // TODO:
+        let segments = Segments(vec![
+            Segment { range: 0..100 },
+            Segment { range: 100..200 },
+            Segment { range: 200..300 },
+        ]);
+
+        let assert_segments = |from, to, segs: Vec<BlockOffset>| {
+            let matching = segments.clone().filter_in_range(from, to);
+            let ids: Vec<BlockOffset> = matching.into_iter().map(|r| r.range.start / 100).collect();
+            assert_eq!(segs, ids);
+        };
+
+        assert_segments(None, None, vec![0, 1, 2]);
+        assert_segments(Some(0), None, vec![0, 1, 2]);
+        assert_segments(None, Some(300), vec![0, 1, 2]);
+        assert_segments(None, Some(299), vec![0, 1, 2]);
+        assert_segments(None, Some(199), vec![0, 1]);
+        assert_segments(Some(100), Some(199), vec![0, 1]);
+        assert_segments(Some(101), Some(199), vec![1]);
     }
 }

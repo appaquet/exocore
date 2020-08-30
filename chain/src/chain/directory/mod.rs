@@ -116,7 +116,7 @@ impl DirectoryChainStore {
                 segments.push(segment);
             }
         }
-        segments.sort_by(|a, b| a.first_block_offset().cmp(&b.first_block_offset()));
+        segments.sort_by_key(|a| a.first_block_offset());
 
         let mut store = DirectoryChainStore {
             config,
