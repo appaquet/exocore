@@ -11,21 +11,23 @@ pub struct ChainSyncConfig {
     /// offsync
     pub meta_sync_max_failures: usize,
 
-    /// Number of blocks metadata to always include at beginning of a metadata sync
-    /// request
+    /// Number of blocks metadata to always include at beginning of a metadata
+    /// sync request
     pub metadata_sync_begin_count: usize,
 
-    /// Number of blocks metadata to always include at end of a metadata sync request
+    /// Number of blocks metadata to always include at end of a metadata sync
+    /// request
     pub metadata_sync_end_count: usize,
 
-    /// Number of sampled blocks metadata to include between begin and end blocks of a
-    /// metadata sync request
+    /// Number of sampled blocks metadata to include between begin and end
+    /// blocks of a metadata sync request
     pub metadata_sync_sampled_count: usize,
 
-    /// When doing blocks metadata synchronization, if the requested range spans multiple segments,
-    /// this is the threshold from which we fall into a fast synchronization mode. Instead
-    /// of sampling blocks, only the first block of each segments (segments boundary) is
-    /// sent preventing scanning blocks.
+    /// When doing blocks metadata synchronization, if the requested range spans
+    /// multiple segments, this is the threshold from which we fall into a
+    /// fast synchronization mode. Instead of sampling blocks, only the
+    /// first block of each segments (segments boundary) is sent preventing
+    /// scanning blocks.
     pub metadata_sync_segments_boundaries_threshold: usize,
 
     /// Maximum number of bytes worth of blocks to send in a response

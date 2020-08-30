@@ -269,11 +269,11 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
         Ok(())
     }
 
-    /// Handles a sync response from a node, that could contain either blocks metadata
-    /// or blocks data. If it contains metadata, we gather the knowledge
-    /// about the remote node's chain metadata. If it contains data, it
-    /// means that it comes from the leader node and we need to append data
-    /// to our local chain.
+    /// Handles a sync response from a node, that could contain either blocks
+    /// metadata or blocks data. If it contains metadata, we gather the
+    /// knowledge about the remote node's chain metadata. If it contains
+    /// data, it means that it comes from the leader node and we need to
+    /// append data to our local chain.
     pub fn handle_sync_response<R: FrameReader>(
         &mut self,
         sync_context: &mut SyncContext,
@@ -427,9 +427,10 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
         Ok(())
     }
 
-    /// Creates a new sync request to be sent to a node, asking for blocks metadata or
-    /// blocks. Blocks metadata are used remote node's chain metadata, while blocks
-    /// are requested if we determined that a node is our leader.
+    /// Creates a new sync request to be sent to a node, asking for blocks
+    /// metadata or blocks. Blocks metadata are used remote node's chain
+    /// metadata, while blocks are requested if we determined that a node is
+    /// our leader.
     fn create_sync_request(
         node_info: &NodeSyncInfo,
         requested_details: RequestedDetails,
@@ -469,21 +470,21 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
     fn create_sync_response_for_metadata(
         from_offset: BlockOffset,
         to_offset: BlockOffset,
-        blocks_metadaa: Vec<BlockMetadata>,
+        blocks_metadata: Vec<BlockMetadata>,
     ) -> Result<CapnpFrameBuilder<chain_sync_response::Owned>, EngineError> {
         let mut frame_builder = CapnpFrameBuilder::new();
         let mut response_builder: chain_sync_response::Builder = frame_builder.get_builder();
         response_builder.set_from_offset(from_offset);
         response_builder.set_to_offset(to_offset);
 
-        let mut headers_builder = response_builder.init_headers(blocks_metadaa.len() as u32);
-        for (i, header) in blocks_metadaa.iter().enumerate() {
+        let mut headers_builder = response_builder.init_headers(blocks_metadata.len() as u32);
+        for (i, header) in blocks_metadata.iter().enumerate() {
             header.copy_into_builder(&mut headers_builder.reborrow().get(i as u32));
         }
 
         debug!(
             "Sending {} block(s) metadata from offset {:?} to offset {:?}",
-            blocks_metadaa.len(),
+            blocks_metadata.len(),
             from_offset,
             to_offset,
         );
@@ -536,9 +537,9 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
         Ok(frame_builder)
     }
 
-    /// Manages blocks metadata response by comparing to local blocks and finding the
-    /// common ancestor (if any) and the last block of the node against
-    /// which we're syncing.
+    /// Manages blocks metadata response by comparing to local blocks and
+    /// finding the common ancestor (if any) and the last block of the node
+    /// against which we're syncing.
     ///
     /// If we didn't find the latest common ancestor, we reply with another
     /// request from the earliest common ancestor we could find so far.

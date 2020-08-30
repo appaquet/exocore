@@ -50,8 +50,9 @@ impl BlockMetadata {
         }
     }
 
-    /// Returns a collection of `BlockPartialHeader` by using segments' first block instead of
-    /// sampling the chain like in `from_sampled_chain_slice`, which is much faster.
+    /// Returns a collection of `BlockPartialHeader` by using segments' first
+    /// block instead of sampling the chain like in
+    /// `from_sampled_chain_slice`, which is much faster.
     pub fn from_segment_boundaries<CS: chain::ChainStore>(
         store: &CS,
         range_segments: Segments,
@@ -172,8 +173,8 @@ impl BlockMetadata {
         let range_blocks_count = (last_block_height - first_block_height) as usize;
         let range_blocks_skip = (range_blocks_count / sampled_count).max(1);
 
-        // from which block do we include all blocks metadata so that we always include last
-        // `end_count` blocks
+        // from which block do we include all blocks metadata so that we always include
+        // last `end_count` blocks
         let range_blocks_lasts = range_blocks_count
             .checked_sub(end_count)
             .unwrap_or(range_blocks_count);
@@ -316,7 +317,8 @@ mod tests {
         }
 
         {
-            // segments block shouldn't be included if they were already included in begin/end
+            // segments block shouldn't be included if they were already included in
+            // begin/end
             let config = ChainSyncConfig {
                 metadata_sync_begin_count: 5,
                 metadata_sync_end_count: 5,
@@ -326,7 +328,8 @@ mod tests {
         }
 
         {
-            // segments block shouldn't be included if they were already included in begin/end
+            // segments block shouldn't be included if they were already included in
+            // begin/end
             let config = ChainSyncConfig {
                 metadata_sync_begin_count: 5,
                 metadata_sync_end_count: 5,

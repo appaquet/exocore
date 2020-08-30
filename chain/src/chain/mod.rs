@@ -45,7 +45,7 @@ pub struct Segment {
     pub range: Range<BlockOffset>,
 }
 
-/// Collection of all segments of the chain.
+/// Collection of segments of the chain.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Segments(pub Vec<Segment>);
 
