@@ -721,35 +721,35 @@ where
         entity_mutations
             .traits
             .iter()
-            .flat_map(|(trait_id, agg_trait)| {
-                if let Some(projection) = &agg_trait.projection {
+            .flat_map(|(trait_id, agg)| {
+                if let Some(projection) = &agg.projection {
                     if projection.skip {
                         return None;
                     }
                 }
 
-                if agg_trait.deletion_date.is_some() && !include_deleted {
+                if agg.deletion_date.is_some() && !include_deleted {
                     return None;
                 }
 
-                let (mutation_metadata, _put_mutation_metadata) = agg_trait.last_put_mutation()?;
+                let (mut_metadata, _put_mut_metadata) = agg.last_put_mutation()?;
 
                 let mutation = self.fetch_chain_mutation_operation(
-                    mutation_metadata.operation_id,
-                    mutation_metadata.block_offset,
+                    mut_metadata.operation_id,
+                    mut_metadata.block_offset,
                 );
                 let mutation = match mutation {
                     Ok(Some(mutation)) => mutation,
                     other => {
                         error!(
                             "Couldn't fetch operation_id={} for entity_id={}: {:?}",
-                            mutation_metadata.operation_id, mutation_metadata.entity_id, other
+                            mut_metadata.operation_id, mut_metadata.entity_id, other
                         );
                         return None;
                     }
                 };
 
-                let mut trait_instance = match mutation.mutation? {
+                let mut trt = match mutation.mutation? {
                     Mutation::PutTrait(trait_put) => trait_put.r#trait,
                     Mutation::CompactTrait(trait_cmpt) => trait_cmpt.r#trait,
                     Mutation::DeleteTrait(_)
@@ -758,31 +758,24 @@ where
                     | Mutation::Test(_) => return None,
                 }?;
 
-                if let Some(projection) = &agg_trait.projection {
-                    let res = project_trait(
-                        self.cell.schemas().as_ref(),
-                        &mut trait_instance,
-                        projection.as_ref(),
-                    );
+                if let Some(projection) = &agg.projection {
+                    let res =
+                        project_trait(self.cell.schemas().as_ref(), &mut trt, projection.as_ref());
 
                     if let Err(err) = res {
                         error!(
                             "Couldn't run projection on trait_id={} of entity_id={}: {:?}",
-                            trait_id, mutation_metadata.entity_id, err,
+                            trait_id, mut_metadata.entity_id, err,
                         );
                     }
                 }
 
-                // update the trait with creation & modification date that got merged from
-                // metadata
-                trait_instance.creation_date =
-                    agg_trait.creation_date.map(|d| d.to_proto_timestamp());
-                trait_instance.modification_date =
-                    agg_trait.modification_date.map(|d| d.to_proto_timestamp());
-                trait_instance.deletion_date =
-                    agg_trait.deletion_date.map(|d| d.to_proto_timestamp());
+                // update the trait's dates that got merged from metadata
+                trt.creation_date = agg.creation_date.map(|d| d.to_proto_timestamp());
+                trt.modification_date = agg.modification_date.map(|d| d.to_proto_timestamp());
+                trt.deletion_date = agg.deletion_date.map(|d| d.to_proto_timestamp());
 
-                Some(trait_instance)
+                Some(trt)
             })
             .collect()
     }
