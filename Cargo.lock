@@ -996,7 +996,7 @@ dependencies = [
  "exocore-core",
  "futures 0.3.5",
  "libp2p",
- "libp2p-wasm-ext",
+ "libp2p-wasm-ext 0.22.0",
  "log",
  "pin-project",
  "thiserror",
@@ -1581,7 +1581,7 @@ dependencies = [
  "bytes",
  "futures 0.3.5",
  "lazy_static",
- "libp2p-core",
+ "libp2p-core 0.21.0",
  "libp2p-core-derive",
  "libp2p-dns",
  "libp2p-mplex",
@@ -1589,7 +1589,7 @@ dependencies = [
  "libp2p-secio",
  "libp2p-swarm",
  "libp2p-tcp",
- "libp2p-wasm-ext",
+ "libp2p-wasm-ext 0.21.0",
  "libp2p-websocket",
  "libp2p-yamux",
  "multihash",
@@ -1605,6 +1605,40 @@ name = "libp2p-core"
 version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "17cea54ea4a846a7c47e4347db0fc7a4129dcb0fb57f07f57e473820edbfcbde"
+dependencies = [
+ "asn1_der",
+ "bs58",
+ "ed25519-dalek",
+ "either",
+ "fnv",
+ "futures 0.3.5",
+ "futures-timer",
+ "lazy_static",
+ "libsecp256k1",
+ "log",
+ "multihash",
+ "multistream-select",
+ "parity-multiaddr",
+ "parking_lot 0.10.2",
+ "pin-project",
+ "prost",
+ "prost-build",
+ "rand 0.7.3",
+ "ring",
+ "rw-stream-sink",
+ "sha2 0.8.2",
+ "smallvec",
+ "thiserror",
+ "unsigned-varint 0.4.0",
+ "void",
+ "zeroize",
+]
+
+[[package]]
+name = "libp2p-core"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52f13ba8c7df0768af2eb391696d562c7de88cc3a35122531aaa6a7d77754d25"
 dependencies = [
  "asn1_der",
  "bs58",
@@ -1651,7 +1685,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fce8769cfe677a567d2677dc02a9e5be27a24acf1ff78a59cef425caae009a6a"
 dependencies = [
  "futures 0.3.5",
- "libp2p-core",
+ "libp2p-core 0.21.0",
  "log",
 ]
 
@@ -1665,7 +1699,7 @@ dependencies = [
  "fnv",
  "futures 0.3.5",
  "futures_codec",
- "libp2p-core",
+ "libp2p-core 0.21.0",
  "log",
  "parking_lot 0.10.2",
  "unsigned-varint 0.4.0",
@@ -1681,7 +1715,7 @@ dependencies = [
  "curve25519-dalek 2.1.0",
  "futures 0.3.5",
  "lazy_static",
- "libp2p-core",
+ "libp2p-core 0.21.0",
  "log",
  "prost",
  "prost-build",
@@ -1705,7 +1739,7 @@ dependencies = [
  "hmac",
  "js-sys",
  "lazy_static",
- "libp2p-core",
+ "libp2p-core 0.21.0",
  "log",
  "parity-send-wrapper",
  "pin-project",
@@ -1730,7 +1764,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57e4a7e64156e9d1a2daae36b5d791f057b9c53c9364a8e75f7f9848b54f9d68"
 dependencies = [
  "futures 0.3.5",
- "libp2p-core",
+ "libp2p-core 0.21.0",
  "log",
  "rand 0.7.3",
  "smallvec",
@@ -1748,7 +1782,7 @@ dependencies = [
  "futures-timer",
  "get_if_addrs",
  "ipnet",
- "libp2p-core",
+ "libp2p-core 0.21.0",
  "log",
  "socket2",
  "tokio",
@@ -1762,7 +1796,21 @@ checksum = "0f2f7b06d80d036ac5763a811185b7fe6951ad71c00544b17cc378a9069bb7c2"
 dependencies = [
  "futures 0.3.5",
  "js-sys",
- "libp2p-core",
+ "libp2p-core 0.21.0",
+ "parity-send-wrapper",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
+name = "libp2p-wasm-ext"
+version = "0.22.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34c1faac6f92c21fbe155417957863ea822fba9e9fd5eb24c0912336a100e63f"
+dependencies = [
+ "futures 0.3.5",
+ "js-sys",
+ "libp2p-core 0.22.1",
  "parity-send-wrapper",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -1777,7 +1825,7 @@ dependencies = [
  "async-tls",
  "either",
  "futures 0.3.5",
- "libp2p-core",
+ "libp2p-core 0.21.0",
  "log",
  "quicksink",
  "rustls",
@@ -1795,7 +1843,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b3969ead4ce530efb6f304623924245caf410f3b0b0139bd7007f205933788aa"
 dependencies = [
  "futures 0.3.5",
- "libp2p-core",
+ "libp2p-core 0.21.0",
  "parking_lot 0.10.2",
  "thiserror",
  "yamux",
