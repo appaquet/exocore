@@ -101,7 +101,12 @@ impl Libp2pTransport {
 
             let noise_keys = libp2p::noise::Keypair::<libp2p::noise::X25519Spec>::new()
                 .into_authentic(self.local_node.keypair().to_libp2p())
-                .map_err(|err| Error::Other(format!("Signing libp2p-noise static DH keypair failed: {}", err)))?;
+                .map_err(|err| {
+                    Error::Other(format!(
+                        "Signing libp2p-noise static DH keypair failed: {}",
+                        err
+                    ))
+                })?;
 
             let transport = ExtTransport::new(websocket_transport())
                 .upgrade(libp2p::core::upgrade::Version::V1)
