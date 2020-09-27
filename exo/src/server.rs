@@ -7,7 +7,7 @@ use exocore_core::futures::Runtime;
 use exocore_core::time::Clock;
 use exocore_index::local::{EntityIndex, EntityIndexConfig, Store};
 use exocore_index::remote::server::Server;
-use exocore_transport::lp2p::Libp2pTransportConfig;
+use exocore_transport::p2p::Libp2pTransportConfig;
 use exocore_transport::{Libp2pTransport, TransportHandle, TransportLayer};
 
 use crate::options;

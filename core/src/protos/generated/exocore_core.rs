@@ -13,10 +13,19 @@ pub struct LocalNodeConfig {
     #[prost(string, tag = "5")]
     #[serde(default)]
     pub path: std::string::String,
-    #[prost(string, repeated, tag = "6")]
-    pub listen_addresses: ::std::vec::Vec<std::string::String>,
+    #[prost(message, optional, tag = "6")]
+    pub addresses: ::std::option::Option<NodeAddresses>,
     #[prost(message, repeated, tag = "7")]
     pub cells: ::std::vec::Vec<NodeCellConfig>,
+}
+#[derive(Clone, PartialEq, ::prost::Message, Serialize, Deserialize)]
+pub struct NodeAddresses {
+    #[prost(string, repeated, tag = "1")]
+    #[serde(default)]
+    pub p2p: ::std::vec::Vec<std::string::String>,
+    #[prost(string, repeated, tag = "2")]
+    #[serde(default)]
+    pub http: ::std::vec::Vec<std::string::String>,
 }
 #[derive(Clone, PartialEq, ::prost::Message, Serialize, Deserialize)]
 pub struct NodeCellConfig {
@@ -82,9 +91,8 @@ pub struct NodeConfig {
     #[prost(string, tag = "3")]
     #[serde(default)]
     pub id: std::string::String,
-    #[prost(string, repeated, tag = "4")]
-    #[serde(default)]
-    pub addresses: ::std::vec::Vec<std::string::String>,
+    #[prost(message, optional, tag = "4")]
+    pub addresses: ::std::option::Option<NodeAddresses>,
 }
 #[derive(Clone, PartialEq, ::prost::Message, Serialize, Deserialize)]
 pub struct CellApplicationConfig {

@@ -46,7 +46,8 @@ impl Node {
 
         let node = Self::build(public_key, name);
 
-        for addr in config.addresses {
+        let addresses = config.addresses.unwrap_or_default();
+        for addr in addresses.p2p {
             let maddr = addr
                 .parse()
                 .map_err(|err| Error::Cell(format!("Couldn't parse multi-address: {}", err)))?;
@@ -174,7 +175,8 @@ impl LocalNode {
 
         let node = Self::new_from_keypair(keypair);
 
-        for addr in config.listen_addresses {
+        let addresses = config.addresses.unwrap_or_default();
+        for addr in addresses.p2p {
             let maddr = addr.parse().map_err(|err| {
                 Error::Cell(format!("Couldn't parse local node address: {}", err))
             })?;

@@ -12,7 +12,7 @@ use futures::{FutureExt, SinkExt, StreamExt};
 use libp2p::core::{Multiaddr, PeerId};
 use libp2p::swarm::Swarm;
 
-use behaviour::{ExocoreBehaviour, ExocoreBehaviourEvent, ExocoreBehaviourMessage};
+use behaviour::{ExocoreBehaviour, ExocoreBehaviourEvent, ExocoreBehaviourMessage, PeerStatus};
 use exocore_core::cell::{Cell, CellId, CellNodes};
 use exocore_core::cell::{LocalNode, Node, NodeId};
 use exocore_core::framing::{FrameBuilder, TypedCapnpFrame};
@@ -22,8 +22,7 @@ use exocore_core::utils::handle_set::{Handle, HandleSet};
 use crate::messages::InMessage;
 use crate::transport::{ConnectionStatus, InEvent, OutEvent, TransportHandleOnStart};
 use crate::Error;
-use crate::{lp2p::behaviour::PeerStatus, transport::ConnectionID};
-use crate::{TransportHandle, TransportLayer};
+use crate::{transport::ConnectionID, TransportHandle, TransportLayer};
 
 mod behaviour;
 mod protocol;

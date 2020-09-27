@@ -15,7 +15,7 @@ use exocore_transport::{InEvent, Libp2pTransport, TransportHandle, TransportLaye
 use crate::js::into_js_error;
 use crate::watched_query::WatchedQuery;
 use exocore_core::protos::{index::MutationRequest, prost::ProstMessageExt};
-use exocore_transport::lp2p::Libp2pTransportConfig;
+use exocore_transport::p2p::Libp2pTransportConfig;
 
 static INIT: Once = Once::new();
 

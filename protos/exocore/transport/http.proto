@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package exocore.transport;
+
+import "google/protobuf/timestamp.proto";
+
+message Token {
+    bytes data = 1;
+
+    bytes signature = 2;
+}
+
+message TokenData {
+    bytes cell_id = 1;
+
+    bytes node_id = 2;
+
+    google.protobuf.Timestamp signature_date = 3;
+
+    google.protobuf.Timestamp expiration_date = 4;
+}

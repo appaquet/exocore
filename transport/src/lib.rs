@@ -10,10 +10,10 @@ pub mod transport;
 
 #[cfg(feature = "libp2p-base")]
 #[macro_use]
-pub mod lp2p;
+pub mod p2p;
 
 #[cfg(feature = "libp2p-base")]
-pub use lp2p::{Libp2pTransport, Libp2pTransportHandle};
+pub use p2p::{Libp2pTransport, Libp2pTransportHandle};
 
 #[cfg(any(test, feature = "tests-utils"))]
 pub mod mock;
