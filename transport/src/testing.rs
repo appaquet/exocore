@@ -1,19 +1,22 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
 
-use exocore_core::cell::{LocalNode, Node, NodeId};
-use exocore_core::framing::{CapnpFrameBuilder, FrameBuilder};
-use exocore_core::futures::{spawn_future, Runtime};
-use exocore_core::protos::generated::common_capnp::envelope;
+use exocore_core::{cell::Cell, framing::CapnpFrameBuilder};
+use exocore_core::{
+    cell::{LocalNode, Node, NodeId},
+    futures::owned_spawn,
+    futures::OwnedSpawn,
+};
+use exocore_core::{
+    futures::spawn_future, protos::generated::data_chain_capnp::block_operation_header,
+};
 use futures::channel::mpsc;
 use futures::prelude::*;
 
-use crate::transport::{
-    ConnectionStatus, MpscHandleSink, MpscHandleStream, TransportHandleOnStart,
-};
+use crate::streams::{MpscHandleSink, MpscHandleStream};
+use crate::transport::{ConnectionStatus, TransportHandleOnStart};
 use crate::{Error, InEvent, InMessage, OutEvent, OutMessage, TransportHandle, TransportLayer};
 use exocore_core::utils::handle_set::{Handle, HandleSet};
-use futures::executor::block_on;
 use futures::stream::Peekable;
 use futures::{FutureExt, StreamExt};
 use std::pin::Pin;
@@ -96,12 +99,6 @@ struct HandleSink {
     sender: mpsc::Sender<InEvent>,
 }
 
-impl MockTransportHandle {
-    pub fn into_testable(self) -> TestableTransportHandle<MockTransportHandle> {
-        TestableTransportHandle::new(self)
-    }
-}
-
 impl TransportHandle for MockTransportHandle {
     type Sink = MpscHandleSink;
     type Stream = MpscHandleStream;
@@ -151,8 +148,8 @@ impl Future for MockTransportHandle {
                     };
                     let mut handles_sink = handles_sink.lock().unwrap();
 
-                    let envelope = msg.envelope_builder.as_owned_frame();
-                    let in_message = InMessage::from_node_and_frame(node.clone(), envelope)
+                    let in_message = msg
+                        .to_in_message(node.clone())
                         .expect("Couldn't get InMessage from OutMessage");
                     for dest_node in &msg.to {
                         let key = (dest_node.id().clone(), layer);
@@ -202,141 +199,206 @@ impl Drop for MockTransportHandle {
 }
 
 /// Wraps a transport handle to add test methods
-pub struct TestableTransportHandle<T: TransportHandle> {
-    handle: Option<T>,
-    out_sink: Option<T::Sink>,
-    in_stream: Option<Peekable<T::Stream>>,
+pub struct TestableTransportHandle {
+    cell: Cell,
+    out_sink: mpsc::UnboundedSender<OutEvent>,
+    in_stream: Peekable<mpsc::UnboundedReceiver<InEvent>>,
+    received_events: Arc<futures::lock::Mutex<Vec<InEvent>>>,
+    _in_spawn: OwnedSpawn<()>,
+    _out_spawn: OwnedSpawn<()>,
 }
 
-impl<T: TransportHandle> TestableTransportHandle<T> {
-    pub fn new(mut handle: T) -> TestableTransportHandle<T> {
-        let sink = handle.get_sink();
-        let stream = handle.get_stream();
+impl TestableTransportHandle {
+    pub fn new<T: TransportHandle>(mut handle: T, cell: Cell) -> TestableTransportHandle {
+        let mut handle_sink = handle.get_sink();
+        let mut handle_stream = handle.get_stream();
+        spawn_future(handle);
 
-        TestableTransportHandle {
-            handle: Some(handle),
-            out_sink: Some(sink),
-            in_stream: Some(stream.peekable()),
-        }
-    }
+        let received_events = Arc::new(futures::lock::Mutex::new(Vec::new()));
 
-    pub fn start(&mut self, rt: &mut Runtime) {
-        let handle = self.handle.take().unwrap();
-        rt.spawn(handle);
-    }
+        let (in_stream, in_spawn) = {
+            let received_events = received_events.clone();
 
-    pub fn send_test_message(&mut self, rt: &mut Runtime, to: &Node, type_id: u16) {
-        let mut envelope_builder = CapnpFrameBuilder::<envelope::Owned>::new();
-        let mut builder = envelope_builder.get_builder();
-        builder.set_type(type_id);
-        builder.set_layer(TransportLayer::Chain.to_code());
+            let (mut in_sender, in_receiver) = mpsc::unbounded();
+            let spawn = owned_spawn(async move {
+                while let Some(event) = handle_stream.next().await {
+                    let mut received = received_events.lock().await;
+                    received.push(event.clone());
 
-        let out_message = OutMessage {
-            to: vec![to.clone()],
-            expiration: None,
-            envelope_builder,
-            connection: None,
+                    in_sender.send(event).await.unwrap();
+                }
+            });
+
+            (in_receiver, spawn)
         };
 
-        rt.block_on(
-            self.out_sink
-                .as_mut()
-                .unwrap()
-                .send(OutEvent::Message(out_message)),
-        )
-        .unwrap();
-    }
+        let (out_sink, out_spawn) = {
+            let (out_sink, mut out_receiver) = mpsc::unbounded();
 
-    pub fn receive_test_message(&mut self, rt: &mut Runtime) -> (NodeId, u16) {
-        let stream = self.in_stream.as_mut().unwrap();
-        let event = rt.block_on(async { stream.next().await });
-
-        match event.unwrap() {
-            InEvent::Message(message) => {
-                let message_reader = message.envelope.get_reader().unwrap();
-                (message.from.id().clone(), message_reader.get_type())
-            }
-            InEvent::NodeStatus(_, _) => self.receive_test_message(rt),
-        }
-    }
-
-    pub fn receive_connection_status(&mut self, rt: &mut Runtime) -> (NodeId, ConnectionStatus) {
-        let stream = self.in_stream.as_mut().unwrap();
-        let event = rt.block_on(async { stream.next().await });
-
-        match event.unwrap() {
-            InEvent::NodeStatus(node_id, status) => (node_id, status),
-            InEvent::Message(_) => self.receive_connection_status(rt),
-        }
-    }
-
-    pub fn has_message(&mut self) -> Result<bool, Error> {
-        block_on(async {
-            let result = futures::future::poll_fn(|cx| -> Poll<bool> {
-                let stream = self.in_stream.as_mut().unwrap();
-                let pin_stream = Pin::new(stream);
-                let res = pin_stream.poll_peek(cx).map(|res| res.is_some());
-
-                // poll_peek blocks for next. if it's not ready, there is no message
-                match res {
-                    Poll::Pending => Poll::Ready(false),
-                    p => p,
+            let spawn = owned_spawn(async move {
+                while let Some(event) = out_receiver.next().await {
+                    handle_sink.send(event).await.unwrap();
                 }
-            })
-            .await;
+            });
 
-            Ok(result)
+            (out_sink, spawn)
+        };
+
+        TestableTransportHandle {
+            cell,
+            out_sink,
+            in_stream: in_stream.peekable(),
+            received_events,
+            _in_spawn: in_spawn,
+            _out_spawn: out_spawn,
+        }
+    }
+
+    pub async fn send_rdv(&mut self, to: Vec<Node>, rdv: u64) {
+        let frame_builder = Self::empty_message_frame();
+        let msg = OutMessage::from_framed_message(&self.cell, TransportLayer::Chain, frame_builder)
+            .unwrap()
+            .with_rendez_vous_id(rdv.into())
+            .with_to_nodes(to);
+
+        self.send_message(msg).await;
+    }
+
+    pub async fn send_message(&mut self, message: OutMessage) {
+        self.out_sink
+            .send(OutEvent::Message(message))
+            .await
+            .unwrap();
+    }
+
+    pub async fn recv_msg(&mut self) -> Box<InMessage> {
+        loop {
+            let event = self.in_stream.next().await.unwrap();
+            match event {
+                InEvent::Message(message) => return message,
+                InEvent::NodeStatus(_, _) => {}
+            }
+        }
+    }
+
+    pub async fn recv_rdv(&mut self, rdv: u64) -> Box<InMessage> {
+        loop {
+            let msg = self.recv_msg().await;
+            if msg.rendez_vous_id == Some(rdv.into()) {
+                return msg;
+            }
+        }
+    }
+
+    pub async fn recv_status(&mut self) -> (NodeId, ConnectionStatus) {
+        loop {
+            let event = self.in_stream.next().await.unwrap();
+            match event {
+                InEvent::NodeStatus(node_id, status) => return (node_id, status),
+                InEvent::Message(_) => {}
+            }
+        }
+    }
+
+    pub async fn received_events(&self) -> Vec<InEvent> {
+        let received = self.received_events.lock().await;
+        received.clone()
+    }
+
+    pub async fn received_messages(&self) -> Vec<InEvent> {
+        let received = self.received_events.lock().await;
+        received
+            .iter()
+            .filter(|event| match event {
+                InEvent::Message(_event) => true,
+                _ => false,
+            })
+            .cloned()
+            .collect()
+    }
+
+    pub async fn node_status(&self, node_id: &NodeId) -> Option<ConnectionStatus> {
+        let received_events = self.received_events.lock().await;
+
+        received_events
+            .iter()
+            .flat_map(|event| match event {
+                InEvent::NodeStatus(some_node_id, status) if some_node_id == node_id => {
+                    Some(*status)
+                }
+                _ => None,
+            })
+            .last()
+    }
+
+    pub async fn has_msg(&mut self) -> Result<bool, Error> {
+        let result = futures::future::poll_fn(|cx| -> Poll<bool> {
+            let pin_stream = Pin::new(&mut self.in_stream);
+            let res = pin_stream.poll_peek(cx).map(|res| res.is_some());
+
+            // poll_peek blocks for next. if it's not ready, there is no message
+            match res {
+                Poll::Pending => Poll::Ready(false),
+                p => p,
+            }
         })
+        .await;
+
+        Ok(result)
+    }
+
+    pub fn empty_message_frame() -> CapnpFrameBuilder<block_operation_header::Owned> {
+        let mut frame_builder = CapnpFrameBuilder::<block_operation_header::Owned>::new();
+        let _ = frame_builder.get_builder();
+        frame_builder
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use exocore_core::cell::LocalNode;
-    use exocore_core::futures::Runtime;
+    use exocore_core::cell::{FullCell, LocalNode};
 
-    #[test]
-    fn send_and_receive() {
-        let mut rt = Runtime::new().unwrap();
+    #[tokio::test]
+    async fn send_and_receive() {
         let hub = MockTransport::default();
 
         let node0 = LocalNode::generate();
+        let cell0 = FullCell::generate(node0.clone());
         let node1 = LocalNode::generate();
+        let cell1 = FullCell::generate(node1.clone());
 
-        let transport0 = hub.get_transport(node0.clone(), TransportLayer::Chain);
-        let mut transport0_test = transport0.into_testable();
-        transport0_test.start(&mut rt);
+        let t0 = hub.get_transport(node0.clone(), TransportLayer::Chain);
+        let mut t0 = TestableTransportHandle::new(t0, cell0.cell().clone());
 
-        let transport1 = hub.get_transport(node1.clone(), TransportLayer::Chain);
-        let mut transport1_test = transport1.into_testable();
-        transport1_test.start(&mut rt);
+        let t1 = hub.get_transport(node1.clone(), TransportLayer::Chain);
+        let mut t1 = TestableTransportHandle::new(t1, cell1.cell().clone());
 
-        transport0_test.send_test_message(&mut rt, node1.node(), 100);
+        t0.send_rdv(vec![node1.node().clone()], 100).await;
 
-        let (msg_node, msg) = transport1_test.receive_test_message(&mut rt);
-        assert_eq!(&msg_node, node0.id());
-        assert_eq!(msg, 100);
+        let msg = t1.recv_msg().await;
+        assert_eq!(msg.from.id(), node0.id());
+        assert_eq!(msg.rendez_vous_id, Some(100.into()));
 
-        transport1_test.send_test_message(&mut rt, node0.node(), 101);
+        t1.send_rdv(vec![node0.node().clone()], 101).await;
 
-        let (msg_node, msg) = transport0_test.receive_test_message(&mut rt);
-        assert_eq!(&msg_node, node1.id());
-        assert_eq!(msg, 101);
+        let msg = t0.recv_msg().await;
+        assert_eq!(msg.from.id(), node1.id());
+        assert_eq!(msg.rendez_vous_id, Some(101.into()));
     }
 
-    #[test]
-    fn connection_status_notification() {
-        let mut rt = Runtime::new().unwrap();
+    #[tokio::test]
+    async fn connection_status_notification() {
         let hub = MockTransport::default();
 
         let node0 = LocalNode::generate();
-        let transport0 = hub.get_transport(node0.clone(), TransportLayer::Chain);
-        let mut transport0_test = transport0.into_testable();
-        transport0_test.start(&mut rt);
+        let cell0 = FullCell::generate(node0.clone());
+
+        let t0 = hub.get_transport(node0.clone(), TransportLayer::Chain);
+        let mut t0 = TestableTransportHandle::new(t0, cell0.cell().clone());
 
         hub.notify_node_connection_status(node0.id(), ConnectionStatus::Connected);
-        let (msg_node, status) = transport0_test.receive_connection_status(&mut rt);
+        let (msg_node, status) = t0.recv_status().await;
         assert_eq!(&msg_node, node0.id());
         assert_eq!(status, ConnectionStatus::Connected);
     }

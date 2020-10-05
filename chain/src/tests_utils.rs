@@ -18,7 +18,7 @@ use crate::engine::{EngineHandle, EngineOperation, Event, RequestTrackerConfig};
 use crate::operation::OperationId;
 use crate::*;
 use exocore_core::cell::FullCell;
-use exocore_transport::mock::MockTransport;
+use exocore_transport::testing::MockTransport;
 use exocore_transport::TransportLayer;
 
 /// exocore-chain testing utility

@@ -719,7 +719,7 @@ mod tests {
         futures::Runtime,
         tests_utils::expect_eventually,
     };
-    use exocore_transport::mock::MockTransport;
+    use exocore_transport::testing::MockTransport;
 
     #[test]
     fn connects_to_online_node() -> anyhow::Result<()> {

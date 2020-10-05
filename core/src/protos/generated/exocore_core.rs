@@ -1,3 +1,21 @@
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AuthToken {
+    #[prost(bytes, tag = "1")]
+    pub data: std::vec::Vec<u8>,
+    #[prost(bytes, tag = "2")]
+    pub signature: std::vec::Vec<u8>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AuthTokenData {
+    #[prost(bytes, tag = "1")]
+    pub cell_id: std::vec::Vec<u8>,
+    #[prost(bytes, tag = "2")]
+    pub node_id: std::vec::Vec<u8>,
+    #[prost(message, optional, tag = "3")]
+    pub signature_date: ::std::option::Option<::prost_types::Timestamp>,
+    #[prost(message, optional, tag = "4")]
+    pub expiration_date: ::std::option::Option<::prost_types::Timestamp>,
+}
 #[derive(Clone, PartialEq, ::prost::Message, Serialize, Deserialize)]
 pub struct LocalNodeConfig {
     #[prost(string, tag = "1")]

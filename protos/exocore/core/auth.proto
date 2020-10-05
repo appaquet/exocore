@@ -1,16 +1,16 @@
 syntax = "proto3";
 
-package exocore.transport;
+package exocore.core;
 
 import "google/protobuf/timestamp.proto";
 
-message Token {
+message AuthToken {
     bytes data = 1;
 
     bytes signature = 2;
 }
 
-message TokenData {
+message AuthTokenData {
     bytes cell_id = 1;
 
     bytes node_id = 2;

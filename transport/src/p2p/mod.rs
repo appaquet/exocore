@@ -2,14 +2,13 @@ use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::{Arc, RwLock, Weak};
 use std::task::{Context, Poll};
-use std::time::Duration;
 
 use futures::channel::mpsc;
 use futures::channel::mpsc::SendError;
 use futures::prelude::*;
 use futures::sink::SinkMapErr;
 use futures::{FutureExt, SinkExt, StreamExt};
-use libp2p::core::{Multiaddr, PeerId};
+use libp2p::core::PeerId;
 use libp2p::swarm::Swarm;
 
 use behaviour::{ExocoreBehaviour, ExocoreBehaviourEvent, ExocoreBehaviourMessage, PeerStatus};
@@ -26,6 +25,9 @@ use crate::{transport::ConnectionID, TransportHandle, TransportLayer};
 
 mod behaviour;
 mod protocol;
+
+mod config;
+pub use config::Libp2pTransportConfig;
 
 /// Libp2p transport used by all layers of Exocore through handles. There is one
 /// handle per cell per layer.
@@ -94,7 +96,7 @@ impl Libp2pTransport {
     pub async fn run(self) -> Result<(), Error> {
         let behaviour = ExocoreBehaviour::new();
 
-        #[cfg(all(feature = "libp2p-web", target_arch = "wasm32"))]
+        #[cfg(all(feature = "p2p-web", target_arch = "wasm32"))]
         let mut swarm = {
             use libp2p::{wasm_ext::ffi::websocket_transport, wasm_ext::ExtTransport, Transport};
 
@@ -118,7 +120,7 @@ impl Libp2pTransport {
             Swarm::new(transport, behaviour, self.local_node.peer_id().clone())
         };
 
-        #[cfg(feature = "libp2p-full")]
+        #[cfg(feature = "p2p-full")]
         let mut swarm = {
             let transport = libp2p::build_tcp_ws_noise_mplex_yamux(
                 self.local_node.keypair().to_libp2p().clone(),
@@ -345,39 +347,6 @@ impl Libp2pTransport {
     }
 }
 
-/// `Libp2pTransport` configuration.
-#[derive(Clone)]
-pub struct Libp2pTransportConfig {
-    pub listen_addresses: Vec<Multiaddr>,
-    pub handle_in_channel_size: usize,
-    pub handle_out_channel_size: usize,
-    pub handles_to_behaviour_channel_size: usize,
-    pub swarm_nodes_update_interval: Duration,
-}
-
-impl Libp2pTransportConfig {
-    fn listen_addresses(&self, local_node: &LocalNode) -> Result<Vec<Multiaddr>, Error> {
-        let mut conf_addresses = self.listen_addresses.clone();
-        let mut node_addresses = local_node.addresses();
-
-        node_addresses.append(&mut conf_addresses);
-
-        Ok(node_addresses)
-    }
-}
-
-impl Default for Libp2pTransportConfig {
-    fn default() -> Self {
-        Libp2pTransportConfig {
-            listen_addresses: Vec::new(),
-            handle_in_channel_size: 1000,
-            handle_out_channel_size: 1000,
-            handles_to_behaviour_channel_size: 5000,
-            swarm_nodes_update_interval: Duration::from_secs(1),
-        }
-    }
-}
-
 /// Transport handles created on the `Libp2pTransport`.
 ///
 /// A transport can be used for multiple cells, so multiple handles for the same
@@ -412,6 +381,7 @@ struct HandleChannels {
 /// Handle taken by a Cell layer to receive and send message for a given node &
 /// cell.
 pub struct Libp2pTransportHandle {
+    // TODO: Check if we can merge with HTTP
     cell_id: CellId,
     layer: TransportLayer,
     inner: Weak<RwLock<Handles>>,
@@ -466,317 +436,167 @@ impl Drop for Libp2pTransportHandle {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
+    use std::time::Duration;
 
-    use futures::{SinkExt, StreamExt};
-
-    use exocore_core::cell::Node;
-    use exocore_core::framing::CapnpFrameBuilder;
-    use exocore_core::futures::Runtime;
-    use exocore_core::protos::generated::data_chain_capnp::block_operation_header;
-    use exocore_core::tests_utils::expect_eventually;
+    use exocore_core::cell::FullCell;
+    use exocore_core::futures::delay_for;
+    use exocore_core::futures::spawn_future;
+    use exocore_core::tests_utils::async_expect_eventually;
     use exocore_core::time::{ConsistentTimestamp, Instant};
-    use exocore_core::{cell::FullCell, tests_utils::expect_result_eventually};
 
-    use crate::OutMessage;
+    use crate::{testing::TestableTransportHandle, OutMessage};
 
     use super::*;
 
-    #[test]
-    fn test_integration() -> anyhow::Result<()> {
-        let mut rt = exocore_core::futures::Builder::new()
-            .threaded_scheduler()
-            .enable_all()
-            .build()?;
+    #[tokio::test(threaded_scheduler)]
+    async fn test_integration() -> anyhow::Result<()> {
+        let n1 = LocalNode::generate();
+        n1.add_address("/ip4/127.0.0.1/tcp/3003".parse()?);
+        let n1_cell = FullCell::generate(n1.clone());
 
-        let node1 = LocalNode::generate();
-        node1.add_address("/ip4/127.0.0.1/tcp/3003".parse().unwrap());
-        let node1_cell = FullCell::generate(node1.clone());
+        let n2 = LocalNode::generate();
+        n2.add_address("/ip4/127.0.0.1/tcp/3004".parse()?);
+        let n2_cell = n1_cell.clone().with_local_node(n2.clone());
 
-        let node2 = LocalNode::generate();
-        node2.add_address("/ip4/127.0.0.1/tcp/3004".parse().unwrap());
-        let node2_cell = node1_cell.clone().with_local_node(node2.clone());
+        n1_cell.nodes_mut().add(n2.node().clone());
+        n2_cell.nodes_mut().add(n1.node().clone());
 
-        node1_cell.nodes_mut().add(node2.node().clone());
-        node2_cell.nodes_mut().add(node1.node().clone());
-
-        let mut transport1 = Libp2pTransport::new(node1.clone(), Libp2pTransportConfig::default());
-        let handle1 = transport1.get_handle(node1_cell.cell().clone(), TransportLayer::Chain)?;
-        let handle1_tester = TransportHandleTester::new(&mut rt, handle1, node1_cell.clone());
-        rt.spawn(async {
+        let mut transport1 = Libp2pTransport::new(n1.clone(), Libp2pTransportConfig::default());
+        let handle1 = transport1.get_handle(n1_cell.cell().clone(), TransportLayer::Chain)?;
+        let mut handle1 = TestableTransportHandle::new(handle1, n1_cell.cell().clone());
+        spawn_future(async {
             let res = transport1.run().await;
             info!("Transport done: {:?}", res);
         });
-        handle1_tester.start_handle(&mut rt);
 
-        let mut transport2 = Libp2pTransport::new(node2.clone(), Libp2pTransportConfig::default());
-        let handle2 = transport2.get_handle(node2_cell.cell().clone(), TransportLayer::Chain)?;
-        let handle2_tester = TransportHandleTester::new(&mut rt, handle2, node2_cell);
-        rt.spawn(async {
+        let mut transport2 = Libp2pTransport::new(n2.clone(), Libp2pTransportConfig::default());
+        let handle2 = transport2.get_handle(n2_cell.cell().clone(), TransportLayer::Chain)?;
+        let mut handle2 = TestableTransportHandle::new(handle2, n2_cell.cell().clone());
+        spawn_future(async {
             let res = transport2.run().await;
             info!("Transport done: {:?}", res);
         });
-        handle2_tester.start_handle(&mut rt);
 
         // wait for nodes to be connected
-        expect_eventually(|| {
-            handle1_tester.node_status(node2.id()) == ConnectionStatus::Connected
-                && handle2_tester.node_status(node1.id()) == ConnectionStatus::Connected
-        });
+        async_expect_eventually(|| async {
+            handle1.node_status(n2.id()).await == Some(ConnectionStatus::Connected)
+                && handle2.node_status(n1.id()).await == Some(ConnectionStatus::Connected)
+        })
+        .await;
 
         // send 1 to 2
-        handle1_tester.send(vec![node2.node().clone()], 123);
-        let msg = expect_result_eventually(|| {
-            handle2_tester
-                .receive_memo_message(123)
-                .ok_or_else(|| anyhow::anyhow!("not received"))
-        });
+        handle1.send_rdv(vec![n2.node().clone()], 123).await;
+        let msg = handle2.recv_rdv(123).await;
 
         // reply to message
-        let msg_frame = TransportHandleTester::empty_message_frame();
-        let reply_msg = msg.to_response_message(node1_cell.cell(), msg_frame)?;
-        handle2_tester.send_message(reply_msg);
-        expect_eventually(|| handle1_tester.check_received_memo_message(123));
+        let msg_frame = TestableTransportHandle::empty_message_frame();
+        let reply_msg = msg.to_response_message(n1_cell.cell(), msg_frame)?;
+        handle2.send_message(reply_msg).await;
+        handle1.recv_rdv(123).await;
 
         // send 2 to 1 by duplicating node, should expect receiving 2 new messages (so total 3 because of prev reply)
-        handle2_tester.send(vec![node1.node().clone(), node1.node().clone()], 345);
-        expect_eventually(|| handle1_tester.received_messages().len() == 3);
+        handle2
+            .send_rdv(vec![n1.node().clone(), n1.node().clone()], 345)
+            .await;
+        async_expect_eventually(|| async { handle1.received_messages().await.len() == 3 }).await;
 
         Ok(())
     }
 
-    #[test]
-    fn handle_removal_and_transport_kill() -> anyhow::Result<()> {
-        let mut rt = Runtime::new()?;
+    #[tokio::test]
+    async fn handle_removal_and_transport_kill() -> anyhow::Result<()> {
+        let n1 = LocalNode::generate();
+        n1.add_address("/ip4/127.0.0.1/tcp/0".parse()?);
+        let n1_cell = FullCell::generate(n1.clone());
 
-        let node1 = LocalNode::generate();
-        node1.add_address("/ip4/127.0.0.1/tcp/0".parse()?);
-        let node1_cell = FullCell::generate(node1.clone());
+        let n2 = LocalNode::generate();
+        n2.add_address("/ip4/127.0.0.1/tcp/0".parse()?);
+        let n2_cell = FullCell::generate(n2);
 
-        let node2 = LocalNode::generate();
-        node2.add_address("/ip4/127.0.0.1/tcp/0".parse()?);
-        let node2_cell = FullCell::generate(node2);
-
-        let mut transport = Libp2pTransport::new(node1, Libp2pTransportConfig::default());
+        let mut transport = Libp2pTransport::new(n1, Libp2pTransportConfig::default());
         let inner_weak = Arc::downgrade(&transport.handles);
 
         // we create 2 handles
-        let handle1 = transport.get_handle(node1_cell.cell().clone(), TransportLayer::Chain)?;
-        let handle1_tester = TransportHandleTester::new(&mut rt, handle1, node1_cell);
+        let handle1 = transport.get_handle(n1_cell.cell().clone(), TransportLayer::Chain)?;
+        let handle2 = transport.get_handle(n2_cell.cell().clone(), TransportLayer::Chain)?;
 
-        let handle2 = transport.get_handle(node2_cell.cell().clone(), TransportLayer::Chain)?;
-        let handle2_tester = TransportHandleTester::new(&mut rt, handle2, node2_cell);
-
-        rt.spawn(async {
+        spawn_future(async {
             let res = transport.run().await;
             info!("Transport done: {:?}", res);
         });
-        handle1_tester.start_handle(&mut rt);
 
         // we drop first handle, we expect inner to now contain its handle anymore
-        {
-            drop(handle1_tester);
+        drop(handle1);
+        async_expect_eventually(|| async {
             let inner = inner_weak.upgrade().unwrap();
             let inner = inner.read().unwrap();
-            assert_eq!(1, inner.handles.len());
-        }
+            inner.handles.len() == 1
+        })
+        .await;
 
         // we drop second handle, we expect inner to be dropped and therefor transport
         // killed
-        drop(handle2_tester);
-        expect_eventually(|| inner_weak.upgrade().is_none());
+        drop(handle2);
+        async_expect_eventually(|| async { inner_weak.upgrade().is_none() }).await;
 
         Ok(())
     }
 
-    #[test]
-    fn should_queue_message_until_connected() -> anyhow::Result<()> {
-        let mut rt = Runtime::new()?;
+    #[tokio::test]
+    async fn should_queue_message_until_connected() -> anyhow::Result<()> {
+        let n1 = LocalNode::generate();
+        n1.add_address("/ip4/127.0.0.1/tcp/3005".parse()?);
+        let n1_cell = FullCell::generate(n1.clone());
 
-        let node1 = LocalNode::generate();
-        node1.add_address("/ip4/127.0.0.1/tcp/3005".parse().unwrap());
-        let node1_cell = FullCell::generate(node1.clone());
+        let n2 = LocalNode::generate();
+        n2.add_address("/ip4/127.0.0.1/tcp/3006".parse()?);
+        let n2_cell = n1_cell.clone().with_local_node(n2.clone());
 
-        let node2 = LocalNode::generate();
-        node2.add_address("/ip4/127.0.0.1/tcp/3006".parse().unwrap());
-        let node2_cell = node1_cell.clone().with_local_node(node2.clone());
+        n1_cell.nodes_mut().add(n2.node().clone());
+        n2_cell.nodes_mut().add(n1.node().clone());
 
-        node1_cell.nodes_mut().add(node2.node().clone());
-        node2_cell.nodes_mut().add(node1.node().clone());
-
-        let mut transport1 = Libp2pTransport::new(node1, Libp2pTransportConfig::default());
-        let handle1 = transport1.get_handle(node1_cell.cell().clone(), TransportLayer::Chain)?;
-        let handle1_tester = TransportHandleTester::new(&mut rt, handle1, node1_cell.clone());
-        rt.spawn(async {
-            let res = transport1.run().await;
+        let mut t2 = Libp2pTransport::new(n1, Libp2pTransportConfig::default());
+        let h1 = t2.get_handle(n1_cell.cell().clone(), TransportLayer::Chain)?;
+        let mut h1 = TestableTransportHandle::new(h1, n1_cell.cell().clone());
+        spawn_future(async {
+            let res = t2.run().await;
             info!("Transport done: {:?}", res);
         });
-        handle1_tester.start_handle(&mut rt);
 
         // send 1 to 2, but 2 is not yet connected. It should queue
-        handle1_tester.send(vec![node2.node().clone()], 1);
+        h1.send_rdv(vec![n2.node().clone()], 1).await;
 
         // send 1 to 2, but with expired message, which shouldn't be delivered
-        let msg_frame = TransportHandleTester::empty_message_frame();
-        let msg = OutMessage::from_framed_message(&node1_cell, TransportLayer::Chain, msg_frame)?
+        let msg_frame = TestableTransportHandle::empty_message_frame();
+        let msg = OutMessage::from_framed_message(&n1_cell, TransportLayer::Chain, msg_frame)?
             .with_expiration(Some(Instant::now() - Duration::from_secs(5)))
             .with_rendez_vous_id(ConsistentTimestamp(2))
-            .with_to_nodes(vec![node2.node().clone()]);
-        handle1_tester.send_message(msg);
+            .with_to_nodes(vec![n2.node().clone()]);
+        h1.send_message(msg).await;
 
         // leave some time for first messages to arrive
         std::thread::sleep(Duration::from_millis(100));
 
         // we create second node
-        let mut transport2 = Libp2pTransport::new(node2.clone(), Libp2pTransportConfig::default());
-        let handle2 = transport2.get_handle(node2_cell.cell().clone(), TransportLayer::Chain)?;
-        let handle2_tester = TransportHandleTester::new(&mut rt, handle2, node2_cell);
-        rt.spawn(async {
-            let res = transport2.run().await;
+        let mut t2 = Libp2pTransport::new(n2.clone(), Libp2pTransportConfig::default());
+        let h2 = t2.get_handle(n2_cell.cell().clone(), TransportLayer::Chain)?;
+        let mut h2 = TestableTransportHandle::new(h2, n2_cell.cell().clone());
+        spawn_future(async {
+            let res = t2.run().await;
             info!("Transport done: {:?}", res);
         });
-        handle2_tester.start_handle(&mut rt);
 
         // leave some time to start listening and connect
-        std::thread::sleep(Duration::from_millis(100));
+        delay_for(Duration::from_millis(100)).await;
 
         // send another message to force redial
-        handle1_tester.send(vec![node2.node().clone()], 3);
+        h1.send_rdv(vec![n2.node().clone()], 3).await;
 
         // should receive 1 & 3, but not 2 since it had expired
-        expect_eventually(|| {
-            handle2_tester.check_received_memo_message(1)
-                && !handle2_tester.check_received_memo_message(2)
-                && handle2_tester.check_received_memo_message(3)
-        });
+        h2.recv_rdv(1).await;
+        h2.recv_rdv(3).await;
+        assert!(!h2.has_msg().await?);
 
         Ok(())
-    }
-
-    struct TransportHandleTester {
-        cell: FullCell,
-        handle: Libp2pTransportHandle,
-        sender: mpsc::UnboundedSender<OutEvent>,
-        received: Arc<Mutex<Vec<InEvent>>>,
-    }
-
-    impl TransportHandleTester {
-        fn new(
-            rt: &mut Runtime,
-            mut handle: Libp2pTransportHandle,
-            cell: FullCell,
-        ) -> TransportHandleTester {
-            let (sender, receiver) = mpsc::unbounded();
-            let mut sink = handle.get_sink();
-            rt.spawn(async move {
-                let mut receiver = receiver;
-                while let Some(event) = receiver.next().await {
-                    if let Err(err) = sink.send(event).await {
-                        error!("Error sending to transport: {}", err);
-                    }
-                }
-            });
-
-            let received = Arc::new(Mutex::new(Vec::new()));
-            let received_weak = Arc::downgrade(&received);
-            let mut stream = handle.get_stream();
-            rt.spawn(async move {
-                while let Some(msg) = stream.next().await {
-                    let received = received_weak.upgrade().unwrap();
-                    let mut received = received.lock().unwrap();
-                    received.push(msg);
-                }
-            });
-
-            TransportHandleTester {
-                cell,
-                handle,
-                sender,
-                received,
-            }
-        }
-
-        fn start_handle(&self, rt: &mut Runtime) {
-            rt.block_on(self.handle.on_started());
-        }
-
-        fn empty_message_frame() -> CapnpFrameBuilder<block_operation_header::Owned> {
-            let mut frame_builder = CapnpFrameBuilder::<block_operation_header::Owned>::new();
-            let _ = frame_builder.get_builder();
-            frame_builder
-        }
-
-        fn send(&self, to_nodes: Vec<Node>, memo: u64) {
-            let frame_builder = Self::empty_message_frame();
-            let msg =
-                OutMessage::from_framed_message(&self.cell, TransportLayer::Chain, frame_builder)
-                    .unwrap()
-                    .with_rendez_vous_id(ConsistentTimestamp(memo))
-                    .with_to_nodes(to_nodes);
-
-            self.send_message(msg);
-        }
-
-        fn send_message(&self, message: OutMessage) {
-            self.sender
-                .unbounded_send(OutEvent::Message(message))
-                .unwrap();
-        }
-
-        fn received_events(&self) -> Vec<InEvent> {
-            let received = self.received.lock().unwrap();
-            received.clone()
-        }
-
-        fn received_messages(&self) -> Vec<InEvent> {
-            let received = self.received.lock().unwrap();
-            received
-                .iter()
-                .filter(|event| match event {
-                    InEvent::Message(_event) => true,
-                    _ => false,
-                })
-                .cloned()
-                .collect()
-        }
-
-        fn node_status(&self, node_id: &NodeId) -> ConnectionStatus {
-            let received = self.received.lock().unwrap();
-            let status = received
-                .iter()
-                .flat_map(|event| match event {
-                    InEvent::NodeStatus(some_node_id, status) if some_node_id == node_id => {
-                        Some(*status)
-                    }
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
-
-            status
-                .last()
-                .cloned()
-                .unwrap_or_else(|| ConnectionStatus::Disconnected)
-        }
-
-        fn check_received_memo_message(&self, memo: u64) -> bool {
-            self.receive_memo_message(memo).is_some()
-        }
-
-        fn receive_memo_message(&self, memo: u64) -> Option<Box<InMessage>> {
-            let received = self.received_events();
-            received
-                .into_iter()
-                .flat_map(|msg| match msg {
-                    InEvent::Message(event) => {
-                        if event.rendez_vous_id == Some(ConsistentTimestamp(memo)) {
-                            Some(event)
-                        } else {
-                            None
-                        }
-                    }
-                    InEvent::NodeStatus(_, _) => None,
-                })
-                .next()
-        }
     }
 }

@@ -12,12 +12,14 @@ use std::pin::Pin;
 use std::sync::{Arc, RwLock, Weak};
 use std::task::{Context, Poll};
 
+// TODO: Support connection ID
+
 /// Transport handle that wraps 2 other transport handles. When it receives
 /// events, it notes from which transport it came so that replies can be sent
 /// back via the same transport.
 ///
-/// !! If we never received an event for a node, it will automatically select
-/// the first handle !!
+/// Warning: If we never received an event for a node, it will automatically
+/// select the first handle !!
 #[pin_project]
 pub struct EitherTransportHandle<TLeft, TRight>
 where
@@ -55,7 +57,7 @@ where
 
     fn get_side(
         nodes_side: &Weak<RwLock<HashMap<NodeId, Side>>>,
-        node_id: &NodeId,
+        node_id: &NodeId, // TODO: Add optional connection ID
     ) -> Result<Option<Side>, Error> {
         let nodes_side = nodes_side.upgrade().ok_or(Error::Upgrade)?;
         let nodes_side = nodes_side.read()?;
@@ -75,7 +77,7 @@ where
         let nodes_side = nodes_side.upgrade().ok_or(Error::Upgrade)?;
 
         {
-            // check if node is already in map with read lock
+            // check if node is already in map with same side
             let nodes_side = nodes_side.read()?;
             if nodes_side.get(node_id) == Some(&side) {
                 return Ok(());
@@ -83,7 +85,7 @@ where
         }
 
         {
-            // if we're here, node is not in the map and need the write lock
+            // if we're here, node is not in the map or is not on same side
             let mut nodes_side = nodes_side.write()?;
             nodes_side.insert(node_id.clone(), side);
         }
@@ -152,7 +154,7 @@ where
                                     "Out event didn't have any destination node".to_string(),
                                 )
                             })?;
-                            Self::get_side(&nodes_side, node.id())?
+                            Self::get_side(&nodes_side, node.id())? // TODO: Add connection ID
                         }
                     };
 
@@ -230,8 +232,8 @@ where
     }
 }
 
-#[derive(PartialEq, Clone, Copy)]
-enum Side {
+#[derive(PartialEq, Clone, Copy, Debug)]
+pub enum Side {
     Left,
     Right,
 }
@@ -239,72 +241,57 @@ enum Side {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mock::{MockTransport, TestableTransportHandle};
+    use crate::testing::{MockTransport, TestableTransportHandle};
     use crate::TransportLayer::Index;
-    use exocore_core::cell::LocalNode;
-    use exocore_core::futures::Runtime;
-    use exocore_core::tests_utils::{
-        expect_result_eventually, result_assert_false, result_assert_true,
-    };
+    use exocore_core::cell::{FullCell, LocalNode};
 
-    #[test]
-    fn test_send_and_receive() -> anyhow::Result<()> {
-        let mut rt = Runtime::new()?;
+    // TODO: Test bypass side if connection id
 
-        let mock_transport1 = MockTransport::default();
-        let mock_transport2 = MockTransport::default();
+    #[tokio::test]
+    async fn test_send_and_receive() -> anyhow::Result<()> {
+        let mock1 = MockTransport::default();
+        let mock2 = MockTransport::default();
+
         let node1 = LocalNode::generate();
+        let cell1 = FullCell::generate(node1.clone());
         let node2 = LocalNode::generate();
+        let cell2 = FullCell::generate(node2.clone());
 
         // create 2 different kind of transports
         // on node 1, we use it combined using the EitherTransportHandle
-        let node1_transport1 = mock_transport1.get_transport(node1.clone(), Index);
-        let node1_transport2 = mock_transport2.get_transport(node1.clone(), Index);
-        let mut node1_either = rt.block_on(async move {
-            TestableTransportHandle::new(EitherTransportHandle::new(
-                node1_transport1,
-                node1_transport2,
-            ))
-        });
-        node1_either.start(&mut rt);
+        let node1_t1 = mock1.get_transport(node1.clone(), Index);
+        let node1_t2 = mock2.get_transport(node1.clone(), Index);
+        let mut node1_either = TestableTransportHandle::new(
+            EitherTransportHandle::new(node1_t1, node1_t2),
+            cell1.cell().clone(),
+        );
 
         // on node 2, we use transports independently
-        let mut node2_transport1 = mock_transport1
-            .get_transport(node2.clone(), Index)
-            .into_testable();
-        node2_transport1.start(&mut rt);
-        let mut node2_transport2 = mock_transport2
-            .get_transport(node2.clone(), Index)
-            .into_testable();
-        node2_transport2.start(&mut rt);
+        let node2_t1 = mock1.get_transport(node2.clone(), Index);
+        let mut node2_t1 = TestableTransportHandle::new(node2_t1, cell2.cell().clone());
+        let node2_t2 = mock2.get_transport(node2.clone(), Index);
+        let mut node2_t2 = TestableTransportHandle::new(node2_t2, cell2.cell().clone());
 
-        // since node1 has never sent message, it will send to node 2 via transport 1
-        // (left side)
-        node1_either.send_test_message(&mut rt, node2.node(), 1);
-        expect_result_eventually::<_, _, anyhow::Error>(|| {
-            let transport1_has_message = node2_transport1.has_message()?;
-            let transport2_has_message = node2_transport2.has_message()?;
-            result_assert_true(transport1_has_message)?;
-            result_assert_false(transport2_has_message)?;
-            Ok(())
-        });
+        // since node1 has never sent message, it will send to node 2 via transport 1 (left side)
+        node1_either.send_rdv(vec![node2.node().clone()], 1).await;
+        let _ = node2_t1.recv_msg().await;
+        assert_eq!(node2_t2.has_msg().await?, false);
 
         // sending to node1 via both transport should be received
-        node2_transport1.send_test_message(&mut rt, node1.node(), 2);
-        let (from, msg) = node1_either.receive_test_message(&mut rt);
-        assert_eq!(&from, node2.id());
-        assert_eq!(msg, 2);
-        node2_transport2.send_test_message(&mut rt, node1.node(), 3);
-        let (from, msg) = node1_either.receive_test_message(&mut rt);
-        assert_eq!(&from, node2.id());
-        assert_eq!(msg, 3);
+        node2_t1.send_rdv(vec![node1.node().clone()], 2).await;
+        let msg = node1_either.recv_msg().await;
+        assert_eq!(msg.from.id(), node2.id());
+        assert_eq!(msg.rendez_vous_id, Some(2.into()));
+        node2_t2.send_rdv(vec![node1.node().clone()], 3).await;
+        let msg = node1_either.recv_msg().await;
+        assert_eq!(msg.from.id(), node2.id());
+        assert_eq!(msg.rendez_vous_id, Some(3.into()));
 
-        // sending to node2 should now be sent via transport 2 since its last used
-        // transport (right side)
-        node1_either.send_test_message(&mut rt, node2.node(), 4);
-        let (from, msg) = node2_transport2.receive_test_message(&mut rt);
-        assert_eq!(&from, node1.id());
-        assert_eq!(msg, 4);
+        // sending to node2 should now be sent via transport 2 since its last used transport (right side)
+        node1_either.send_rdv(vec![node2.node().clone()], 4).await;
+        let msg = node2_t2.recv_msg().await;
+        assert_eq!(msg.from.id(), node1.id());
+        assert_eq!(msg.rendez_vous_id, Some(4.into()));
 
         Ok(())
     }

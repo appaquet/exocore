@@ -68,6 +68,15 @@ impl OutMessage {
         self.connection = Some(connection);
         self
     }
+
+    pub(crate) fn to_in_message(&self, from_node: Node) -> Result<Box<InMessage>, Error> {
+        let envelope = self.envelope_builder.as_owned_frame();
+
+        let mut msg = InMessage::from_node_and_frame(from_node, envelope)?;
+        msg.connection = self.connection.clone();
+
+        Ok(msg)
+    }
 }
 
 /// Message receive from another node.
@@ -136,7 +145,7 @@ impl InMessage {
             from: self.from.clone(),
             layer: self.layer,
             rendez_vous_id: self.get_rendez_vous_id()?,
-            connection: self.connection,
+            connection: self.connection.clone(),
         })
     }
 
@@ -185,7 +194,7 @@ impl MessageReplyToken {
             .with_to_node(self.from.clone())
             .with_rendez_vous_id(self.rendez_vous_id);
 
-        out_message.connection = self.connection;
+        out_message.connection = self.connection.clone();
 
         Ok(out_message)
     }

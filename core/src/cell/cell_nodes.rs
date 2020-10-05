@@ -49,7 +49,7 @@ pub trait CellNodes {
         if nb_nodes == 0 {
             false
         } else {
-            count >= (nb_nodes / 2) + 1
+            count > nb_nodes / 2
         }
     }
 

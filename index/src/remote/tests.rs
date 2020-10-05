@@ -5,7 +5,7 @@ use futures::executor::block_on_stream;
 use exocore_core::cell::{CellNodeRole, LocalNode};
 use exocore_core::protos::generated::exocore_index::{EntityQuery, EntityResults, MutationResult};
 use exocore_core::tests_utils::expect_eventually;
-use exocore_transport::mock::MockTransportHandle;
+use exocore_transport::testing::MockTransportHandle;
 use exocore_transport::TransportLayer;
 
 use crate::error::Error;
