@@ -5,7 +5,7 @@ use futures::sink::Sink;
 
 pub type TransportHandleOnStart = Box<dyn Future<Output = ()> + Send + Unpin + 'static>;
 
-/// Handle for a cell & layer to the transport
+/// Handle to a transport to be used by a service of a cell.
 pub trait TransportHandle: Future<Output = ()> + Send + Unpin + 'static {
     type Sink: Sink<OutEvent, Error = Error> + Send + Unpin + 'static;
     type Stream: Stream<Item = InEvent> + Send + Unpin + 'static;
@@ -15,7 +15,7 @@ pub trait TransportHandle: Future<Output = ()> + Send + Unpin + 'static {
     fn get_stream(&mut self) -> Self::Stream;
 }
 
-/// Layer of the Exocore architecture to which a message is intented /
+/// Component of the Exocore architecture to which a message is intented /
 /// originating. Ex: Chain layer
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum TransportLayer {

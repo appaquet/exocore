@@ -10,28 +10,30 @@ use super::config::HTTPTransportConfig;
 
 pub type RequestID = u64;
 
-pub struct Requests {
+/// Tracks incoming HTTP requests for which we are waiting a reply from a service.
+pub struct RequestTracker {
     requests: Mutex<HashMap<RequestID, oneshot::Sender<OutMessage>>>,
     next_id: AtomicU64,
     config: HTTPTransportConfig,
 }
 
-impl Requests {
-    pub fn new(config: HTTPTransportConfig) -> Requests {
-        Requests {
+impl RequestTracker {
+    pub fn new(config: HTTPTransportConfig) -> RequestTracker {
+        RequestTracker {
             requests: Mutex::new(HashMap::new()),
             next_id: AtomicU64::new(0),
             config,
         }
     }
 
-    pub async fn push(self: Arc<Self>) -> Request {
+    /// Pushes a new request for which we'll expect a reply from a service.
+    pub async fn push(self: Arc<Self>) -> TrackedRequest {
         let mut requests = self.requests.lock().await;
 
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
 
         let (sender, receiver) = oneshot::channel();
-        let request = Request {
+        let request = TrackedRequest {
             id,
             requests: Arc::downgrade(&self),
             receiver: Some(receiver),
@@ -43,6 +45,7 @@ impl Requests {
         request
     }
 
+    /// Handles a reply from a service to be sent back to a request.
     pub async fn reply(&self, request_id: RequestID, message: OutMessage) {
         let sender = {
             let mut requests = self.requests.lock().await;
@@ -70,14 +73,16 @@ impl Requests {
     }
 }
 
-pub struct Request {
+/// Receiving end of a the tracked request. This is used in the HTTP request handler to wait
+/// for a reply from a service.
+pub struct TrackedRequest {
     id: RequestID,
-    requests: Weak<Requests>,
+    requests: Weak<RequestTracker>,
     receiver: Option<oneshot::Receiver<OutMessage>>,
     receive_timeout: Duration,
 }
 
-impl Request {
+impl TrackedRequest {
     pub fn id(&self) -> RequestID {
         self.id
     }
@@ -97,7 +102,7 @@ impl Request {
     }
 }
 
-impl Drop for Request {
+impl Drop for TrackedRequest {
     fn drop(&mut self) {
         if let Some(requests) = self.requests.upgrade() {
             block_on(requests.remove(self.id));

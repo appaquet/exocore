@@ -1,5 +1,6 @@
 use std::{net::SocketAddr, time::Duration};
 
+#[derive(Clone)]
 pub struct HTTPTransportConfig {
     pub listen_addresses: Vec<SocketAddr>,
     pub handle_in_channel_size: usize,
