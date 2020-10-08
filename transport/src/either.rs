@@ -82,12 +82,9 @@ where
     }
 
     fn add_in_message_connection_side(msg: &mut InEvent, side: Side) {
-        match msg {
-            InEvent::Message(msg) => {
-                let prev_connection = msg.connection.take().map(|c| Box::new(c));
-                msg.connection = Some(ConnectionID::Either(side, prev_connection));
-            }
-            _ => {}
+        if let InEvent::Message(msg) = msg {
+            let prev_connection = msg.connection.take().map(Box::new);
+            msg.connection = Some(ConnectionID::Either(side, prev_connection));
         }
     }
 

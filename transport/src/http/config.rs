@@ -1,5 +1,6 @@
 use std::{net::SocketAddr, time::Duration};
 
+/// Configuration for HTTP transport.
 #[derive(Clone)]
 pub struct HTTPTransportConfig {
     pub listen_addresses: Vec<SocketAddr>,

@@ -38,7 +38,7 @@ pub use config::Libp2pTransportConfig;
 pub struct Libp2pTransport {
     local_node: LocalNode,
     config: Libp2pTransportConfig,
-    handles: Arc<RwLock<Handles>>,
+    handles: Arc<RwLock<ServiceHandles>>,
     handle_set: HandleSet,
 }
 
@@ -47,7 +47,7 @@ impl Libp2pTransport {
     /// here since all messages are authenticated using the node's private
     /// key thanks to secio
     pub fn new(local_node: LocalNode, config: Libp2pTransportConfig) -> Libp2pTransport {
-        let inner = Handles {
+        let inner = ServiceHandles {
             handles: HashMap::new(),
         };
 
@@ -70,7 +70,7 @@ impl Libp2pTransport {
 
         // Register new handle and its streams
         let mut handles = self.handles.write()?;
-        let inner_layer = HandleChannels {
+        let inner_layer = ServiceHandle {
             cell: cell.clone(),
             in_sender,
             out_receiver: Some(out_receiver),
@@ -268,7 +268,7 @@ impl Libp2pTransport {
 
     /// Dispatches a received message from libp2p to corresponding handle
     fn dispatch_message(
-        inner: &RwLock<Handles>,
+        inner: &RwLock<ServiceHandles>,
         message: ExocoreBehaviourMessage,
     ) -> Result<(), Error> {
         let frame = TypedCapnpFrame::<_, envelope::Owned>::new(message.data)?;
@@ -307,7 +307,7 @@ impl Libp2pTransport {
 
     /// Dispatches a node status change.
     fn dispatch_node_status(
-        inner: &RwLock<Handles>,
+        inner: &RwLock<ServiceHandles>,
         peer_id: PeerId,
         peer_status: PeerStatus,
     ) -> Result<(), Error> {
@@ -351,11 +351,11 @@ impl Libp2pTransport {
 ///
 /// A transport can be used for multiple cells, so multiple handles for the same
 /// layers, but on different cells may be created.
-struct Handles {
-    handles: HashMap<(CellId, ServiceType), HandleChannels>,
+struct ServiceHandles {
+    handles: HashMap<(CellId, ServiceType), ServiceHandle>,
 }
 
-impl Handles {
+impl ServiceHandles {
     fn all_peer_nodes(&self) -> HashMap<NodeId, Node> {
         let mut nodes = HashMap::new();
         for inner_layer in self.handles.values() {
@@ -372,7 +372,7 @@ impl Handles {
     }
 }
 
-struct HandleChannels {
+struct ServiceHandle {
     cell: Cell,
     in_sender: mpsc::Sender<InEvent>,
     out_receiver: Option<mpsc::Receiver<OutEvent>>,
@@ -381,10 +381,9 @@ struct HandleChannels {
 /// Handle taken by a Cell layer to receive and send message for a given node &
 /// cell.
 pub struct Libp2pTransportHandle {
-    // TODO: Check if we can merge with HTTP
     cell_id: CellId,
     layer: ServiceType,
-    inner: Weak<RwLock<Handles>>,
+    inner: Weak<RwLock<ServiceHandles>>,
     sink: Option<mpsc::Sender<OutEvent>>,
     stream: Option<mpsc::Receiver<InEvent>>,
     handle: Handle,
