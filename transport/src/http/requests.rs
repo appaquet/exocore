@@ -10,7 +10,8 @@ use super::config::HTTPTransportConfig;
 
 pub type RequestID = u64;
 
-/// Tracks incoming HTTP requests for which we are waiting a reply from a service.
+/// Tracks incoming HTTP requests for which we are waiting a reply from a
+/// service.
 pub struct RequestTracker {
     requests: Mutex<HashMap<RequestID, oneshot::Sender<OutMessage>>>,
     next_id: AtomicU64,
@@ -73,8 +74,8 @@ impl RequestTracker {
     }
 }
 
-/// Receiving end of a the tracked request. This is used in the HTTP request handler to wait
-/// for a reply from a service.
+/// Receiving end of a the tracked request. This is used in the HTTP request
+/// handler to wait for a reply from a service.
 pub struct TrackedRequest {
     id: RequestID,
     requests: Weak<RequestTracker>,

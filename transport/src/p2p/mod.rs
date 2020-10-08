@@ -21,7 +21,7 @@ use exocore_core::utils::handle_set::{Handle, HandleSet};
 use crate::messages::InMessage;
 use crate::transport::{ConnectionStatus, InEvent, OutEvent, TransportHandleOnStart};
 use crate::Error;
-use crate::{transport::ConnectionID, TransportHandle, TransportLayer};
+use crate::{transport::ConnectionID, ServiceType, TransportHandle};
 
 mod behaviour;
 mod protocol;
@@ -63,7 +63,7 @@ impl Libp2pTransport {
     pub fn get_handle(
         &mut self,
         cell: Cell,
-        layer: TransportLayer,
+        layer: ServiceType,
     ) -> Result<Libp2pTransportHandle, Error> {
         let (in_sender, in_receiver) = mpsc::channel(self.config.handle_in_channel_size);
         let (out_sender, out_receiver) = mpsc::channel(self.config.handle_out_channel_size);
@@ -278,7 +278,7 @@ impl Libp2pTransport {
         let mut inner = inner.write()?;
 
         let cell_id = CellId::from_bytes(&cell_id_bytes);
-        let layer = TransportLayer::from_code(frame_reader.get_layer()).ok_or_else(|| {
+        let layer = ServiceType::from_code(frame_reader.get_layer()).ok_or_else(|| {
             Error::Other(format!(
                 "Message has invalid layer {}",
                 frame_reader.get_layer()
@@ -352,7 +352,7 @@ impl Libp2pTransport {
 /// A transport can be used for multiple cells, so multiple handles for the same
 /// layers, but on different cells may be created.
 struct Handles {
-    handles: HashMap<(CellId, TransportLayer), HandleChannels>,
+    handles: HashMap<(CellId, ServiceType), HandleChannels>,
 }
 
 impl Handles {
@@ -367,7 +367,7 @@ impl Handles {
         nodes
     }
 
-    fn remove_handle(&mut self, cell_id: &CellId, layer: TransportLayer) {
+    fn remove_handle(&mut self, cell_id: &CellId, layer: ServiceType) {
         self.handles.remove(&(cell_id.clone(), layer));
     }
 }
@@ -383,7 +383,7 @@ struct HandleChannels {
 pub struct Libp2pTransportHandle {
     // TODO: Check if we can merge with HTTP
     cell_id: CellId,
-    layer: TransportLayer,
+    layer: ServiceType,
     inner: Weak<RwLock<Handles>>,
     sink: Option<mpsc::Sender<OutEvent>>,
     stream: Option<mpsc::Receiver<InEvent>>,
@@ -462,7 +462,7 @@ mod tests {
         n2_cell.nodes_mut().add(n1.node().clone());
 
         let mut transport1 = Libp2pTransport::new(n1.clone(), Libp2pTransportConfig::default());
-        let handle1 = transport1.get_handle(n1_cell.cell().clone(), TransportLayer::Chain)?;
+        let handle1 = transport1.get_handle(n1_cell.cell().clone(), ServiceType::Chain)?;
         let mut handle1 = TestableTransportHandle::new(handle1, n1_cell.cell().clone());
         spawn_future(async {
             let res = transport1.run().await;
@@ -470,7 +470,7 @@ mod tests {
         });
 
         let mut transport2 = Libp2pTransport::new(n2.clone(), Libp2pTransportConfig::default());
-        let handle2 = transport2.get_handle(n2_cell.cell().clone(), TransportLayer::Chain)?;
+        let handle2 = transport2.get_handle(n2_cell.cell().clone(), ServiceType::Chain)?;
         let mut handle2 = TestableTransportHandle::new(handle2, n2_cell.cell().clone());
         spawn_future(async {
             let res = transport2.run().await;
@@ -494,7 +494,8 @@ mod tests {
         handle2.send_message(reply_msg).await;
         handle1.recv_rdv(123).await;
 
-        // send 2 to 1 by duplicating node, should expect receiving 2 new messages (so total 3 because of prev reply)
+        // send 2 to 1 by duplicating node, should expect receiving 2 new messages (so
+        // total 3 because of prev reply)
         handle2
             .send_rdv(vec![n1.node().clone(), n1.node().clone()], 345)
             .await;
@@ -517,8 +518,8 @@ mod tests {
         let inner_weak = Arc::downgrade(&transport.handles);
 
         // we create 2 handles
-        let handle1 = transport.get_handle(n1_cell.cell().clone(), TransportLayer::Chain)?;
-        let handle2 = transport.get_handle(n2_cell.cell().clone(), TransportLayer::Chain)?;
+        let handle1 = transport.get_handle(n1_cell.cell().clone(), ServiceType::Chain)?;
+        let handle2 = transport.get_handle(n2_cell.cell().clone(), ServiceType::Chain)?;
 
         spawn_future(async {
             let res = transport.run().await;
@@ -556,7 +557,7 @@ mod tests {
         n2_cell.nodes_mut().add(n1.node().clone());
 
         let mut t2 = Libp2pTransport::new(n1, Libp2pTransportConfig::default());
-        let h1 = t2.get_handle(n1_cell.cell().clone(), TransportLayer::Chain)?;
+        let h1 = t2.get_handle(n1_cell.cell().clone(), ServiceType::Chain)?;
         let mut h1 = TestableTransportHandle::new(h1, n1_cell.cell().clone());
         spawn_future(async {
             let res = t2.run().await;
@@ -568,7 +569,7 @@ mod tests {
 
         // send 1 to 2, but with expired message, which shouldn't be delivered
         let msg_frame = TestableTransportHandle::empty_message_frame();
-        let msg = OutMessage::from_framed_message(&n1_cell, TransportLayer::Chain, msg_frame)?
+        let msg = OutMessage::from_framed_message(&n1_cell, ServiceType::Chain, msg_frame)?
             .with_expiration(Some(Instant::now() - Duration::from_secs(5)))
             .with_rendez_vous_id(ConsistentTimestamp(2))
             .with_to_nodes(vec![n2.node().clone()]);
@@ -579,7 +580,7 @@ mod tests {
 
         // we create second node
         let mut t2 = Libp2pTransport::new(n2.clone(), Libp2pTransportConfig::default());
-        let h2 = t2.get_handle(n2_cell.cell().clone(), TransportLayer::Chain)?;
+        let h2 = t2.get_handle(n2_cell.cell().clone(), ServiceType::Chain)?;
         let mut h2 = TestableTransportHandle::new(h2, n2_cell.cell().clone());
         spawn_future(async {
             let res = t2.run().await;

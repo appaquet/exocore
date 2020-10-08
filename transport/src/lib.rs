@@ -26,4 +26,4 @@ pub mod testing;
 
 pub use error::Error;
 pub use messages::{InMessage, OutMessage};
-pub use transport::{InEvent, OutEvent, TransportHandle, TransportLayer};
+pub use transport::{InEvent, OutEvent, ServiceType, TransportHandle};

@@ -22,8 +22,8 @@ use exocore_core::time::Instant;
 use exocore_core::time::{Clock, ConsistentTimestamp};
 use exocore_core::utils::handle_set::{Handle, HandleSet};
 use exocore_transport::{
-    transport::ConnectionStatus, InEvent, InMessage, OutEvent, OutMessage, TransportHandle,
-    TransportLayer,
+    transport::ConnectionStatus, InEvent, InMessage, OutEvent, OutMessage, ServiceType,
+    TransportHandle,
 };
 
 use crate::error::Error;
@@ -322,7 +322,7 @@ impl Inner {
         let request_id = self.clock.consistent_time(self.cell.local_node());
         let request_frame = crate::mutation::mutation_to_request_frame(request)?;
         let message =
-            OutMessage::from_framed_message(&self.cell, TransportLayer::Index, request_frame)?
+            OutMessage::from_framed_message(&self.cell, ServiceType::Index, request_frame)?
                 .with_to_node(index_node.clone())
                 .with_expiration(Some(Instant::now() + self.config.mutation_timeout))
                 .with_rendez_vous_id(request_id);
@@ -357,7 +357,7 @@ impl Inner {
         let request_id = self.clock.consistent_time(self.cell.local_node());
         let request_frame = crate::query::query_to_request_frame(&query)?;
         let message =
-            OutMessage::from_framed_message(&self.cell, TransportLayer::Index, request_frame)?
+            OutMessage::from_framed_message(&self.cell, ServiceType::Index, request_frame)?
                 .with_to_node(index_node.clone())
                 .with_expiration(Some(Instant::now() + self.config.query_timeout))
                 .with_rendez_vous_id(request_id);
@@ -405,7 +405,7 @@ impl Inner {
 
         let request_frame = crate::query::watched_query_to_request_frame(&watched_query.query)?;
         let message =
-            OutMessage::from_framed_message(&self.cell, TransportLayer::Index, request_frame)?
+            OutMessage::from_framed_message(&self.cell, ServiceType::Index, request_frame)?
                 .with_to_node(index_node.clone())
                 .with_rendez_vous_id(watched_query.request_id);
 
@@ -420,7 +420,7 @@ impl Inner {
         message_builder.set_token(token);
 
         let message =
-            OutMessage::from_framed_message(&self.cell, TransportLayer::Index, frame_builder)?
+            OutMessage::from_framed_message(&self.cell, ServiceType::Index, frame_builder)?
                 .with_to_node(index_node.clone());
 
         self.send_message(message)
@@ -737,7 +737,7 @@ mod tests {
             cell_node1.add_role(CellNodeRole::IndexStore);
         }
 
-        let transport_handle = transport.get_transport(local_node, TransportLayer::Index);
+        let transport_handle = transport.get_transport(local_node, ServiceType::Index);
         let config = ClientConfiguration::default();
         let client = Client::new(config, full_cell.cell().clone(), clock, transport_handle)?;
         let client_inner = client.inner.clone();

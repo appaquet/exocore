@@ -2,7 +2,7 @@ use exocore_core::cell::Node;
 use exocore_core::protos::generated::common_capnp::envelope;
 use exocore_core::protos::generated::MessageType;
 
-use crate::{transport::ConnectionID, Error, TransportLayer};
+use crate::{transport::ConnectionID, Error, ServiceType};
 use exocore_core::cell::{Cell, CellId};
 use exocore_core::framing::{CapnpFrameBuilder, FrameBuilder, FrameReader, TypedCapnpFrame};
 use exocore_core::time::{ConsistentTimestamp, Instant};
@@ -20,7 +20,7 @@ pub struct OutMessage {
 impl OutMessage {
     pub fn from_framed_message<T>(
         cell: &Cell,
-        to_layer: TransportLayer,
+        to_layer: ServiceType,
         frame: CapnpFrameBuilder<T>,
     ) -> Result<OutMessage, Error>
     where
@@ -69,6 +69,7 @@ impl OutMessage {
         self
     }
 
+    #[cfg(any(test, feature = "tests-utils"))]
     pub(crate) fn to_in_message(&self, from_node: Node) -> Result<Box<InMessage>, Error> {
         let envelope = self.envelope_builder.as_owned_frame();
 
@@ -84,7 +85,7 @@ impl OutMessage {
 pub struct InMessage {
     pub from: Node,
     pub cell_id: CellId,
-    pub layer: TransportLayer,
+    pub layer: ServiceType,
     pub rendez_vous_id: Option<RendezVousId>,
     pub message_type: u16,
     pub connection: Option<ConnectionID>,
@@ -105,7 +106,7 @@ impl InMessage {
 
         let cell_id = CellId::from_bytes(envelope_reader.get_cell_id()?);
         let layer_id = envelope_reader.get_layer();
-        let layer = TransportLayer::from_code(layer_id).ok_or_else(|| {
+        let layer = ServiceType::from_code(layer_id).ok_or_else(|| {
             Error::Other(format!("Got message with invalid layer id: {}", layer_id))
         })?;
 
@@ -176,7 +177,7 @@ impl InMessage {
 #[derive(Clone)]
 pub struct MessageReplyToken {
     from: Node,
-    layer: TransportLayer,
+    layer: ServiceType,
     rendez_vous_id: RendezVousId,
     connection: Option<ConnectionID>,
 }

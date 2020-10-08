@@ -3,13 +3,15 @@ use crate::protos::prost::{ProstDateTimeExt, ProstMessageExt, ProstTimestampExt}
 use crate::{cell::Cell, cell::CellId, cell::NodeId, time::Clock, time::ConsistentTimestamp};
 use prost::Message;
 
-/// Authentication token that can be used as an alternative authentication method for a node of a cell
-/// when using a transport authentified transport like `libp2p`. Since not all clients can use a `libp2p`
-/// based transport, a token can be used by a fat client to authentify further calls by a thi client.
+/// Authentication token that can be used as an alternative authentication
+/// method for a node of a cell when using a transport authentified transport
+/// like `libp2p`. Since not all clients can use a `libp2p` based transport, a
+/// token can be used by a fat client to authentify further calls by a thi
+/// client.
 ///
 /// Ex: * a iOS client (fat) can create a token to be used by an app extension.
-///     * a web extension can get a token from a running instance of exocore and keep it in a storage for
-///       further calls.
+///     * a web extension can get a token from a running instance of exocore and
+///       keep it in a storage for further calls.
 pub struct AuthToken {
     cell_id: CellId,
     node_id: NodeId,
@@ -19,9 +21,9 @@ pub struct AuthToken {
 }
 
 impl AuthToken {
-    /// Creates a new authentication token using the given cell's local node to sign the token.
-    /// An optional expiration date can be given to enhance security to prevent long term usage
-    /// of a potentially leaked token.
+    /// Creates a new authentication token using the given cell's local node to
+    /// sign the token. An optional expiration date can be given to enhance
+    /// security to prevent long term usage of a potentially leaked token.
     pub fn new(
         cell: &Cell,
         clock: &Clock,

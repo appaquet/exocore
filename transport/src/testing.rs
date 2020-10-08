@@ -15,7 +15,7 @@ use futures::prelude::*;
 
 use crate::streams::{MpscHandleSink, MpscHandleStream};
 use crate::transport::{ConnectionStatus, TransportHandleOnStart};
-use crate::{Error, InEvent, InMessage, OutEvent, OutMessage, TransportHandle, TransportLayer};
+use crate::{Error, InEvent, InMessage, OutEvent, OutMessage, ServiceType, TransportHandle};
 use exocore_core::utils::handle_set::{Handle, HandleSet};
 use futures::stream::Peekable;
 use futures::{FutureExt, StreamExt};
@@ -24,7 +24,7 @@ use std::task::{Context, Poll};
 
 const CHANNELS_SIZE: usize = 1000;
 
-type HandleKey = (NodeId, TransportLayer);
+type HandleKey = (NodeId, ServiceType);
 
 /// In memory transport used by all layers of Exocore through handles. There is
 /// one handle per cell per layer.
@@ -43,7 +43,7 @@ impl Default for MockTransport {
 }
 
 impl MockTransport {
-    pub fn get_transport(&self, node: LocalNode, layer: TransportLayer) -> MockTransportHandle {
+    pub fn get_transport(&self, node: LocalNode, layer: ServiceType) -> MockTransportHandle {
         let mut handles_sink = self.handles_sink.lock().unwrap();
 
         let handle = self.handle_set.get_handle();
@@ -87,7 +87,7 @@ impl MockTransport {
 pub struct MockTransportHandle {
     handle: Handle,
     node: Node,
-    layer: TransportLayer,
+    layer: ServiceType,
     started: bool,
     handles_sink: Weak<Mutex<HashMap<HandleKey, HandleSink>>>,
     incoming_stream: Option<mpsc::Receiver<InEvent>>,
@@ -254,9 +254,13 @@ impl TestableTransportHandle {
         }
     }
 
+    pub fn cell(&self) -> &Cell {
+        &self.cell
+    }
+
     pub async fn send_rdv(&mut self, to: Vec<Node>, rdv: u64) {
         let frame_builder = Self::empty_message_frame();
-        let msg = OutMessage::from_framed_message(&self.cell, TransportLayer::Chain, frame_builder)
+        let msg = OutMessage::from_framed_message(&self.cell, ServiceType::Chain, frame_builder)
             .unwrap()
             .with_rendez_vous_id(rdv.into())
             .with_to_nodes(to);
@@ -368,10 +372,10 @@ mod test {
         let node1 = LocalNode::generate();
         let cell1 = FullCell::generate(node1.clone());
 
-        let t0 = hub.get_transport(node0.clone(), TransportLayer::Chain);
+        let t0 = hub.get_transport(node0.clone(), ServiceType::Chain);
         let mut t0 = TestableTransportHandle::new(t0, cell0.cell().clone());
 
-        let t1 = hub.get_transport(node1.clone(), TransportLayer::Chain);
+        let t1 = hub.get_transport(node1.clone(), ServiceType::Chain);
         let mut t1 = TestableTransportHandle::new(t1, cell1.cell().clone());
 
         t0.send_rdv(vec![node1.node().clone()], 100).await;
@@ -394,7 +398,7 @@ mod test {
         let node0 = LocalNode::generate();
         let cell0 = FullCell::generate(node0.clone());
 
-        let t0 = hub.get_transport(node0.clone(), TransportLayer::Chain);
+        let t0 = hub.get_transport(node0.clone(), ServiceType::Chain);
         let mut t0 = TestableTransportHandle::new(t0, cell0.cell().clone());
 
         hub.notify_node_connection_status(node0.id(), ConnectionStatus::Connected);

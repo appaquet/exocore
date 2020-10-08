@@ -8,7 +8,7 @@ use exocore_core::time::Clock;
 use exocore_index::local::{EntityIndex, EntityIndexConfig, Store};
 use exocore_index::remote::server::Server;
 use exocore_transport::p2p::Libp2pTransportConfig;
-use exocore_transport::{Libp2pTransport, TransportHandle, TransportLayer};
+use exocore_transport::{Libp2pTransport, ServiceType, TransportHandle};
 
 use crate::options;
 
@@ -46,7 +46,7 @@ pub fn start(
             let pending_store = MemoryPendingStore::new();
 
             // create the engine
-            let chain_transport = transport.get_handle(cell.clone(), TransportLayer::Chain)?;
+            let chain_transport = transport.get_handle(cell.clone(), ServiceType::Chain)?;
             let engine_config = EngineConfig::default();
             let mut engine = Engine::new(
                 engine_config,
@@ -88,7 +88,7 @@ pub fn start(
                 )?;
 
                 // if we have a WebSocket handle, we create a combined transport
-                let transport_handle = transport.get_handle(cell.clone(), TransportLayer::Index)?;
+                let transport_handle = transport.get_handle(cell.clone(), ServiceType::Index)?;
                 create_local_store(
                     &mut rt,
                     transport_handle,

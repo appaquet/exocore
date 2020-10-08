@@ -15,10 +15,10 @@ pub trait TransportHandle: Future<Output = ()> + Send + Unpin + 'static {
     fn get_stream(&mut self) -> Self::Stream;
 }
 
-/// Component of the Exocore architecture to which a message is intented /
-/// originating. Ex: Chain layer
+/// Component / service of the Exocore architecture to which a message is
+/// intented / originating. Ex: Chain layer
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum TransportLayer {
+pub enum ServiceType {
     None = 0,
     Meta = 1,
     Common = 2,
@@ -27,15 +27,15 @@ pub enum TransportLayer {
     Client = 5,
 }
 
-impl TransportLayer {
-    pub fn from_code(code: u8) -> Option<TransportLayer> {
+impl ServiceType {
+    pub fn from_code(code: u8) -> Option<ServiceType> {
         match code {
-            0 => Some(TransportLayer::None),
-            1 => Some(TransportLayer::Meta),
-            2 => Some(TransportLayer::Common),
-            3 => Some(TransportLayer::Chain),
-            4 => Some(TransportLayer::Index),
-            5 => Some(TransportLayer::Client),
+            0 => Some(ServiceType::None),
+            1 => Some(ServiceType::Meta),
+            2 => Some(ServiceType::Common),
+            3 => Some(ServiceType::Chain),
+            4 => Some(ServiceType::Index),
+            5 => Some(ServiceType::Client),
             _ => None,
         }
     }

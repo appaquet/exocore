@@ -154,7 +154,9 @@ where
                                     "Out event didn't have any destination node".to_string(),
                                 )
                             })?;
-                            Self::get_side(&nodes_side, node.id())? // TODO: Add connection ID
+                            Self::get_side(&nodes_side, node.id())? // TODO: Add
+                                                                    // connection
+                                                                    // ID
                         }
                     };
 
@@ -242,7 +244,7 @@ pub enum Side {
 mod tests {
     use super::*;
     use crate::testing::{MockTransport, TestableTransportHandle};
-    use crate::TransportLayer::Index;
+    use crate::ServiceType::Index;
     use exocore_core::cell::{FullCell, LocalNode};
 
     // TODO: Test bypass side if connection id
@@ -272,7 +274,8 @@ mod tests {
         let node2_t2 = mock2.get_transport(node2.clone(), Index);
         let mut node2_t2 = TestableTransportHandle::new(node2_t2, cell2.cell().clone());
 
-        // since node1 has never sent message, it will send to node 2 via transport 1 (left side)
+        // since node1 has never sent message, it will send to node 2 via transport 1
+        // (left side)
         node1_either.send_rdv(vec![node2.node().clone()], 1).await;
         let _ = node2_t1.recv_msg().await;
         assert_eq!(node2_t2.has_msg().await?, false);
@@ -287,7 +290,8 @@ mod tests {
         assert_eq!(msg.from.id(), node2.id());
         assert_eq!(msg.rendez_vous_id, Some(3.into()));
 
-        // sending to node2 should now be sent via transport 2 since its last used transport (right side)
+        // sending to node2 should now be sent via transport 2 since its last used
+        // transport (right side)
         node1_either.send_rdv(vec![node2.node().clone()], 4).await;
         let msg = node2_t2.recv_msg().await;
         assert_eq!(msg.from.id(), node1.id());
