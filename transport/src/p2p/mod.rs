@@ -1,12 +1,9 @@
-use std::collections::HashMap;
 use std::pin::Pin;
-use std::sync::{Arc, RwLock, Weak};
+use std::sync::{Arc, RwLock};
 use std::task::{Context, Poll};
 
 use futures::channel::mpsc;
-use futures::channel::mpsc::SendError;
 use futures::prelude::*;
-use futures::sink::SinkMapErr;
 use futures::{FutureExt, SinkExt, StreamExt};
 use libp2p::core::PeerId;
 use libp2p::swarm::Swarm;
@@ -16,12 +13,12 @@ use exocore_core::cell::{Cell, CellId, CellNodes};
 use exocore_core::cell::{LocalNode, Node, NodeId};
 use exocore_core::framing::{FrameBuilder, TypedCapnpFrame};
 use exocore_core::protos::generated::common_capnp::envelope;
-use exocore_core::utils::handle_set::{Handle, HandleSet};
+use exocore_core::utils::handle_set::HandleSet;
 
 use crate::messages::InMessage;
-use crate::transport::{ConnectionStatus, InEvent, OutEvent, TransportHandleOnStart};
+use crate::transport::{ConnectionStatus, InEvent, OutEvent};
 use crate::Error;
-use crate::{transport::ConnectionID, ServiceType, TransportHandle};
+use crate::{transport::ConnectionID, ServiceType};
 
 mod behaviour;
 mod protocol;
@@ -29,8 +26,12 @@ mod protocol;
 mod config;
 pub use config::Libp2pTransportConfig;
 
-/// Libp2p transport used by all layers of Exocore through handles. There is one
-/// handle per cell per layer.
+mod handles;
+pub use handles::Libp2pTransportHandle;
+use handles::ServiceHandles;
+
+/// Libp2p transport used by all services of Exocore through handles. There is
+/// one handle per cell per service.
 ///
 /// The transport itself is scheduled on an Executor, and its future will
 /// complete as soon it's ready. Once all handles are dropped, all its scheduled
@@ -38,54 +39,47 @@ pub use config::Libp2pTransportConfig;
 pub struct Libp2pTransport {
     local_node: LocalNode,
     config: Libp2pTransportConfig,
-    handles: Arc<RwLock<ServiceHandles>>,
+    service_handles: Arc<RwLock<ServiceHandles>>,
     handle_set: HandleSet,
 }
 
 impl Libp2pTransport {
     /// Creates a new transport for given node and config. The node is important
     /// here since all messages are authenticated using the node's private
-    /// key thanks to secio
+    /// key thanks to secio.
     pub fn new(local_node: LocalNode, config: Libp2pTransportConfig) -> Libp2pTransport {
-        let inner = ServiceHandles {
-            handles: HashMap::new(),
-        };
+        let service_handles = Arc::new(RwLock::new(ServiceHandles::new()));
 
         Libp2pTransport {
             local_node,
             config,
-            handles: Arc::new(RwLock::new(inner)),
+            service_handles,
             handle_set: HandleSet::new(),
         }
     }
 
-    /// Creates sink and streams that can be used for a given Cell and Layer
+    /// Creates sink and streams that can be used for a given service of a cell.
     pub fn get_handle(
         &mut self,
         cell: Cell,
-        layer: ServiceType,
+        service_type: ServiceType,
     ) -> Result<Libp2pTransportHandle, Error> {
         let (in_sender, in_receiver) = mpsc::channel(self.config.handle_in_channel_size);
         let (out_sender, out_receiver) = mpsc::channel(self.config.handle_out_channel_size);
 
         // Register new handle and its streams
-        let mut handles = self.handles.write()?;
-        let inner_layer = ServiceHandle {
-            cell: cell.clone(),
-            in_sender,
-            out_receiver: Some(out_receiver),
-        };
+        let mut handles = self.service_handles.write()?;
+        handles.push_handle(cell.clone(), service_type, in_sender, out_receiver);
+
         info!(
-            "Registering transport for cell {} and layer {:?}",
-            cell, layer
+            "Registering transport for cell {} and service_type {:?}",
+            cell, service_type
         );
-        let key = (cell.id().clone(), layer);
-        handles.handles.insert(key, inner_layer);
 
         Ok(Libp2pTransportHandle {
             cell_id: cell.id().clone(),
-            layer,
-            inner: Arc::downgrade(&self.handles),
+            service_type,
+            inner: Arc::downgrade(&self.service_handles),
             sink: Some(out_sender),
             stream: Some(in_receiver),
             handle: self.handle_set.get_handle(),
@@ -157,7 +151,7 @@ impl Libp2pTransport {
 
         // Add initial nodes to swarm
         {
-            let inner = self.handles.read()?;
+            let inner = self.service_handles.read()?;
             for node in inner.all_peer_nodes().values() {
                 swarm.add_node_peer(node);
             }
@@ -167,7 +161,7 @@ impl Libp2pTransport {
             exocore_core::futures::interval(self.config.swarm_nodes_update_interval);
 
         // Spawn the main Future which will take care of the swarm
-        let inner = Arc::clone(&self.handles);
+        let inner = Arc::clone(&self.service_handles);
         let swarm_task = future::poll_fn(move |cx: &mut Context| -> Poll<()> {
             if let Poll::Ready(_) = nodes_update_interval.poll_next_unpin(cx) {
                 if let Ok(inner) = inner.read() {
@@ -236,13 +230,13 @@ impl Libp2pTransport {
 
         // Sends handles' outgoing messages to the behaviour's input channel
         let handles_dispatcher = {
-            let mut inner = self.handles.write()?;
+            let mut inner = self.service_handles.write()?;
             let mut futures = Vec::new();
-            for inner_layer in inner.handles.values_mut() {
-                let out_receiver = inner_layer
+            for service_handle in inner.service_handles.values_mut() {
+                let out_receiver = service_handle
                     .out_receiver
                     .take()
-                    .expect("Out receiver of one layer was already consumed");
+                    .expect("Out receiver of one service handle was already consumed");
 
                 let mut out_sender = out_sender.clone();
                 futures.push(async move {
@@ -278,31 +272,31 @@ impl Libp2pTransport {
         let mut inner = inner.write()?;
 
         let cell_id = CellId::from_bytes(&cell_id_bytes);
-        let layer = ServiceType::from_code(frame_reader.get_layer()).ok_or_else(|| {
+        let service_type = ServiceType::from_code(frame_reader.get_layer()).ok_or_else(|| {
             Error::Other(format!(
-                "Message has invalid layer {}",
+                "Message has invalid service_type {}",
                 frame_reader.get_layer()
             ))
         })?;
 
-        let key = (cell_id, layer);
-        let handle_channels = if let Some(layer_stream) = inner.handles.get_mut(&key) {
-            layer_stream
+        let key = (cell_id, service_type);
+        let service_handle = if let Some(service_handle) = inner.service_handles.get_mut(&key) {
+            service_handle
         } else {
             return Err(Error::Other(format!(
-                "Couldn't find transport for {:?}",
+                "Couldn't find transport for service & cell {:?}",
                 key
             )));
         };
 
-        let source_node = Self::get_node_by_peer(&handle_channels.cell, message.source)?;
+        let source_node = Self::get_node_by_peer(&service_handle.cell, message.source)?;
         let mut msg = InMessage::from_node_and_frame(source_node, frame.to_owned())?;
         msg.connection = Some(ConnectionID::Libp2p(message.connection));
 
-        handle_channels
+        service_handle
             .in_sender
             .try_send(InEvent::Message(msg))
-            .map_err(|err| Error::Other(format!("Couldn't send message to cell layer: {}", err)))
+            .map_err(|err| Error::Other(format!("Couldn't send message to cell service: {}", err)))
     }
 
     /// Dispatches a node status change.
@@ -318,13 +312,13 @@ impl Libp2pTransport {
             PeerStatus::Disconnected => ConnectionStatus::Disconnected,
         };
 
-        for handle in inner.handles.values_mut() {
+        for handle in inner.service_handles.values_mut() {
             if let Ok(node) = Self::get_node_by_peer(&handle.cell, peer_id.clone()) {
                 handle
                     .in_sender
                     .try_send(InEvent::NodeStatus(node.id().clone(), status))
                     .map_err(|err| {
-                        Error::Other(format!("Couldn't send message to cell layer: {}", err))
+                        Error::Other(format!("Couldn't send message to cell service: {}", err))
                     })?;
             }
         }
@@ -343,92 +337,6 @@ impl Libp2pTransport {
                 "Couldn't find node with id {} in local nodes",
                 node_id
             )))
-        }
-    }
-}
-
-/// Transport handles created on the `Libp2pTransport`.
-///
-/// A transport can be used for multiple cells, so multiple handles for the same
-/// layers, but on different cells may be created.
-struct ServiceHandles {
-    handles: HashMap<(CellId, ServiceType), ServiceHandle>,
-}
-
-impl ServiceHandles {
-    fn all_peer_nodes(&self) -> HashMap<NodeId, Node> {
-        let mut nodes = HashMap::new();
-        for inner_layer in self.handles.values() {
-            for cell_node in inner_layer.cell.nodes().iter().all_except_local() {
-                let node = cell_node.node().clone();
-                nodes.insert(node.id().clone(), node);
-            }
-        }
-        nodes
-    }
-
-    fn remove_handle(&mut self, cell_id: &CellId, layer: ServiceType) {
-        self.handles.remove(&(cell_id.clone(), layer));
-    }
-}
-
-struct ServiceHandle {
-    cell: Cell,
-    in_sender: mpsc::Sender<InEvent>,
-    out_receiver: Option<mpsc::Receiver<OutEvent>>,
-}
-
-/// Handle taken by a Cell layer to receive and send message for a given node &
-/// cell.
-pub struct Libp2pTransportHandle {
-    cell_id: CellId,
-    layer: ServiceType,
-    inner: Weak<RwLock<ServiceHandles>>,
-    sink: Option<mpsc::Sender<OutEvent>>,
-    stream: Option<mpsc::Receiver<InEvent>>,
-    handle: Handle,
-}
-
-impl TransportHandle for Libp2pTransportHandle {
-    type Sink = SinkMapErr<mpsc::Sender<OutEvent>, fn(SendError) -> Error>;
-    type Stream = mpsc::Receiver<InEvent>;
-
-    fn on_started(&self) -> TransportHandleOnStart {
-        Box::new(self.handle.on_set_started())
-    }
-
-    fn get_sink(&mut self) -> Self::Sink {
-        self.sink
-            .take()
-            .expect("Sink was already consumed")
-            .sink_map_err(|err| Error::Other(format!("Sink error: {}", err)))
-    }
-
-    fn get_stream(&mut self) -> Self::Stream {
-        self.stream.take().expect("Stream was already consumed")
-    }
-}
-
-impl Future for Libp2pTransportHandle {
-    type Output = ();
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        self.handle.on_set_dropped().poll_unpin(cx)
-    }
-}
-
-impl Drop for Libp2pTransportHandle {
-    fn drop(&mut self) {
-        debug!(
-            "Transport handle for cell {} layer {:?} got dropped. Removing it from transport",
-            self.cell_id, self.layer
-        );
-
-        // we have been dropped, we remove ourself from layers to communicate with
-        if let Some(inner) = self.inner.upgrade() {
-            if let Ok(mut inner) = inner.write() {
-                inner.remove_handle(&self.cell_id, self.layer);
-            }
         }
     }
 }
@@ -514,7 +422,7 @@ mod tests {
         let n2_cell = FullCell::generate(n2);
 
         let mut transport = Libp2pTransport::new(n1, Libp2pTransportConfig::default());
-        let inner_weak = Arc::downgrade(&transport.handles);
+        let inner_weak = Arc::downgrade(&transport.service_handles);
 
         // we create 2 handles
         let handle1 = transport.get_handle(n1_cell.cell().clone(), ServiceType::Chain)?;
@@ -530,7 +438,7 @@ mod tests {
         async_expect_eventually(|| async {
             let inner = inner_weak.upgrade().unwrap();
             let inner = inner.read().unwrap();
-            inner.handles.len() == 1
+            inner.service_handles.len() == 1
         })
         .await;
 
