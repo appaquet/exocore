@@ -69,7 +69,7 @@ impl OutMessage {
         self
     }
 
-    #[cfg(any(test, feature = "tests-utils"))]
+    #[cfg(any(test, feature = "tests-utils", feature = "http-server"))]
     pub(crate) fn to_in_message(&self, from_node: Node) -> Result<Box<InMessage>, Error> {
         let envelope = self.envelope_builder.as_owned_frame();
 

@@ -1,5 +1,5 @@
-use crate::error::Error;
 use crate::transport::TransportHandleOnStart;
+use crate::{error::Error, transport::ConnectionID, OutMessage};
 use crate::{InEvent, OutEvent, TransportHandle};
 use exocore_core::cell::NodeId;
 use exocore_core::futures::OwnedSpawnSet;
@@ -12,11 +12,15 @@ use std::pin::Pin;
 use std::sync::{Arc, RwLock, Weak};
 use std::task::{Context, Poll};
 
-// TODO: Support connection ID
-
-/// Transport handle that wraps 2 other transport handles. When it receives
-/// events, it notes from which transport it came so that replies can be sent
-/// back via the same transport.
+/// Transport handle that wraps 2 other transport handles.
+///
+/// When it receives incoming messages, it adds to the incoming message
+/// a note for which side of the transport it came from so that replies
+/// can be sent to the right side.
+///
+/// The transport also take notes of on which side we've seen a node for the
+/// last time so that a non-reply message sent to that note ends up on the
+/// correct side.
 ///
 /// Warning: If we never received an event for a node, it will automatically
 /// select the first handle !!
@@ -57,11 +61,34 @@ where
 
     fn get_side(
         nodes_side: &Weak<RwLock<HashMap<NodeId, Side>>>,
-        node_id: &NodeId, // TODO: Add optional connection ID
+        node_id: &NodeId,
     ) -> Result<Option<Side>, Error> {
         let nodes_side = nodes_side.upgrade().ok_or(Error::Upgrade)?;
         let nodes_side = nodes_side.read()?;
         Ok(nodes_side.get(node_id).cloned())
+    }
+
+    fn extract_out_message_connection_side(msg: &mut OutMessage) -> Option<Side> {
+        match msg.connection.take() {
+            Some(ConnectionID::Either(side, inner)) => {
+                msg.connection = inner.map(|i| *i);
+                Some(side)
+            }
+            other => {
+                msg.connection = other;
+                None
+            }
+        }
+    }
+
+    fn add_in_message_connection_side(msg: &mut InEvent, side: Side) {
+        match msg {
+            InEvent::Message(msg) => {
+                let prev_connection = msg.connection.take().map(|c| Box::new(c));
+                msg.connection = Some(ConnectionID::Either(side, prev_connection));
+            }
+            _ => {}
+        }
     }
 
     fn maybe_add_node(
@@ -146,17 +173,22 @@ where
         let mut completion_sender = self.completion_sender.clone();
         self.owned_spawn_set.spawn(
             async move {
-                while let Some(event) = receiver.next().await {
-                    let side = match &event {
+                while let Some(mut event) = receiver.next().await {
+                    let side = match &mut event {
                         OutEvent::Message(msg) => {
-                            let node = msg.to.first().ok_or_else(|| {
-                                Error::Other(
-                                    "Out event didn't have any destination node".to_string(),
-                                )
-                            })?;
-                            Self::get_side(&nodes_side, node.id())? // TODO: Add
-                                                                    // connection
-                                                                    // ID
+                            match Self::extract_out_message_connection_side(msg) {
+                                Some(explicit_side) => Some(explicit_side),
+                                None => {
+                                    let node = msg.to.first().ok_or_else(|| {
+                                        Error::Other(
+                                            "Out event didn't have any destination node"
+                                                .to_string(),
+                                        )
+                                    })?;
+
+                                    Self::get_side(&nodes_side, node.id())?
+                                }
+                            }
                         }
                     };
 
@@ -187,7 +219,9 @@ where
     fn get_stream(&mut self) -> Self::Stream {
         let nodes_side = Arc::downgrade(&self.nodes_side);
         let mut completion_sender = self.completion_sender.clone();
-        let left = self.left.get_stream().map(move |event| {
+        let left = self.left.get_stream().map(move |mut event| {
+            Self::add_in_message_connection_side(&mut event, Side::Left);
+
             if let Err(err) = Self::maybe_add_node(&nodes_side, &event, Side::Left) {
                 error!("Error saving node's transport from left side: {}", err);
                 let _ = completion_sender.try_send(());
@@ -197,7 +231,9 @@ where
 
         let nodes_side = Arc::downgrade(&self.nodes_side);
         let mut completion_sender = self.completion_sender.clone();
-        let right = self.right.get_stream().map(move |event| {
+        let right = self.right.get_stream().map(move |mut event| {
+            Self::add_in_message_connection_side(&mut event, Side::Right);
+
             if let Err(err) = Self::maybe_add_node(&nodes_side, &event, Side::Right) {
                 error!("Error saving node's transport from right side: {}", err);
                 let _ = completion_sender.try_send(());
@@ -243,11 +279,12 @@ pub enum Side {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::{MockTransport, TestableTransportHandle};
     use crate::ServiceType::Index;
+    use crate::{
+        testing::{MockTransport, TestableTransportHandle},
+        ServiceType,
+    };
     use exocore_core::cell::{FullCell, LocalNode};
-
-    // TODO: Test bypass side if connection id
 
     #[tokio::test]
     async fn test_send_and_receive() -> anyhow::Result<()> {
@@ -280,22 +317,54 @@ mod tests {
         let _ = node2_t1.recv_msg().await;
         assert_eq!(node2_t2.has_msg().await?, false);
 
-        // sending to node1 via both transport should be received
-        node2_t1.send_rdv(vec![node1.node().clone()], 2).await;
-        let msg = node1_either.recv_msg().await;
-        assert_eq!(msg.from.id(), node2.id());
-        assert_eq!(msg.rendez_vous_id, Some(2.into()));
-        node2_t2.send_rdv(vec![node1.node().clone()], 3).await;
-        let msg = node1_either.recv_msg().await;
-        assert_eq!(msg.from.id(), node2.id());
-        assert_eq!(msg.rendez_vous_id, Some(3.into()));
+        {
+            // force message to node 2 via transport 2 if it has a connection annotation on
+            // message
+            let frame_builder = TestableTransportHandle::empty_message_frame();
+            let msg = OutMessage::from_framed_message(&cell1, ServiceType::Chain, frame_builder)?
+                .with_rendez_vous_id(2.into())
+                .with_connection(ConnectionID::Either(Side::Right, None))
+                .with_to_nodes(vec![node2.node().clone()]);
+            node1_either.send_message(msg).await;
+
+            let msg = node2_t2.recv_msg().await;
+            assert_eq!(msg.from.id(), node1.id());
+            assert_eq!(msg.rendez_vous_id, Some(2.into()));
+        }
+
+        {
+            // sending to node1 via both transport should be received
+            node2_t1.send_rdv(vec![node1.node().clone()], 3).await;
+            let msg = node1_either.recv_msg().await;
+            assert_eq!(msg.from.id(), node2.id());
+            assert_eq!(msg.rendez_vous_id, Some(3.into()));
+            match &msg.connection {
+                Some(ConnectionID::Either(Side::Left, _)) => {}
+                other => panic!(
+                    "Expected a ConnectionID::Either(Side::Left) on received message: {:?}",
+                    other
+                ),
+            }
+
+            node2_t2.send_rdv(vec![node1.node().clone()], 4).await;
+            let msg = node1_either.recv_msg().await;
+            assert_eq!(msg.from.id(), node2.id());
+            assert_eq!(msg.rendez_vous_id, Some(4.into()));
+            match &msg.connection {
+                Some(ConnectionID::Either(Side::Right, _)) => {}
+                other => panic!(
+                    "Expected a ConnectionID::Either(Side::Right) on received message: {:?}",
+                    other
+                ),
+            }
+        }
 
         // sending to node2 should now be sent via transport 2 since its last used
         // transport (right side)
-        node1_either.send_rdv(vec![node2.node().clone()], 4).await;
+        node1_either.send_rdv(vec![node2.node().clone()], 5).await;
         let msg = node2_t2.recv_msg().await;
         assert_eq!(msg.from.id(), node1.id());
-        assert_eq!(msg.rendez_vous_id, Some(4.into()));
+        assert_eq!(msg.rendez_vous_id, Some(5.into()));
 
         Ok(())
     }
