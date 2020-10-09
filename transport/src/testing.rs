@@ -313,10 +313,7 @@ impl TestableTransportHandle {
         let received = self.received_events.lock().await;
         received
             .iter()
-            .filter(|event| match event {
-                InEvent::Message(_event) => true,
-                _ => false,
-            })
+            .filter(|event| matches!(event, InEvent::Message(_event)))
             .cloned()
             .collect()
     }

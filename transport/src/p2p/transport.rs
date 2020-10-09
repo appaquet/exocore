@@ -1,5 +1,3 @@
-
-use std::pin::Pin;
 use std::sync::{Arc, RwLock};
 use std::task::{Context, Poll};
 
@@ -9,18 +7,21 @@ use futures::{FutureExt, SinkExt, StreamExt};
 use libp2p::core::PeerId;
 use libp2p::swarm::Swarm;
 
-use super::{Libp2pTransportConfig, behaviour::{ExocoreBehaviour, ExocoreBehaviourEvent, ExocoreBehaviourMessage, PeerStatus}, handles::ServiceHandles};
+use super::{
+    behaviour::{ExocoreBehaviour, ExocoreBehaviourEvent, ExocoreBehaviourMessage, PeerStatus},
+    handles::ServiceHandles,
+    Libp2pTransportConfig,
+};
 use exocore_core::cell::{Cell, CellId, CellNodes};
 use exocore_core::cell::{LocalNode, Node, NodeId};
 use exocore_core::framing::{FrameBuilder, TypedCapnpFrame};
 use exocore_core::protos::generated::common_capnp::envelope;
 use exocore_core::utils::handle_set::HandleSet;
 
-use crate::{Libp2pTransportServiceHandle, messages::InMessage};
 use crate::transport::{ConnectionStatus, InEvent, OutEvent};
 use crate::Error;
+use crate::{messages::InMessage, Libp2pTransportServiceHandle};
 use crate::{transport::ConnectionID, ServiceType};
-
 
 /// Libp2p transport used by all services of Exocore through handles. There is
 /// one handle per cell per service.
@@ -122,7 +123,7 @@ impl Libp2pTransport {
             // within its runtime.
             struct CoreExecutor;
             impl libp2p::core::Executor for CoreExecutor {
-                fn exec(&self, f: Pin<Box<dyn Future<Output = ()> + Send>>) {
+                fn exec(&self, f: std::pin::Pin<Box<dyn Future<Output = ()> + Send>>) {
                     exocore_core::futures::spawn_future(f)
                 }
             }
