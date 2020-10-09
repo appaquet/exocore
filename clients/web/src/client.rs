@@ -10,7 +10,7 @@ use exocore_core::protos::generated::exocore_index::EntityQuery;
 use exocore_core::time::Clock;
 use exocore_index::remote::{Client, ClientConfiguration, ClientHandle};
 use exocore_transport::transport::ConnectionStatus;
-use exocore_transport::{InEvent, Libp2pTransport, ServiceType, TransportHandle};
+use exocore_transport::{InEvent, Libp2pTransport, ServiceType, TransportServiceHandle};
 
 use crate::js::into_js_error;
 use crate::watched_query::WatchedQuery;

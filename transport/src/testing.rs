@@ -15,7 +15,7 @@ use futures::prelude::*;
 
 use crate::streams::{MpscHandleSink, MpscHandleStream};
 use crate::transport::{ConnectionStatus, TransportHandleOnStart};
-use crate::{Error, InEvent, InMessage, OutEvent, OutMessage, ServiceType, TransportHandle};
+use crate::{Error, InEvent, InMessage, OutEvent, OutMessage, ServiceType, TransportServiceHandle};
 use exocore_core::utils::handle_set::{Handle, HandleSet};
 use futures::stream::Peekable;
 use futures::{FutureExt, StreamExt};
@@ -99,7 +99,7 @@ struct HandleSink {
     sender: mpsc::Sender<InEvent>,
 }
 
-impl TransportHandle for MockTransportHandle {
+impl TransportServiceHandle for MockTransportHandle {
     type Sink = MpscHandleSink;
     type Stream = MpscHandleStream;
 
@@ -209,7 +209,7 @@ pub struct TestableTransportHandle {
 }
 
 impl TestableTransportHandle {
-    pub fn new<T: TransportHandle>(mut handle: T, cell: Cell) -> TestableTransportHandle {
+    pub fn new<T: TransportServiceHandle>(mut handle: T, cell: Cell) -> TestableTransportHandle {
         let mut handle_sink = handle.get_sink();
         let mut handle_stream = handle.get_stream();
         spawn_future(handle);

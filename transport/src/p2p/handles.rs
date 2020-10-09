@@ -15,7 +15,7 @@ use exocore_core::utils::handle_set::Handle;
 
 use crate::transport::{InEvent, OutEvent, TransportHandleOnStart};
 use crate::Error;
-use crate::{ServiceType, TransportHandle};
+use crate::{ServiceType, TransportServiceHandle};
 
 /// Transport handles created on the `Libp2pTransport` to be used by services.
 ///
@@ -74,7 +74,7 @@ pub(super) struct ServiceHandle {
 
 /// Handle taken by a Cell layer to receive and send message for a given node &
 /// cell.
-pub struct Libp2pTransportHandle {
+pub struct Libp2pTransportServiceHandle {
     pub(super) cell_id: CellId,
     pub(super) service_type: ServiceType,
     pub(super) inner: Weak<RwLock<ServiceHandles>>,
@@ -83,7 +83,7 @@ pub struct Libp2pTransportHandle {
     pub(super) handle: Handle,
 }
 
-impl TransportHandle for Libp2pTransportHandle {
+impl TransportServiceHandle for Libp2pTransportServiceHandle {
     type Sink = SinkMapErr<mpsc::Sender<OutEvent>, fn(SendError) -> Error>;
     type Stream = mpsc::Receiver<InEvent>;
 
@@ -103,7 +103,7 @@ impl TransportHandle for Libp2pTransportHandle {
     }
 }
 
-impl Future for Libp2pTransportHandle {
+impl Future for Libp2pTransportServiceHandle {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -111,7 +111,7 @@ impl Future for Libp2pTransportHandle {
     }
 }
 
-impl Drop for Libp2pTransportHandle {
+impl Drop for Libp2pTransportServiceHandle {
     fn drop(&mut self) {
         debug!(
             "Transport handle for cell {} layer {:?} got dropped. Removing it from transport",

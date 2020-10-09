@@ -13,7 +13,7 @@ pub mod transport;
 pub mod p2p;
 
 #[cfg(feature = "p2p-base")]
-pub use p2p::{Libp2pTransport, Libp2pTransportHandle};
+pub use p2p::{Libp2pTransport, Libp2pTransportServiceHandle};
 
 #[cfg(feature = "http-server")]
 pub mod http;
@@ -26,4 +26,4 @@ pub mod testing;
 
 pub use error::Error;
 pub use messages::{InMessage, OutMessage};
-pub use transport::{InEvent, OutEvent, ServiceType, TransportHandle};
+pub use transport::{InEvent, OutEvent, ServiceType, TransportServiceHandle};

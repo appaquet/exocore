@@ -23,7 +23,7 @@ use exocore_core::time::{Clock, ConsistentTimestamp};
 use exocore_core::utils::handle_set::{Handle, HandleSet};
 use exocore_transport::{
     transport::ConnectionStatus, InEvent, InMessage, OutEvent, OutMessage, ServiceType,
-    TransportHandle,
+    TransportServiceHandle,
 };
 
 use crate::error::Error;
@@ -33,7 +33,7 @@ use crate::{mutation::MutationRequestLike, query::WatchToken};
 /// mutations to a remote node's local store running the `Server` component.
 pub struct Client<T>
 where
-    T: TransportHandle,
+    T: TransportServiceHandle,
 {
     config: ClientConfiguration,
     inner: Arc<RwLock<Inner>>,
@@ -43,7 +43,7 @@ where
 
 impl<T> Client<T>
 where
-    T: TransportHandle,
+    T: TransportServiceHandle,
 {
     pub fn new(
         config: ClientConfiguration,

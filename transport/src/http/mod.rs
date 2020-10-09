@@ -25,7 +25,7 @@ mod tests {
     };
     use hyper::{body::Buf, Body, Client, Request, Response};
 
-    use crate::{testing::TestableTransportHandle, ServiceType, TransportHandle};
+    use crate::{testing::TestableTransportHandle, ServiceType, TransportServiceHandle};
 
     use super::*;
 

@@ -1,6 +1,6 @@
 use crate::transport::TransportHandleOnStart;
 use crate::{error::Error, transport::ConnectionID, OutMessage};
-use crate::{InEvent, OutEvent, TransportHandle};
+use crate::{InEvent, OutEvent, TransportServiceHandle};
 use exocore_core::cell::NodeId;
 use exocore_core::futures::OwnedSpawnSet;
 use futures::channel::mpsc;
@@ -25,10 +25,10 @@ use std::task::{Context, Poll};
 /// Warning: If we never received an event for a node, it will automatically
 /// select the first handle !!
 #[pin_project]
-pub struct EitherTransportHandle<TLeft, TRight>
+pub struct EitherTransportServiceHandle<TLeft, TRight>
 where
-    TLeft: TransportHandle,
-    TRight: TransportHandle,
+    TLeft: TransportServiceHandle,
+    TRight: TransportServiceHandle,
 {
     #[pin]
     left: TLeft,
@@ -41,15 +41,15 @@ where
     completion_receiver: mpsc::Receiver<()>,
 }
 
-impl<TLeft, TRight> EitherTransportHandle<TLeft, TRight>
+impl<TLeft, TRight> EitherTransportServiceHandle<TLeft, TRight>
 where
-    TLeft: TransportHandle,
-    TRight: TransportHandle,
+    TLeft: TransportServiceHandle,
+    TRight: TransportServiceHandle,
 {
-    pub fn new(left: TLeft, right: TRight) -> EitherTransportHandle<TLeft, TRight> {
+    pub fn new(left: TLeft, right: TRight) -> EitherTransportServiceHandle<TLeft, TRight> {
         let owned_spawn_set = OwnedSpawnSet::new();
         let (completion_sender, completion_receiver) = mpsc::channel(1);
-        EitherTransportHandle {
+        EitherTransportServiceHandle {
             left,
             right,
             nodes_side: Arc::new(RwLock::new(HashMap::new())),
@@ -118,10 +118,10 @@ where
     }
 }
 
-impl<TLeft, TRight> TransportHandle for EitherTransportHandle<TLeft, TRight>
+impl<TLeft, TRight> TransportServiceHandle for EitherTransportServiceHandle<TLeft, TRight>
 where
-    TLeft: TransportHandle,
-    TRight: TransportHandle,
+    TLeft: TransportServiceHandle,
+    TRight: TransportServiceHandle,
 {
     type Sink = Box<dyn Sink<OutEvent, Error = Error> + Send + Unpin + 'static>;
     type Stream = Box<dyn Stream<Item = InEvent> + Send + Unpin + 'static>;
@@ -242,10 +242,10 @@ where
     }
 }
 
-impl<TLeft, TRight> Future for EitherTransportHandle<TLeft, TRight>
+impl<TLeft, TRight> Future for EitherTransportServiceHandle<TLeft, TRight>
 where
-    TLeft: TransportHandle,
-    TRight: TransportHandle,
+    TLeft: TransportServiceHandle,
+    TRight: TransportServiceHandle,
 {
     type Output = ();
 
@@ -298,7 +298,7 @@ mod tests {
         let node1_t1 = mock1.get_transport(node1.clone(), Index);
         let node1_t2 = mock2.get_transport(node1.clone(), Index);
         let mut node1_either = TestableTransportHandle::new(
-            EitherTransportHandle::new(node1_t1, node1_t2),
+            EitherTransportServiceHandle::new(node1_t1, node1_t2),
             cell1.cell().clone(),
         );
 

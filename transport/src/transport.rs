@@ -6,7 +6,7 @@ use futures::sink::Sink;
 pub type TransportHandleOnStart = Box<dyn Future<Output = ()> + Send + Unpin + 'static>;
 
 /// Handle to a transport to be used by a service of a cell.
-pub trait TransportHandle: Future<Output = ()> + Send + Unpin + 'static {
+pub trait TransportServiceHandle: Future<Output = ()> + Send + Unpin + 'static {
     type Sink: Sink<OutEvent, Error = Error> + Send + Unpin + 'static;
     type Stream: Stream<Item = InEvent> + Send + Unpin + 'static;
 

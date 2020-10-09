@@ -8,7 +8,7 @@ use exocore_core::time::Clock;
 use exocore_index::local::{EntityIndex, EntityIndexConfig, Store};
 use exocore_index::remote::server::Server;
 use exocore_transport::p2p::Libp2pTransportConfig;
-use exocore_transport::{Libp2pTransport, ServiceType, TransportHandle};
+use exocore_transport::{Libp2pTransport, ServiceType, TransportServiceHandle};
 
 use crate::options;
 
@@ -122,7 +122,7 @@ pub fn start(
     Ok(())
 }
 
-fn create_local_store<T: TransportHandle>(
+fn create_local_store<T: TransportServiceHandle>(
     rt: &mut Runtime,
     transport: T,
     index_engine_handle: EngineHandle<DirectoryChainStore, MemoryPendingStore>,

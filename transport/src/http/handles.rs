@@ -10,7 +10,7 @@ use futures::{channel::mpsc, lock::Mutex, Future, FutureExt};
 use crate::{
     streams::{MpscHandleSink, MpscHandleStream},
     transport::TransportHandleOnStart,
-    InEvent, InMessage, OutEvent, ServiceType, TransportHandle,
+    InEvent, InMessage, OutEvent, ServiceType, TransportServiceHandle,
 };
 
 use super::server::RequestError;
@@ -62,7 +62,7 @@ pub struct HTTPTransportServiceHandle {
     pub(super) handle: Handle,
 }
 
-impl TransportHandle for HTTPTransportServiceHandle {
+impl TransportServiceHandle for HTTPTransportServiceHandle {
     type Sink = MpscHandleSink;
     type Stream = MpscHandleStream;
 

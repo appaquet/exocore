@@ -19,7 +19,7 @@ use exocore_core::time::{Clock, ConsistentTimestamp};
 use exocore_core::utils::id::{generate_id, generate_prefixed_id};
 use exocore_index::remote::{Client, ClientConfiguration, ClientHandle};
 use exocore_transport::p2p::Libp2pTransportConfig;
-use exocore_transport::{Libp2pTransport, ServiceType, TransportHandle};
+use exocore_transport::{Libp2pTransport, ServiceType, TransportServiceHandle};
 
 pub struct Context {
     _runtime: Runtime,
