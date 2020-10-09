@@ -5,7 +5,7 @@ use futures::executor::block_on_stream;
 use exocore_core::cell::{CellNodeRole, LocalNode};
 use exocore_core::protos::generated::exocore_index::{EntityQuery, EntityResults, MutationResult};
 use exocore_core::tests_utils::expect_eventually;
-use exocore_transport::testing::MockTransportHandle;
+use exocore_transport::testing::MockTransportServiceHandle;
 use exocore_transport::ServiceType;
 
 use crate::error::Error;
@@ -284,7 +284,7 @@ fn client_drop_stops_watched_stream() -> anyhow::Result<()> {
 struct TestRemoteStore {
     local_store: TestStore,
     server_config: ServerConfiguration,
-    client: Option<Client<MockTransportHandle>>,
+    client: Option<Client<MockTransportServiceHandle>>,
     client_handle: ClientHandle,
 }
 

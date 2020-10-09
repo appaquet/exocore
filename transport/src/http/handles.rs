@@ -19,20 +19,39 @@ use super::server::RequestError;
 /// to them.
 #[derive(Default)]
 pub struct ServiceHandles {
-    pub(super) services: HashMap<(CellId, ServiceType), ServiceHandle>,
+    pub(super) service_handles: HashMap<(CellId, ServiceType), ServiceHandle>,
 }
 
 impl ServiceHandles {
+    pub(super) fn push_handle(
+        &mut self,
+        cell: Cell,
+        service_type: ServiceType,
+        in_sender: mpsc::Sender<InEvent>,
+        out_receiver: mpsc::Receiver<OutEvent>,
+    ) {
+        let handle = ServiceHandle {
+            cell: cell.clone(),
+            in_sender,
+            out_receiver: Some(out_receiver),
+        };
+
+        let key = (cell.id().clone(), service_type);
+        self.service_handles.insert(key, handle);
+    }
+
     pub(super) fn get_handle(
         &mut self,
         cell_id: &CellId,
-        layer: ServiceType,
+        service_type: ServiceType,
     ) -> Option<&mut ServiceHandle> {
-        self.services.get_mut(&(cell_id.clone(), layer))
+        self.service_handles
+            .get_mut(&(cell_id.clone(), service_type))
     }
 
-    fn remove_handle(&mut self, cell_id: &CellId, layer: ServiceType) {
-        self.services.remove(&(cell_id.clone(), layer));
+    fn remove_handle(&mut self, cell_id: &CellId, service_type: ServiceType) {
+        self.service_handles
+            .remove(&(cell_id.clone(), service_type));
     }
 }
 
@@ -55,7 +74,7 @@ impl ServiceHandle {
 /// Handle to the HTTP transport to be used by a service of a cell.
 pub struct HTTPTransportServiceHandle {
     pub(super) cell_id: CellId,
-    pub(super) layer: ServiceType,
+    pub(super) service_type: ServiceType,
     pub(super) inner: Weak<Mutex<ServiceHandles>>,
     pub(super) sink: Option<mpsc::Sender<OutEvent>>,
     pub(super) stream: Option<mpsc::Receiver<InEvent>>,
@@ -90,14 +109,14 @@ impl Future for HTTPTransportServiceHandle {
 impl Drop for HTTPTransportServiceHandle {
     fn drop(&mut self) {
         debug!(
-            "Transport handle for cell {} layer {:?} got dropped. Removing it from transport",
-            self.cell_id, self.layer
+            "Transport handle for cell {} service type {:?} got dropped. Removing it from transport",
+            self.cell_id, self.service_type
         );
 
-        // we have been dropped, we remove ourself from layers to communicate with
+        // we have been dropped, we remove ourself from services to communicate with
         if let Some(inner) = self.inner.upgrade() {
             let mut inner = block_on(inner.lock());
-            inner.remove_handle(&self.cell_id, self.layer);
+            inner.remove_handle(&self.cell_id, self.service_type);
         }
     }
 }

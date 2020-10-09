@@ -26,44 +26,48 @@ const CHANNELS_SIZE: usize = 1000;
 
 type HandleKey = (NodeId, ServiceType);
 
-/// In memory transport used by all layers of Exocore through handles. There is
-/// one handle per cell per layer.
+/// In memory transport used by all services of Exocore through handles. There is
+/// one handle per cell per service.
 pub struct MockTransport {
-    handles_sink: Arc<Mutex<HashMap<HandleKey, HandleSink>>>,
+    service_sinks: Arc<Mutex<HashMap<HandleKey, ServiceSink>>>,
     handle_set: HandleSet,
 }
 
 impl Default for MockTransport {
     fn default() -> MockTransport {
         MockTransport {
-            handles_sink: Arc::new(Mutex::new(HashMap::new())),
+            service_sinks: Arc::new(Mutex::new(HashMap::new())),
             handle_set: HandleSet::new(),
         }
     }
 }
 
 impl MockTransport {
-    pub fn get_transport(&self, node: LocalNode, layer: ServiceType) -> MockTransportHandle {
-        let mut handles_sink = self.handles_sink.lock().unwrap();
+    pub fn get_transport(
+        &self,
+        node: LocalNode,
+        service_type: ServiceType,
+    ) -> MockTransportServiceHandle {
+        let mut service_sinks = self.service_sinks.lock().unwrap();
 
         let handle = self.handle_set.get_handle();
 
         // create channel incoming message for this node will be sent to
         let (incoming_sender, incoming_receiver) = mpsc::channel(CHANNELS_SIZE);
-        handles_sink.insert(
-            (node.id().clone(), layer),
-            HandleSink {
+        service_sinks.insert(
+            (node.id().clone(), service_type),
+            ServiceSink {
                 id: handle.id(),
                 sender: incoming_sender,
             },
         );
 
-        MockTransportHandle {
+        MockTransportServiceHandle {
             handle,
             node: node.node().clone(),
-            layer,
+            service_type,
             started: false,
-            handles_sink: Arc::downgrade(&self.handles_sink),
+            service_sinks: Arc::downgrade(&self.service_sinks),
             incoming_stream: Some(incoming_receiver),
             outgoing_stream: None,
         }
@@ -74,7 +78,7 @@ impl MockTransport {
         node_id: &NodeId,
         connection_status: ConnectionStatus,
     ) {
-        let mut handles_sink = self.handles_sink.lock().unwrap();
+        let mut handles_sink = self.service_sinks.lock().unwrap();
         for (_handle_key, sink) in handles_sink.iter_mut() {
             let _ = sink
                 .sender
@@ -83,23 +87,23 @@ impl MockTransport {
     }
 }
 
-/// Handle taken by a Cell layer to receive and send message for a given node
-pub struct MockTransportHandle {
+/// Handle taken by a Cell service to receive and send message for a given node
+pub struct MockTransportServiceHandle {
     handle: Handle,
     node: Node,
-    layer: ServiceType,
+    service_type: ServiceType,
     started: bool,
-    handles_sink: Weak<Mutex<HashMap<HandleKey, HandleSink>>>,
+    service_sinks: Weak<Mutex<HashMap<HandleKey, ServiceSink>>>,
     incoming_stream: Option<mpsc::Receiver<InEvent>>,
     outgoing_stream: Option<mpsc::Receiver<OutEvent>>,
 }
 
-struct HandleSink {
+struct ServiceSink {
     id: usize,
     sender: mpsc::Sender<InEvent>,
 }
 
-impl TransportServiceHandle for MockTransportHandle {
+impl TransportServiceHandle for MockTransportServiceHandle {
     type Sink = MpscHandleSink;
     type Stream = MpscHandleStream;
 
@@ -124,7 +128,7 @@ impl TransportServiceHandle for MockTransportHandle {
     }
 }
 
-impl Future for MockTransportHandle {
+impl Future for MockTransportServiceHandle {
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -137,8 +141,8 @@ impl Future for MockTransportHandle {
                 .expect("get_sink() didn't get called first");
 
             let node = self.node.clone();
-            let layer = self.layer;
-            let handles_sink_weak = Weak::clone(&self.handles_sink);
+            let service_type = self.service_type;
+            let handles_sink_weak = Weak::clone(&self.service_sinks);
             spawn_future(async move {
                 while let Some(OutEvent::Message(msg)) = outgoing_stream.next().await {
                     let handles_sink = if let Some(handles_sink) = handles_sink_weak.upgrade() {
@@ -152,7 +156,7 @@ impl Future for MockTransportHandle {
                         .to_in_message(node.clone())
                         .expect("Couldn't get InMessage from OutMessage");
                     for dest_node in &msg.to {
-                        let key = (dest_node.id().clone(), layer);
+                        let key = (dest_node.id().clone(), service_type);
                         if let Some(node_sink) = handles_sink.get_mut(&key) {
                             let _ = node_sink
                                 .sender
@@ -174,11 +178,11 @@ impl Future for MockTransportHandle {
     }
 }
 
-impl Drop for MockTransportHandle {
+impl Drop for MockTransportServiceHandle {
     fn drop(&mut self) {
-        if let Some(node_sinks) = self.handles_sink.upgrade() {
+        if let Some(node_sinks) = self.service_sinks.upgrade() {
             if let Ok(mut node_sinks) = node_sinks.lock() {
-                let key = (self.node.id().clone(), self.layer);
+                let key = (self.node.id().clone(), self.service_type);
 
                 // if another handle got registered after us, we need to keep it there
                 if let Some(stream) = node_sinks.get(&key) {
@@ -188,9 +192,9 @@ impl Drop for MockTransportHandle {
                 }
 
                 debug!(
-                    "Removing node={} layer={:?} from transport hub because it's been dropped",
+                    "Removing node={} service_type={:?} from transport hub because it's been dropped",
                     self.node.id(),
-                    self.layer,
+                    self.service_type,
                 );
                 node_sinks.remove(&key);
             }

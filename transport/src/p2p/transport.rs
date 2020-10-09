@@ -41,13 +41,11 @@ impl Libp2pTransport {
     /// here since all messages are authenticated using the node's private
     /// key thanks to secio.
     pub fn new(local_node: LocalNode, config: Libp2pTransportConfig) -> Libp2pTransport {
-        let service_handles = Arc::new(RwLock::new(ServiceHandles::new()));
-
         Libp2pTransport {
             local_node,
             config,
-            service_handles,
-            handle_set: HandleSet::new(),
+            service_handles: Default::default(),
+            handle_set: Default::default(),
         }
     }
 

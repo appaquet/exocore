@@ -22,17 +22,12 @@ use crate::{ServiceType, TransportServiceHandle};
 /// A transport can be used by multiple services from multiple cells, so
 /// multiple handles for the same service, but on different cells may be
 /// created.
+#[derive(Default)]
 pub(super) struct ServiceHandles {
     pub(super) service_handles: HashMap<(CellId, ServiceType), ServiceHandle>,
 }
 
 impl ServiceHandles {
-    pub(super) fn new() -> ServiceHandles {
-        ServiceHandles {
-            service_handles: HashMap::new(),
-        }
-    }
-
     pub(super) fn push_handle(
         &mut self,
         cell: Cell,
@@ -72,7 +67,7 @@ pub(super) struct ServiceHandle {
     pub(super) out_receiver: Option<mpsc::Receiver<OutEvent>>,
 }
 
-/// Handle taken by a Cell layer to receive and send message for a given node &
+/// Handle taken by a Cell service to receive and send message for a given node &
 /// cell.
 pub struct Libp2pTransportServiceHandle {
     pub(super) cell_id: CellId,
@@ -114,7 +109,7 @@ impl Future for Libp2pTransportServiceHandle {
 impl Drop for Libp2pTransportServiceHandle {
     fn drop(&mut self) {
         debug!(
-            "Transport handle for cell {} layer {:?} got dropped. Removing it from transport",
+            "Transport handle for cell {} and service {:?} got dropped. Removing it from transport",
             self.cell_id, self.service_type
         );
 

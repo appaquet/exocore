@@ -66,21 +66,16 @@ impl HTTPTransportServer {
 
         // Register new handle and its streams
         let mut service_handles = block_on(self.service_handles.lock());
-        let inner_layer = ServiceHandle {
-            cell: cell.clone(),
-            in_sender,
-            out_receiver: Some(out_receiver),
-        };
+        service_handles.push_handle(cell.clone(), service_type, in_sender, out_receiver);
+
         info!(
             "Registering transport for cell {} and service type {:?}",
             cell, service_type
         );
-        let key = (cell.id().clone(), service_type);
-        service_handles.services.insert(key, inner_layer);
 
         Ok(HTTPTransportServiceHandle {
             cell_id: cell.id().clone(),
-            layer: service_type,
+            service_type,
             inner: Arc::downgrade(&self.service_handles),
             sink: Some(out_sender),
             stream: Some(in_receiver),
@@ -144,7 +139,7 @@ impl HTTPTransportServer {
                 let mut inner = services.lock().await;
 
                 let mut futures = Vec::new();
-                for service_channels in inner.services.values_mut() {
+                for service_channels in inner.service_handles.values_mut() {
                     let mut out_receiver = service_channels
                         .out_receiver
                         .take()
@@ -206,7 +201,7 @@ async fn handle_request(
 
     let mut services = service_handles.lock().await;
     let service = services
-        .get_handle(auth_token.cell_id(), request_type.transport_layer())
+        .get_handle(auth_token.cell_id(), request_type.service_type())
         .ok_or_else(|| {
             warn!("Cell {} not found for request", auth_token.cell_id());
             RequestError::InvalidRequestType
@@ -404,7 +399,7 @@ impl RequestType {
         }
     }
 
-    fn transport_layer(&self) -> ServiceType {
+    fn service_type(&self) -> ServiceType {
         match self {
             RequestType::EntitiesQuery => ServiceType::Index,
             RequestType::EntitiesMutation => ServiceType::Index,

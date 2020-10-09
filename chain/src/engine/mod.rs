@@ -224,8 +224,8 @@ where
                 }
                 msg_type => {
                     return Err(EngineError::Other(format!(
-                        "Got an unknown message type: message_type={} transport_layer={:?}",
-                        msg_type, message.layer,
+                        "Got an unknown message type: message_type={} service_type={:?}",
+                        msg_type, message.service_type,
                     )));
                 }
             }

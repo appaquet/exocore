@@ -16,7 +16,7 @@ pub trait TransportServiceHandle: Future<Output = ()> + Send + Unpin + 'static {
 }
 
 /// Component / service of the Exocore architecture to which a message is
-/// intented / originating. Ex: Chain layer
+/// intented / originating. Ex: Chain service
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ServiceType {
     None = 0,
