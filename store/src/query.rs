@@ -2,18 +2,18 @@ use prost::Message;
 
 use exocore_chain::operation::OperationId;
 use exocore_core::framing::{CapnpFrameBuilder, FrameReader, TypedCapnpFrame};
-use exocore_core::protos::generated::exocore_index::{
+use exocore_core::protos::generated::exocore_store::{
     entity_query, ordering, trait_field_predicate, trait_query, EntityQuery, EntityResults,
     MatchPredicate, Ordering, Paging, ReferencePredicate, TraitFieldPredicate,
     TraitFieldReferencePredicate, TraitPredicate, TraitQuery,
 };
-use exocore_core::protos::generated::index_transport_capnp::watched_query_request;
-use exocore_core::protos::generated::index_transport_capnp::{query_request, query_response};
+use exocore_core::protos::generated::store_transport_capnp::watched_query_request;
+use exocore_core::protos::generated::store_transport_capnp::{query_request, query_response};
 use exocore_core::protos::{
-    index::{AllPredicate, IdsPredicate, OperationsPredicate, Projection, Reference},
     message::NamedMessage,
     prost::ProstMessageExt,
     reflect::FieldId,
+    store::{AllPredicate, IdsPredicate, OperationsPredicate, Projection, Reference},
 };
 
 use crate::entity::{EntityId, TraitId};
@@ -131,7 +131,7 @@ impl QueryBuilder {
 
     #[cfg(any(test, feature = "tests-utils"))]
     pub fn test(success: bool) -> QueryBuilder {
-        use exocore_core::protos::generated::exocore_index::TestPredicate;
+        use exocore_core::protos::generated::exocore_store::TestPredicate;
         QueryBuilder {
             query: EntityQuery {
                 predicate: Some(entity_query::Predicate::Test(TestPredicate { success })),

@@ -3,7 +3,7 @@ use std::time::Duration;
 use futures::executor::block_on_stream;
 
 use exocore_core::cell::{CellNodeRole, LocalNode};
-use exocore_core::protos::generated::exocore_index::{EntityQuery, EntityResults, MutationResult};
+use exocore_core::protos::generated::exocore_store::{EntityQuery, EntityResults, MutationResult};
 use exocore_core::tests_utils::expect_eventually;
 use exocore_transport::testing::MockTransportServiceHandle;
 use exocore_transport::ServiceType;
@@ -301,9 +301,7 @@ impl TestRemoteStore {
     ) -> Result<TestRemoteStore, anyhow::Error> {
         let mut local_store = TestStore::new()?;
 
-        local_store
-            .cluster
-            .add_node_role(0, CellNodeRole::IndexStore);
+        local_store.cluster.add_node_role(0, CellNodeRole::Store);
 
         let local_node = LocalNode::generate();
         let store_client = Client::new(
@@ -313,7 +311,7 @@ impl TestRemoteStore {
             local_store
                 .cluster
                 .transport_hub
-                .get_transport(local_node, ServiceType::Index),
+                .get_transport(local_node, ServiceType::Store),
         )?;
         let client_handle = store_client.get_handle();
 
@@ -333,7 +331,7 @@ impl TestRemoteStore {
         let cell = self.local_store.cluster.cells[0].cell().clone();
         let transport = self.local_store.cluster.transport_hub.get_transport(
             self.local_store.cluster.nodes[0].clone(),
-            ServiceType::Index,
+            ServiceType::Store,
         );
 
         let server = Server::new(self.server_config, cell, store_handle, transport)?;

@@ -13,8 +13,8 @@ use prost::Message;
 use exocore_core::cell::Cell;
 use exocore_core::futures::Runtime;
 use exocore_core::protos::generated::exocore_core::LocalNodeConfig;
-use exocore_core::protos::generated::exocore_index::EntityQuery;
-use exocore_core::protos::{index::MutationRequest, prost::ProstMessageExt};
+use exocore_core::protos::generated::exocore_store::EntityQuery;
+use exocore_core::protos::{prost::ProstMessageExt, store::MutationRequest};
 use exocore_core::time::{Clock, ConsistentTimestamp};
 use exocore_core::utils::id::{generate_id, generate_prefixed_id};
 use exocore_store::remote::{Client, ClientConfiguration, ClientHandle};
@@ -72,9 +72,9 @@ impl Context {
         let clock = Clock::new();
 
         let store_transport = transport
-            .get_handle(cell.clone(), ServiceType::Index)
+            .get_handle(cell.clone(), ServiceType::Store)
             .map_err(|err| {
-                error!("Couldn't get transport handle for remote index: {}", err);
+                error!("Couldn't get transport handle for remote store: {}", err);
                 ContextStatus::Error
             })?;
         let remote_store_config = ClientConfiguration::default();

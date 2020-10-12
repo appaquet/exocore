@@ -5,7 +5,7 @@ use crate::ordering::OrderingValueWrapper;
 use chrono::{DateTime, Utc};
 use exocore_chain::block::BlockOffset;
 use exocore_chain::operation::OperationId;
-use exocore_core::protos::generated::exocore_index::{EntityQuery, Paging};
+use exocore_core::protos::generated::exocore_store::{EntityQuery, Paging};
 use std::borrow::Borrow;
 
 /// Iterates through all results matching a given initial query using the

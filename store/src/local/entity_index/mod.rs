@@ -14,8 +14,8 @@ use exocore_chain::operation::{Operation, OperationId};
 use exocore_chain::{chain, pending};
 use exocore_chain::{EngineHandle, EngineOperationStatus};
 use exocore_core::cell::FullCell;
-use exocore_core::protos::generated::exocore_index::entity_mutation::Mutation;
-use exocore_core::protos::generated::exocore_index::{
+use exocore_core::protos::generated::exocore_store::entity_mutation::Mutation;
+use exocore_core::protos::generated::exocore_store::{
     Entity, EntityMutation, EntityQuery, EntityResult as EntityResultProto, EntityResultSource,
     EntityResults, Trait,
 };
@@ -80,7 +80,7 @@ where
 
         // make sure directories are created
         let mut chain_index_dir = cell
-            .index_directory()
+            .store_directory()
             .ok_or_else(|| Error::Other("Cell doesn't have an path configured".to_string()))?;
         chain_index_dir.push("chain");
         if std::fs::metadata(&chain_index_dir).is_err() {
@@ -812,7 +812,7 @@ where
     }
 }
 
-/// Wrapper for entity result with matched mutation from index layer along
+/// Wrapper for entity result with matched mutation from store layer along
 /// aggregated traits.
 pub struct EntityResult {
     pub matched_mutation: MutationMetadata,

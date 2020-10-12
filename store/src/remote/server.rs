@@ -6,11 +6,11 @@ use futures::{FutureExt, SinkExt, StreamExt};
 
 use exocore_core::cell::Cell;
 use exocore_core::futures::{interval, OwnedSpawnSet};
-use exocore_core::protos::generated::exocore_index::{EntityQuery, EntityResults, MutationRequest};
-use exocore_core::protos::generated::index_transport_capnp::{
+use exocore_core::protos::generated::exocore_store::{EntityQuery, EntityResults, MutationRequest};
+use exocore_core::protos::generated::store_transport_capnp::{
     mutation_request, query_request, unwatch_query_request, watched_query_request,
 };
-use exocore_core::protos::{generated::MessageType, index::MutationResult};
+use exocore_core::protos::{generated::MessageType, store::MutationResult};
 use exocore_core::time::{Duration, Instant};
 use exocore_transport::{InEvent, InMessage, OutEvent, OutMessage, TransportServiceHandle};
 

@@ -1,4 +1,4 @@
-use exocore_core::protos::generated::exocore_index::Paging;
+use exocore_core::protos::generated::exocore_store::Paging;
 use exocore_core::protos::generated::exocore_test::TestMessage;
 use exocore_core::{
     protos::{prost::ProstTimestampExt, test::TestMessage2},

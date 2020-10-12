@@ -2,7 +2,7 @@ use crate::error::Error;
 use crate::ordering::OrderingValueWrapper;
 
 use exocore_chain::block::BlockOffset;
-use exocore_core::protos::generated::exocore_index::{
+use exocore_core::protos::generated::exocore_store::{
     entity_query::Predicate, ordering, ordering_value, trait_field_predicate, trait_query,
     EntityQuery, IdsPredicate, MatchPredicate, OperationsPredicate, Ordering, OrderingValue,
     Paging, ReferencePredicate, TraitFieldPredicate, TraitFieldReferencePredicate, TraitPredicate,
@@ -10,7 +10,7 @@ use exocore_core::protos::generated::exocore_index::{
 use exocore_core::protos::prost::{Any, ProstTimestampExt};
 use exocore_core::protos::reflect;
 use exocore_core::protos::reflect::{FieldValue, ReflectMessage};
-use exocore_core::protos::{index::AllPredicate, registry::Registry};
+use exocore_core::protos::{registry::Registry, store::AllPredicate};
 
 use std::ops::Deref;
 use std::path::Path;

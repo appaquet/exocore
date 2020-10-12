@@ -9,7 +9,7 @@ use futures::prelude::*;
 use wasm_bindgen::prelude::*;
 
 use exocore_core::futures::spawn_future_non_send;
-use exocore_core::protos::generated::exocore_index::{EntityQuery, EntityResults};
+use exocore_core::protos::generated::exocore_store::{EntityQuery, EntityResults};
 use exocore_core::protos::prost::ProstMessageExt;
 use exocore_store::remote::ClientHandle;
 

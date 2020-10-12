@@ -11,10 +11,10 @@ use exocore_core::cell::Node;
 use exocore_core::cell::{Cell, CellNodeRole, NodeId};
 use exocore_core::framing::CapnpFrameBuilder;
 use exocore_core::futures::interval;
-use exocore_core::protos::generated::exocore_index::{
+use exocore_core::protos::generated::exocore_store::{
     EntityQuery, EntityResults, MutationRequest, MutationResult,
 };
-use exocore_core::protos::generated::index_transport_capnp::{
+use exocore_core::protos::generated::store_transport_capnp::{
     mutation_response, query_response, unwatch_query_request, watched_query_response,
 };
 use exocore_core::protos::generated::MessageType;
@@ -51,13 +51,13 @@ where
         clock: Clock,
         transport_handle: T,
     ) -> Result<Client<T>, Error> {
-        // pick the first node that has index role for now, we'll be switching over to
+        // pick the first node that has store role for now, we'll be switching over to
         // the first node that connects once transport established connection
-        let index_node = {
+        let store_node = {
             let cell_nodes = cell.nodes();
             let cell_nodes_iter = cell_nodes.iter();
-            let first_index_node = cell_nodes_iter.with_role(CellNodeRole::IndexStore).next();
-            first_index_node.map(|n| n.node()).cloned()
+            let first_store_node = cell_nodes_iter.with_role(CellNodeRole::Store).next();
+            first_store_node.map(|n| n.node()).cloned()
         };
 
         let inner = Arc::new(RwLock::new(Inner {
@@ -65,7 +65,7 @@ where
             cell,
             clock,
             transport_out: None,
-            index_node,
+            store_node,
             nodes_status: HashMap::new(),
             pending_queries: HashMap::new(),
             watched_queries: HashMap::new(),
@@ -185,7 +185,7 @@ pub(crate) struct Inner {
     cell: Cell,
     clock: Clock,
     transport_out: Option<mpsc::UnboundedSender<OutEvent>>,
-    index_node: Option<Node>,
+    store_node: Option<Node>,
     nodes_status: HashMap<NodeId, ConnectionStatus>,
     pending_queries: HashMap<ConsistentTimestamp, PendingRequest<EntityResults>>,
     watched_queries: HashMap<ConsistentTimestamp, WatchedQueryRequest>,
@@ -204,14 +204,14 @@ impl Inner {
         inner.nodes_status.insert(node_id, node_new_status);
 
         let node_is_connected = |node_id: &NodeId| -> bool {
-            let index_node_status = inner.nodes_status.get(node_id);
-            index_node_status == Some(&ConnectionStatus::Connected)
+            let store_node_status = inner.nodes_status.get(node_id);
+            store_node_status == Some(&ConnectionStatus::Connected)
         };
 
         // if the node we are already using for store is connected, we don't have to do
         // anything
-        if let Some(index_node) = &inner.index_node {
-            if node_is_connected(index_node.id()) {
+        if let Some(store_node) = &inner.store_node {
+            if node_is_connected(store_node.id()) {
                 // if our current node has just reconnected, we need to make sure watched
                 // queries are still registered
                 if node_new_status == ConnectionStatus::Connected {
@@ -222,20 +222,20 @@ impl Inner {
             }
         }
 
-        // otherwise we try to find a new index node that is connected
-        let new_index_node = {
+        // otherwise we try to find a new store node that is connected
+        let new_store_node = {
             let cell_nodes = inner.cell.nodes();
             let cell_nodes_iter = cell_nodes.iter();
 
-            let index_node = cell_nodes_iter
-                .with_role(CellNodeRole::IndexStore)
+            let store_node = cell_nodes_iter
+                .with_role(CellNodeRole::Store)
                 .find(|n| node_is_connected(n.node().id()));
 
-            index_node.map(|n| n.node()).cloned()
+            store_node.map(|n| n.node()).cloned()
         };
-        if let Some(new_index_node) = new_index_node {
-            info!("Switching index server node to {:?}", new_index_node);
-            inner.index_node = Some(new_index_node);
+        if let Some(new_store_node) = new_store_node {
+            info!("Switching store server node to {:?}", new_store_node);
+            inner.store_node = Some(new_store_node);
         }
 
         inner.send_watched_queries_keepalive(true);
@@ -317,13 +317,13 @@ impl Inner {
     ) -> Result<oneshot::Receiver<Result<MutationResult, Error>>, Error> {
         let (result_sender, receiver) = oneshot::channel();
 
-        let index_node = self.index_node.as_ref().ok_or(Error::NotConnected)?;
+        let store_node = self.store_node.as_ref().ok_or(Error::NotConnected)?;
 
         let request_id = self.clock.consistent_time(self.cell.local_node());
         let request_frame = crate::mutation::mutation_to_request_frame(request)?;
         let message =
-            OutMessage::from_framed_message(&self.cell, ServiceType::Index, request_frame)?
-                .with_to_node(index_node.clone())
+            OutMessage::from_framed_message(&self.cell, ServiceType::Store, request_frame)?
+                .with_to_node(store_node.clone())
                 .with_expiration(Some(Instant::now() + self.config.mutation_timeout))
                 .with_rendez_vous_id(request_id);
         self.send_message(message)?;
@@ -352,13 +352,13 @@ impl Inner {
     > {
         let (result_sender, receiver) = oneshot::channel();
 
-        let index_node = self.index_node.as_ref().ok_or(Error::NotConnected)?;
+        let store_node = self.store_node.as_ref().ok_or(Error::NotConnected)?;
 
         let request_id = self.clock.consistent_time(self.cell.local_node());
         let request_frame = crate::query::query_to_request_frame(&query)?;
         let message =
-            OutMessage::from_framed_message(&self.cell, ServiceType::Index, request_frame)?
-                .with_to_node(index_node.clone())
+            OutMessage::from_framed_message(&self.cell, ServiceType::Store, request_frame)?
+                .with_to_node(store_node.clone())
                 .with_expiration(Some(Instant::now() + self.config.query_timeout))
                 .with_rendez_vous_id(request_id);
         self.send_message(message)?;
@@ -401,27 +401,27 @@ impl Inner {
     }
 
     fn send_watch_query(&self, watched_query: &WatchedQueryRequest) -> Result<(), Error> {
-        let index_node = self.index_node.as_ref().ok_or(Error::NotConnected)?;
+        let store_node = self.store_node.as_ref().ok_or(Error::NotConnected)?;
 
         let request_frame = crate::query::watched_query_to_request_frame(&watched_query.query)?;
         let message =
-            OutMessage::from_framed_message(&self.cell, ServiceType::Index, request_frame)?
-                .with_to_node(index_node.clone())
+            OutMessage::from_framed_message(&self.cell, ServiceType::Store, request_frame)?
+                .with_to_node(store_node.clone())
                 .with_rendez_vous_id(watched_query.request_id);
 
         self.send_message(message)
     }
 
     fn send_unwatch_query(&self, token: WatchToken) -> Result<(), Error> {
-        let index_node = self.index_node.as_ref().ok_or(Error::NotConnected)?;
+        let store_node = self.store_node.as_ref().ok_or(Error::NotConnected)?;
 
         let mut frame_builder = CapnpFrameBuilder::<unwatch_query_request::Owned>::new();
         let mut message_builder = frame_builder.get_builder();
         message_builder.set_token(token);
 
         let message =
-            OutMessage::from_framed_message(&self.cell, ServiceType::Index, frame_builder)?
-                .with_to_node(index_node.clone());
+            OutMessage::from_framed_message(&self.cell, ServiceType::Store, frame_builder)?
+                .with_to_node(store_node.clone());
 
         self.send_message(message)
     }
@@ -628,10 +628,10 @@ impl ClientHandle {
         Ok(())
     }
 
-    pub fn index_node(&self) -> Option<Node> {
+    pub fn store_node(&self) -> Option<Node> {
         let inner = self.inner.upgrade()?;
         let inner = inner.read().ok()?;
-        inner.index_node.clone()
+        inner.store_node.clone()
     }
 }
 
@@ -740,10 +740,10 @@ mod tests {
             let mut cell_nodes = full_cell.nodes_mut();
             cell_nodes.add(node1.node().clone());
             let cell_node1 = cell_nodes.get_mut(node1.id()).unwrap();
-            cell_node1.add_role(CellNodeRole::IndexStore);
+            cell_node1.add_role(CellNodeRole::Store);
         }
 
-        let transport_handle = transport.get_transport(local_node, ServiceType::Index);
+        let transport_handle = transport.get_transport(local_node, ServiceType::Store);
         let config = ClientConfiguration::default();
         let client = Client::new(config, full_cell.cell().clone(), clock, transport_handle)?;
         let client_inner = client.inner.clone();
@@ -754,19 +754,19 @@ mod tests {
         });
 
         {
-            // client should have selected the only node as an index server even if it's not
+            // client should have selected the only node as an store server even if it's not
             // online
             let inner = client_inner.read().unwrap();
-            assert_eq!(inner.index_node.as_ref().unwrap().id(), node1.id());
+            assert_eq!(inner.store_node.as_ref().unwrap().id(), node1.id());
         }
 
-        // add a second index node to the cell
+        // add a second store node to the cell
         let node2 = LocalNode::generate();
         {
             let mut cell_nodes = full_cell.nodes_mut();
             cell_nodes.add(node2.node().clone());
             let cell_node2 = cell_nodes.get_mut(node2.id()).unwrap();
-            cell_node2.add_role(CellNodeRole::IndexStore);
+            cell_node2.add_role(CellNodeRole::Store);
         }
 
         // notify that the second node is online
@@ -775,7 +775,7 @@ mod tests {
         expect_eventually(|| -> bool {
             // should now be connected to the second node since the first wasn't online
             let inner = client_inner.read().unwrap();
-            inner.index_node.as_ref().unwrap().id() == node2.id()
+            inner.store_node.as_ref().unwrap().id() == node2.id()
         });
 
         Ok(())

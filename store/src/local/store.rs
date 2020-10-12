@@ -10,11 +10,11 @@ use futures::prelude::*;
 
 use exocore_core::cell::Cell;
 use exocore_core::futures::{spawn_blocking, BatchingStream};
-use exocore_core::protos::generated::exocore_index::entity_mutation::Mutation;
-use exocore_core::protos::generated::exocore_index::{
+use exocore_core::protos::generated::exocore_store::entity_mutation::Mutation;
+use exocore_core::protos::generated::exocore_store::{
     entity_query, EntityQuery, EntityResults, MutationRequest, MutationResult,
 };
-use exocore_core::protos::{index::OperationsPredicate, prost::ProstMessageExt};
+use exocore_core::protos::{prost::ProstMessageExt, store::OperationsPredicate};
 use exocore_core::time::Clock;
 use exocore_core::utils::handle_set::{Handle, HandleSet};
 
@@ -558,7 +558,7 @@ pub mod tests {
     use futures::executor::block_on_stream;
 
     use exocore_core::protos::prost::ProstAnyPackMessageExt;
-    use exocore_core::{futures::delay_for, protos::index::Trait, protos::test::TestMessage};
+    use exocore_core::{futures::delay_for, protos::store::Trait, protos::test::TestMessage};
 
     use crate::mutation::MutationBuilder;
     use crate::query::QueryBuilder;

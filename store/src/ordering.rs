@@ -1,5 +1,5 @@
 use exocore_chain::operation::OperationId;
-use exocore_core::protos::generated::exocore_index::{ordering_value, OrderingValue, Paging};
+use exocore_core::protos::generated::exocore_store::{ordering_value, OrderingValue, Paging};
 use std::cmp::Ordering;
 
 /// Wraps a trait or entities search result's ordering value so that it can be

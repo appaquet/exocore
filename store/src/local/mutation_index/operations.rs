@@ -2,8 +2,8 @@ use crate::entity::{EntityId, TraitId};
 use exocore_chain::block::BlockOffset;
 use exocore_chain::engine::EngineOperation;
 use exocore_chain::operation::{Operation, OperationId};
-use exocore_core::protos::generated::exocore_index::entity_mutation::Mutation;
-use exocore_core::protos::generated::exocore_index::{EntityMutation, Trait};
+use exocore_core::protos::generated::exocore_store::entity_mutation::Mutation;
+use exocore_core::protos::generated::exocore_store::{EntityMutation, Trait};
 use prost::Message;
 use smallvec::SmallVec;
 

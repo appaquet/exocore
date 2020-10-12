@@ -1,12 +1,12 @@
 use prost::Message;
 
 use exocore_core::framing::{CapnpFrameBuilder, FrameReader, TypedCapnpFrame};
-use exocore_core::protos::generated::exocore_index::entity_mutation::Mutation;
-use exocore_core::protos::generated::exocore_index::{
+use exocore_core::protos::generated::exocore_store::entity_mutation::Mutation;
+use exocore_core::protos::generated::exocore_store::{
     compact_trait_mutation, CompactTraitMutation, DeleteEntityMutation, DeleteTraitMutation,
     EntityMutation, MutationRequest, MutationResult, PutTraitMutation, Trait,
 };
-use exocore_core::protos::generated::index_transport_capnp::{mutation_request, mutation_response};
+use exocore_core::protos::generated::store_transport_capnp::{mutation_request, mutation_response};
 use exocore_core::protos::prost::ProstMessageExt;
 
 use crate::entity::{EntityId, TraitId};
@@ -101,7 +101,7 @@ impl MutationBuilder {
         self.request.mutations.push(EntityMutation {
             entity_id: entity_id.into(),
             mutation: Some(Mutation::Test(
-                exocore_core::protos::generated::exocore_index::TestMutation { success: false },
+                exocore_core::protos::generated::exocore_store::TestMutation { success: false },
             )),
         });
 

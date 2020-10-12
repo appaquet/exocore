@@ -5,9 +5,9 @@ use crate::query::ResultHash;
 use chrono::{DateTime, Utc};
 use exocore_chain::operation::OperationId;
 use exocore_core::protos::{
-    index::{Projection, Trait, TraitDetails},
     reflect::{FieldId, MutableReflectMessage, ReflectMessage},
     registry::Registry,
+    store::{Projection, Trait, TraitDetails},
 };
 use exocore_core::time::ConsistentTimestamp;
 use itertools::Itertools;
@@ -347,7 +347,7 @@ mod tests {
     use crate::ordering::OrderingValueWrapper;
     use exocore_chain::block::BlockOffset;
     use exocore_core::protos::prost::ProstAnyPackMessageExt;
-    use exocore_core::protos::{index::OrderingValue, reflect::FieldGroupId, test::TestMessage};
+    use exocore_core::protos::{reflect::FieldGroupId, store::OrderingValue, test::TestMessage};
     use prost::Message;
 
     const TYPE1: &str = "exocore.test.TestMessage";

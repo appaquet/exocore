@@ -12,12 +12,12 @@ use crate::mutation::{MutationBuilder, MutationRequestLike};
 
 use super::*;
 use chrono::Utc;
-use exocore_core::protos::generated::exocore_index::{
+use exocore_core::protos::generated::exocore_store::{
     EntityQuery, EntityResults, MutationResult, Trait,
 };
 use exocore_core::protos::generated::exocore_test::TestMessage;
 use exocore_core::protos::prost::{ProstAnyPackMessageExt, ProstDateTimeExt};
-use exocore_core::protos::{index::TraitDetails, registry::Registry};
+use exocore_core::protos::{registry::Registry, store::TraitDetails};
 
 /// Utility to test store
 pub struct TestStore {

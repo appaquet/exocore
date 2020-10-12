@@ -1,7 +1,7 @@
 use super::store::StoreConfig;
 use crate::error::Error;
 use exocore_chain::operation::OperationId;
-use exocore_core::protos::index::MutationResult;
+use exocore_core::protos::store::MutationResult;
 use exocore_core::time::Instant;
 use futures::channel::oneshot;
 use std::collections::{HashMap, HashSet};

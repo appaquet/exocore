@@ -2,11 +2,11 @@ use chrono::{DateTime, Utc};
 use itertools::Itertools;
 
 use exocore_chain::operation::OperationId;
-use exocore_core::protos::generated::exocore_index::{Reference, Trait};
+use exocore_core::protos::generated::exocore_store::{Reference, Trait};
 use exocore_core::protos::generated::exocore_test::{TestMessage, TestMessage2};
 use exocore_core::protos::{
-    index::TraitDetails,
     prost::{Any, ProstAnyPackMessageExt, ProstDateTimeExt},
+    store::TraitDetails,
 };
 
 use crate::ordering::{value_from_f32, value_from_u64, OrderingValueExt};

@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use futures::channel::mpsc;
 
-use exocore_core::protos::generated::exocore_index::{EntityQuery, EntityResults};
+use exocore_core::protos::generated::exocore_store::{EntityQuery, EntityResults};
 
 use crate::error::Error;
 use crate::query::{ResultHash, WatchToken};
