@@ -36,7 +36,6 @@ class App extends React.Component<IAppProps, IAppState> {
             return (
                 <div>
                     <button onClick={this.disconnect.bind(this)}>Reset</button>
-                    <div>{Exocore.store.httpEndpoints()}</div>
 
                     <List />
                 </div>
