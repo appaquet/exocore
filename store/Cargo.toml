@@ -1,6 +1,6 @@
 [package]
-name = "exocore-index"
-description = "Index layer of Exocore (Distributed applications framework)"
+name = "exocore-store"
+description = "Store layer of Exocore (Distributed applications framework)"
 version = "0.1.0"
 authors = ["Andre-Philippe Paquet <appaquet@gmail.com>"]
 edition = "2018"
@@ -10,8 +10,8 @@ repository = "https://github.com/appaquet/exocore"
 license = "Apache-2.0"
 
 [features]
-default = ["local-store"]
-local-store = ["tantivy", "exocore-chain/engine", "crc"]
+default = ["local"]
+local = ["tantivy", "exocore-chain/engine", "crc"]
 tests-utils = []
 
 [dependencies]

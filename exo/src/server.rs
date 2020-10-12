@@ -5,8 +5,8 @@ use exocore_chain::{
 use exocore_core::cell::{Cell, CellNodeRole, EitherCell, FullCell};
 use exocore_core::futures::Runtime;
 use exocore_core::time::Clock;
-use exocore_index::local::{EntityIndex, EntityIndexConfig, Store};
-use exocore_index::remote::server::Server;
+use exocore_store::local::{EntityIndex, EntityIndexConfig, Store};
+use exocore_store::remote::server::Server;
 use exocore_transport::{
     either::EitherTransportServiceHandle, http::HTTPTransportConfig, http::HTTPTransportServer,
     p2p::Libp2pTransportConfig,

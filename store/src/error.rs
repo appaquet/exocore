@@ -5,19 +5,19 @@ pub enum Error {
     #[error("Query parsing error: {0}")]
     QueryParsing(String),
 
-    #[cfg(feature = "local-store")]
+    #[cfg(feature = "local")]
     #[error("Error in Tantivy: {0}")]
     Tantivy(std::sync::Arc<tantivy::TantivyError>),
 
-    #[cfg(feature = "local-store")]
+    #[cfg(feature = "local")]
     #[error("Error opening Tantivy directory: {0:?}")]
     TantivyOpenDirectoryError(std::sync::Arc<tantivy::directory::error::OpenDirectoryError>),
 
-    #[cfg(feature = "local-store")]
+    #[cfg(feature = "local")]
     #[error("Error parsing Tantivy query: {0:?}")]
     TantitvyQueryParsing(std::sync::Arc<tantivy::query::QueryParserError>),
 
-    #[cfg(feature = "local-store")]
+    #[cfg(feature = "local")]
     #[error("Chain engine error: {0}")]
     ChainEngine(#[from] exocore_chain::engine::EngineError),
 
@@ -67,10 +67,10 @@ impl Error {
         match self {
             Error::Fatal(_) | Error::Poisoned | Error::Dropped | Error::IO(_) => true,
 
-            #[cfg(feature = "local-store")]
+            #[cfg(feature = "local")]
             Error::TantivyOpenDirectoryError(_) => true,
 
-            #[cfg(feature = "local-store")]
+            #[cfg(feature = "local")]
             Error::ChainEngine(err) if err.is_fatal() => true,
 
             _ => false,
@@ -78,21 +78,21 @@ impl Error {
     }
 }
 
-#[cfg(feature = "local-store")]
+#[cfg(feature = "local")]
 impl From<tantivy::TantivyError> for Error {
     fn from(err: tantivy::TantivyError) -> Self {
         Error::Tantivy(std::sync::Arc::new(err))
     }
 }
 
-#[cfg(feature = "local-store")]
+#[cfg(feature = "local")]
 impl From<tantivy::query::QueryParserError> for Error {
     fn from(err: tantivy::query::QueryParserError) -> Self {
         Error::TantitvyQueryParsing(std::sync::Arc::new(err))
     }
 }
 
-#[cfg(feature = "local-store")]
+#[cfg(feature = "local")]
 impl From<tantivy::directory::error::OpenDirectoryError> for Error {
     fn from(err: tantivy::directory::error::OpenDirectoryError) -> Self {
         Error::TantivyOpenDirectoryError(std::sync::Arc::new(err))

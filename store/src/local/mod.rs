@@ -5,7 +5,7 @@ mod store;
 mod top_results;
 mod watched_queries;
 
-#[cfg(feature = "local-store")]
+#[cfg(feature = "local")]
 pub use entity_index::{EntityIndex, EntityIndexConfig};
 pub use store::{Store, StoreHandle};
 

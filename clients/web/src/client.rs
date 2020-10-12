@@ -8,7 +8,7 @@ use exocore_core::cell::Cell;
 use exocore_core::futures::spawn_future_non_send;
 use exocore_core::protos::generated::exocore_index::EntityQuery;
 use exocore_core::time::Clock;
-use exocore_index::remote::{Client, ClientConfiguration, ClientHandle};
+use exocore_store::remote::{Client, ClientConfiguration, ClientHandle};
 use exocore_transport::transport::ConnectionStatus;
 use exocore_transport::{InEvent, Libp2pTransport, ServiceType, TransportServiceHandle};
 
