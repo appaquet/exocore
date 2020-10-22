@@ -38,7 +38,7 @@ jobs:
 
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2020-06-21
+          toolchain: nightly-2020-10-17
           profile: minimal
 
       - name: Install grcov
