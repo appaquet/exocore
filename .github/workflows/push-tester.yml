@@ -4,8 +4,7 @@ on:
   pull_request:
   push:
     branches:    
-      - '**'
-      - '!releases/**' # releases handled by version workflow
+      -master
 
 jobs:
   rust_checks:
