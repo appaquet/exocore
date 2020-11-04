@@ -1,6 +1,7 @@
 name: Push tester
 
 on:
+  pull_request:
   push:
     branches:    
       - '**'
