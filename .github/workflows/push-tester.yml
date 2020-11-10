@@ -110,14 +110,14 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          apt update && DEBIAN_FRONTEND=noninteractive apt install -y libssl-dev openssl
+          sudo apt update && DEBIAN_FRONTEND=noninteractive apt install -y libssl-dev openssl
 
           curl -L https://github.com/rustwasm/wasm-pack/releases/download/v0.9.1/wasm-pack-v0.9.1-x86_64-unknown-linux-musl.tar.gz | tar zxf -
           mv wasm-pack*/wasm-pack .
           echo `pwd` >> $GITHUB_PATH
 
-          apt-get install -y protobuf-compiler
-          npm install -g yarn
+          sudo apt install -y protobuf-compiler
+          sudo npm install -g yarn
 
       - uses: actions-rs/toolchain@v1
         with:
