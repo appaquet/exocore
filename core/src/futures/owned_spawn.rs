@@ -143,7 +143,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::super::{delay_for, Runtime};
+    use super::super::{sleep, Runtime};
     use super::*;
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::Ordering;
@@ -171,17 +171,17 @@ mod tests {
 
             let spawned = owned_spawn(async move {
                 let _ = dropper;
-                delay_for(Duration::from_secs(3600)).await;
+                sleep(Duration::from_secs(3600)).await;
                 Ok::<(), ()>(())
             });
 
-            delay_for(Duration::from_millis(100)).await;
+            sleep(Duration::from_millis(100)).await;
 
             assert!(!dropped.load(Ordering::SeqCst));
 
             drop(spawned);
 
-            delay_for(Duration::from_millis(100)).await;
+            sleep(Duration::from_millis(100)).await;
             assert!(dropped.load(Ordering::SeqCst));
 
             Ok::<(), anyhow::Error>(())
@@ -200,7 +200,7 @@ mod tests {
             set.spawn(async { 1 + 1 });
             assert_eq!(1, set.spawns.len());
 
-            delay_for(Duration::from_millis(100)).await;
+            sleep(Duration::from_millis(100)).await;
             set = set.cleanup().await;
             assert_eq!(0, set.spawns.len());
 
@@ -208,7 +208,7 @@ mod tests {
             let dropped = dropper.dropped.clone();
             set.spawn(async move {
                 let _ = dropper;
-                delay_for(Duration::from_secs(3600)).await;
+                sleep(Duration::from_secs(3600)).await;
                 1 + 1
             });
 
@@ -217,7 +217,7 @@ mod tests {
 
             drop(set);
 
-            delay_for(Duration::from_millis(100)).await;
+            sleep(Duration::from_millis(100)).await;
             assert!(dropped.load(Ordering::SeqCst));
 
             Ok::<(), anyhow::Error>(())

@@ -4,7 +4,7 @@ pub use tokio;
 pub use tokio::task::{block_in_place, spawn_blocking};
 
 #[cfg(any(test, feature = "tests-utils", feature = "runtime"))]
-pub use tokio::time::{delay_for, delay_until, interval, interval_at, Interval};
+pub use tokio::time::{sleep, sleep_until, interval, interval_at, Interval};
 
 #[cfg(any(test, feature = "tests-utils", feature = "runtime"))]
 pub use tokio::runtime::Runtime;
