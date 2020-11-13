@@ -83,39 +83,56 @@ jobs:
           name: ${{ matrix.target }}-artifact
           path: target/${{ matrix.target }}/debug/exo
 
-  commit_artifacts:
-    runs-on: ubuntu-latest
-    needs: [exo_linux]
+  web_client:
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2.3.4
 
-      - name: Download armv7-unknown-linux-gnueabihf artifact
-        uses: actions/download-artifact@v2
-        with:
-          name: armv7-unknown-linux-gnueabihf-artifact
-          path: target/armv7-unknown-linux-gnueabihf/debug/exo
+      - name: Install build dependencies
+        run: |
+          sudo apt update
+          sudo apt install -yq libssl-dev openssl protobuf-compiler
 
-      - name: Download x86_64-unknown-linux-gnu artifact
-        uses: actions/download-artifact@v2
-        with:
-          name: x86_64-unknown-linux-gnu-artifact
-          path: target/x86_64-unknown-linux-gnu/debug/exo
+          curl -L https://github.com/rustwasm/wasm-pack/releases/download/v0.9.1/wasm-pack-v0.9.1-x86_64-unknown-linux-musl.tar.gz | tar zxf -
+          mv wasm-pack*/wasm-pack .
+          echo `pwd` >> $GITHUB_PATH
 
-      - name: Download x86_64-apple-darwin artifact
-        uses: actions/download-artifact@v2
-        with:
-          name: x86_64-apple-darwin-artifact
-          path: target/x86_64-apple-darwin/debug/exo
+          sudo npm install -g yarn
 
-      - name: Download x86_64-pc-windows-msvc artifact
-        uses: actions/download-artifact@v2
+      - uses: actions-rs/toolchain@v1
         with:
-          name: x86_64-pc-windows-msvc-artifact
-          path: target/x86_64-pc-windows-msvc/debug/exo
+          toolchain: stable
+          profile: minimal
+          target: wasm32-unknown-unknown
+
+      - name: Build client
+        run: |
+          cd $GITHUB_WORKSPACE
+          yarn build
+          yarn pack
+
+          # Remove so that we don't save in artifacts
+          rm -rf clients/web/node_modules
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v2.2.0
+        with:
+          name: client-web-artifact
+          path: exocore-v*.tgz
+
+  commit_artifacts:
+    runs-on: ubuntu-latest
+    needs: [exo_linux, exo_macos, exo_windows, web_client]
+    steps:
+      - uses: actions/checkout@v2.3.4
+
+      - name: Download all artifacs
+        uses: actions/download-artifact@v2
 
       - name: List artifacts
         run: |
           ls -R target/*/debug/exo
+          ls -R .
 
   # build:
   #   name: Upload Release Asset
