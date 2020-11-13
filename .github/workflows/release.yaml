@@ -13,7 +13,7 @@ jobs:
       matrix:
         target: ["armv7-unknown-linux-gnueabihf", "x86_64-unknown-linux-gnu"]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v2.3.4
 
       - uses: actions-rs/toolchain@v1
         with:
@@ -25,13 +25,35 @@ jobs:
         with:
           use-cross: true
           command: build
-          args: --target ${{ matrix.target }}
+          args: -p exo --target ${{ matrix.target }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v2.2.0
         with:
-          name: ${{ matrix.target }}-artifacts
+          name: ${{ matrix.target }}-artifact
           path: target/${{ matrix.target }}/debug/exo
+
+  exo_macos:
+    runs-on: macOS-latest
+    steps:
+      - uses: actions/checkout@v2.3.4
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+
+      - uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: build
+          args: -p exo --target x86_64-apple-darwin
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v2.2.0
+        with:
+          name: x86_64-apple-darwin-artifact
+          path: target/x86_64-apple-darwin/debug/exo
 
   commit_artifacts:
     runs-on: ubuntu-latest
@@ -39,17 +61,27 @@ jobs:
     steps:
       - uses: actions/checkout@v2.3.4
 
-      - name: Download armv7-unknown-linux-gnueabihf artifacts
+      - name: Download armv7-unknown-linux-gnueabihf artifact
         uses: actions/download-artifact@v2
         with:
-          name: armv7-unknown-linux-gnueabihf
+          name: armv7-unknown-linux-gnueabihf-artifact
           path: target/armv7-unknown-linux-gnueabihf/debug/exo
 
-      - name: Download x86_64-unknown-linux-gnu artifacts
+      - name: Download x86_64-unknown-linux-gnu artifact
         uses: actions/download-artifact@v2
         with:
-          name: x86_64-unknown-linux-gnu 
+          name: x86_64-unknown-linux-gnu-artifact
           path: target/x86_64-unknown-linux-gnu/debug/exo
+
+      - name: Download x86_64-apple-darwin artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: x86_64-apple-darwin-artifact
+          path: target/x86_64-apple-darwin/debug/exo
+
+      - name: List artifacts
+        run: |
+          ls -R target/*/debug/exo
 
   # build:
   #   name: Upload Release Asset
