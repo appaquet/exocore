@@ -35,6 +35,9 @@ jobs:
 
   exo_macos:
     runs-on: macOS-latest
+    strategy:
+      matrix:
+        target: ["x86_64-apple-darwin"]
     steps:
       - uses: actions/checkout@v2.3.4
 
@@ -47,13 +50,38 @@ jobs:
         with:
           use-cross: true
           command: build
-          args: -p exo --target x86_64-apple-darwin
+          args: -p exo --target ${{ matrix.target }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v2.2.0
         with:
-          name: x86_64-apple-darwin-artifact
-          path: target/x86_64-apple-darwin/debug/exo
+          name: ${{ matrix.target }}-artifact
+          path: target/${{ matrix.target }}/debug/exo
+
+  exo_windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        target: ["x86_64-pc-windows-msvc"]
+    steps:
+      - uses: actions/checkout@v2.3.4
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+
+      - uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: build
+          args: -p exo --target ${{ matrix.target }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v2.2.0
+        with:
+          name: ${{ matrix.target }}-artifact
+          path: target/${{ matrix.target }}/debug/exo
 
   commit_artifacts:
     runs-on: ubuntu-latest
@@ -78,6 +106,12 @@ jobs:
         with:
           name: x86_64-apple-darwin-artifact
           path: target/x86_64-apple-darwin/debug/exo
+
+      - name: Download x86_64-pc-windows-msvc artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: x86_64-pc-windows-msvc-artifact
+          path: target/x86_64-pc-windows-msvc/debug/exo
 
       - name: List artifacts
         run: |
