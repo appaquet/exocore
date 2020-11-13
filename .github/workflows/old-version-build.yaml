@@ -9,7 +9,6 @@ jobs:
   web_client_build:
     runs-on: ubuntu-20.04
     steps:
-    steps:
       - uses: actions/checkout@v2.3.4
 
       - name: Install build dependencies
