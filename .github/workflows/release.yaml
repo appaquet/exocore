@@ -27,15 +27,18 @@ jobs:
           command: build
           args: -p exo --target ${{ matrix.target }}
 
-      - name: Move binary
+      - name: Create binary
         run: |
-          mv target/${{ matrix.target }}/debug/exo $GITHUB_WORKSPACE/
+          mkdir archive
+          cp target/${{ matrix.target }}/debug/exo archive
+          cd archive/
+          tar -czf $GITHUB_WORKSPACE/exo.${{ matrix.target }}.tar.gz *
 
-      - name: Upload binary
+      - name: Upload artifact
         uses: actions/upload-artifact@v2.2.0
         with:
           name: ${{ matrix.target }}-artifact
-          path: exo
+          path: exo.${{ matrix.target }}.tar.gz
 
   exo_macos:
     runs-on: macOS-latest
@@ -56,15 +59,18 @@ jobs:
           command: build
           args: -p exo --target ${{ matrix.target }}
 
-      - name: Move binary
+      - name: Create binary
         run: |
-          mv target/${{ matrix.target }}/debug/exo $GITHUB_WORKSPACE/
+          mkdir archive
+          cp target/${{ matrix.target }}/debug/exo archive
+          cd archive/
+          tar -czf $GITHUB_WORKSPACE/exo.${{ matrix.target }}.tar.gz *
 
-      - name: Upload binary
+      - name: Upload artifact
         uses: actions/upload-artifact@v2.2.0
         with:
           name: ${{ matrix.target }}-artifact
-          path: exo
+          path: exo.${{ matrix.target }}.tar.gz
 
   exo_windows:
     runs-on: windows-latest
@@ -85,15 +91,18 @@ jobs:
           command: build
           args: -p exo --target ${{ matrix.target }}
 
-      - name: Move binary
+      - name: Create binary
         run: |
-          mv target/${{ matrix.target }}/debug/exo $GITHUB_WORKSPACE/
+          mkdir archive
+          cp target/${{ matrix.target }}/debug/exo archive
+          cd archive/
+          tar -czf $GITHUB_WORKSPACE/exo.${{ matrix.target }}.tar.gz *
 
-      - name: Upload binary
+      - name: Upload artifact
         uses: actions/upload-artifact@v2.2.0
         with:
           name: ${{ matrix.target }}-artifact
-          path: exo
+          path: exo.${{ matrix.target }}.tar.gz
 
   web_client:
     runs-on: ubuntu-20.04
@@ -156,7 +165,8 @@ jobs:
           mkdir -p archive/clients/
           cp -r clients/ios archive/clients/
           cp Exocore.podspec archive/
-          tar -czf exocore-ios.tar.gz archive/*
+          cd archive/
+          tar -czf $GITHUB_WORKSPACE/exocore-ios.tar.gz *
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v2.2.0
@@ -170,7 +180,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2.3.4
 
-      - name: Download all artifacs
+      - name: Download all artifacts
         uses: actions/download-artifact@v2
         with:
           path: artifacts
