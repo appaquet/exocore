@@ -99,7 +99,7 @@ jobs:
           find target -name "exo"
 
           mkdir archive
-          cp target/${{ matrix.target }}/debug/exo archive
+          cp target/${{ matrix.target }}/debug/exo.exe archive
           cd archive/
           tar -czf $GITHUB_WORKSPACE/exo.${{ matrix.target }}.tar.gz *
 
