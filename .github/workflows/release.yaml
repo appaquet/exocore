@@ -30,6 +30,8 @@ jobs:
 
       - name: Create binary
         run: |
+          find target -name "exo"
+
           mkdir archive
           cp target/${{ matrix.target }}/debug/exo archive
           cd archive/
@@ -61,6 +63,8 @@ jobs:
 
       - name: Create binary
         run: |
+          find target -name "exo"
+
           mkdir archive
           cp target/${{ matrix.target }}/debug/exo archive
           cd archive/
@@ -92,6 +96,8 @@ jobs:
 
       - name: Create binary
         run: |
+          find target -name "exo"
+
           mkdir archive
           cp target/${{ matrix.target }}/debug/exo archive
           cd archive/
