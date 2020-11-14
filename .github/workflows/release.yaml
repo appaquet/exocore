@@ -96,7 +96,7 @@ jobs:
           mkdir archive
           cp target/${{ matrix.target }}/debug/exo.exe archive
           cd archive/
-          tar -czf $GITHUB_WORKSPACE/exo.${{ matrix.target }}.tar.gz *
+          tar -czf ../exo.${{ matrix.target }}.tar.gz *
 
       - name: Upload artifact
         uses: actions/upload-artifact@v2.2.0
