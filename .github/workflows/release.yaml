@@ -91,6 +91,7 @@ jobs:
           args: -p exo --target ${{ matrix.target }}
 
       - name: Create binary
+        shell: bash
         run: |
           mkdir archive
           cp target/${{ matrix.target }}/debug/exo.exe archive
