@@ -111,6 +111,8 @@ jobs:
           yarn build
           yarn pack
 
+          mv exocore-v*.tgz exocore-web.tar.gz
+
           # Remove so that we don't save in artifacts
           rm -rf clients/web/node_modules
 
@@ -118,11 +120,39 @@ jobs:
         uses: actions/upload-artifact@v2.2.0
         with:
           name: client-web-artifact
-          path: exocore-v*.tgz
+          path: exocore-web.tar.gz
+
+  ios_client:
+    runs-on: macOS-latest # See https://github.com/actions/virtual-environments/blob/main/images/macos for versions
+    steps:
+      - uses: actions/checkout@v2.3.4
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+
+      - name: Install cargo-lipo
+        run: |
+          brew install swift-protobuf
+          rustup target add aarch64-apple-ios x86_64-apple-ios # actions-rs don't support multiple targets: https://github.com/actions-rs/toolchain/issues/16
+          cargo install cargo-lipo
+
+      - name: Build client & pod
+        run: |
+          cd $GITHUB_WORKSPACE/clients/ios
+          ./tools/generate.sh
+          ./tools/build.sh release
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v2.2.0
+        with:
+          name: client-ios-artifact
+          path: clients/ios
 
   commit_artifacts:
     runs-on: ubuntu-latest
-    needs: [exo_linux, exo_macos, exo_windows, web_client]
+    needs: [exo_linux, exo_macos, exo_windows, web_client, ios_client]
     steps:
       - uses: actions/checkout@v2.3.4
 
@@ -131,8 +161,7 @@ jobs:
 
       - name: List artifacts
         run: |
-          ls -R target/*/debug/exo
-          ls -R .
+          ls -R *-artifact/**/*
 
   # build:
   #   name: Upload Release Asset
