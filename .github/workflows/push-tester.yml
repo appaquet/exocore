@@ -3,8 +3,9 @@ name: Push tester
 on:
   push:
     branches:    
-      - '**'
-      - '!releases/**' # releases handled by version workflow
+      - disabled # TODO: Put back
+      # - '**'
+      # - '!releases/**' # releases handled by version workflow
 
 jobs:
   rust_checks:

@@ -27,11 +27,15 @@ jobs:
           command: build
           args: -p exo --target ${{ matrix.target }}
 
-      - name: Upload build artifacts
+      - name: Move binary
+        run: |
+          mv target/${{ matrix.target }}/debug/exo $GITHUB_WORKSPACE/
+
+      - name: Upload binary
         uses: actions/upload-artifact@v2.2.0
         with:
           name: ${{ matrix.target }}-artifact
-          path: target/${{ matrix.target }}/debug/exo
+          path: exo
 
   exo_macos:
     runs-on: macOS-latest
@@ -52,11 +56,15 @@ jobs:
           command: build
           args: -p exo --target ${{ matrix.target }}
 
-      - name: Upload build artifacts
+      - name: Move binary
+        run: |
+          mv target/${{ matrix.target }}/debug/exo $GITHUB_WORKSPACE/
+
+      - name: Upload binary
         uses: actions/upload-artifact@v2.2.0
         with:
           name: ${{ matrix.target }}-artifact
-          path: target/${{ matrix.target }}/debug/exo
+          path: exo
 
   exo_windows:
     runs-on: windows-latest
@@ -77,11 +85,15 @@ jobs:
           command: build
           args: -p exo --target ${{ matrix.target }}
 
-      - name: Upload build artifacts
+      - name: Move binary
+        run: |
+          mv target/${{ matrix.target }}/debug/exo $GITHUB_WORKSPACE/
+
+      - name: Upload binary
         uses: actions/upload-artifact@v2.2.0
         with:
           name: ${{ matrix.target }}-artifact
-          path: target/${{ matrix.target }}/debug/exo
+          path: exo
 
   web_client:
     runs-on: ubuntu-20.04
@@ -107,14 +119,9 @@ jobs:
 
       - name: Build client
         run: |
-          cd $GITHUB_WORKSPACE
-          yarn build
+          yarn build_dev # TODO: Switch back
           yarn pack
-
           mv exocore-v*.tgz exocore-web.tar.gz
-
-          # Remove so that we don't save in artifacts
-          rm -rf clients/web/node_modules
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v2.2.0
@@ -142,13 +149,20 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE/clients/ios
           ./tools/generate.sh
-          ./tools/build.sh release
+          ./tools/build.sh debug                # TODO: Switch back
+
+          cd $GITHUB_WORKSPACE
+          mkdir archive
+          mkdir -p archive/clients/
+          cp -r clients/ios archive/clients/
+          cp Exocore.podspec archive/
+          tar -czf exocore-ios.tar.gz archive/*
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v2.2.0
         with:
           name: client-ios-artifact
-          path: clients/ios
+          path: exocore-ios.tar.gz
 
   commit_artifacts:
     runs-on: ubuntu-latest
@@ -158,10 +172,12 @@ jobs:
 
       - name: Download all artifacs
         uses: actions/download-artifact@v2
+        with:
+          path: artifacts
 
       - name: List artifacts
         run: |
-          ls -R *-artifact/**/*
+          ls -R artifacts/**/*
 
   # build:
   #   name: Upload Release Asset
