@@ -31,7 +31,7 @@ jobs:
       - name: Create binary
         run: |
           mkdir archive
-          cp target/${{ matrix.target }}/debug/exo archive
+          cp target/${{ matrix.target }}/release/exo archive
           cd archive/
           tar -czf $GITHUB_WORKSPACE/exo.${{ matrix.target }}.tar.gz *
 
@@ -62,7 +62,7 @@ jobs:
       - name: Create binary
         run: |
           mkdir archive
-          cp target/${{ matrix.target }}/debug/exo archive
+          cp target/${{ matrix.target }}/release/exo archive
           cd archive/
           tar -czf $GITHUB_WORKSPACE/exo.${{ matrix.target }}.tar.gz *
 
@@ -94,7 +94,7 @@ jobs:
         shell: bash
         run: |
           mkdir archive
-          cp target/${{ matrix.target }}/debug/exo.exe archive
+          cp target/${{ matrix.target }}/release/exo.exe archive
           cd archive/
           tar -czf ../exo.${{ matrix.target }}.tar.gz *
 
