@@ -201,8 +201,8 @@ jobs:
           #tag_name="${GITHUB_REF##*/}"  # TODO: change me
           tag_name="v0.1.0"
           hub release create "${assets[@]}" --draft --message "$tag_name" "$tag_name"
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # - name: Create Release
       #   id: create_release
