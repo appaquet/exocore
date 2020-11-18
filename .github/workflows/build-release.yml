@@ -1,11 +1,11 @@
+name: Release build
+
 on:
   push:
     tags:
-      - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
-    branches:    
-      - 'gha-release' # TODO: Remove
+      - 'v0.*'
+      - 'v1.*'
 
-name: Release
 jobs:
   exo_linux:
     runs-on: ubuntu-latest
@@ -203,15 +203,3 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  docker_build:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2.3.4
-
-    - name: Build & publish Docker
-      run: |
-        TAG="${GITHUB_REF##*/}"
-
-        docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }} docker.pkg.github.com
-        docker build -t docker.pkg.github.com/appaquet/exocore/cli:$TAG .
-        docker push docker.pkg.github.com/appaquet/exocore/cli:$TAG

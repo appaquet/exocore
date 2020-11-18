@@ -1,0 +1,29 @@
+name: Release publish
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  docker_build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2.3.4
+
+    - name: Build & publish Docker
+      run: |
+        TAG="${GITHUB_REF##*/}"
+
+        # Allows running arm in qemu
+        docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+
+        docker buildx create --use --name exocore-builder 
+
+        touch exo-amd64
+        touch exo-arm
+
+        docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
+        docker buildx build \
+          --tag appaquet/exocore-cli:$TAG \
+          --platform linux/amd64,linux/arm \
+          --file .github/Dockerfile.buildx
