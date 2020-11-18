@@ -5,6 +5,9 @@ on:
     tags:
       - 'v0.*'
       - 'v1.*'
+  push:
+    branches:    
+      - gha-release
 
 jobs:
   exo_linux:

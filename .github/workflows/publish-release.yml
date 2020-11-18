@@ -2,10 +2,10 @@ name: Release publish
 
 on:
   release:
-    types: [published]
-  push:
-    branches:    
-      - gha-release
+    types: [created, published]  # TODO: Remove created
+  # push:
+  #   branches:    
+  #     - gha-release
 
 jobs:
   docker_build:
