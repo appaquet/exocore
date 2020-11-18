@@ -3,6 +3,8 @@ name: Release publish
 on:
   release:
     types: [published]
+  branches:    
+    - gha-release
 
 jobs:
   docker_build:
