@@ -36,6 +36,7 @@ jobs:
 
     - name: Build & publish Docker
       run: |
+        set -x
         TAG="${{ github.event.inputs.ref }}"
 
         # Allows build in arm for qemu
@@ -44,9 +45,9 @@ jobs:
         export DOCKER_CLI_EXPERIMENTAL=enabled
         docker buildx create --use --name exocore-builder 
 
-        echo "${{ github.event.inputs.publish }}"
+        BUILD_PARAMS=""
         if [[ "${{ github.event.inputs.publish }}" == "true" ]]; then 
-          echo "WOULD BE PUBLISHING"
+          BUILD_PARAMS="--publish"
         fi
 
         echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
@@ -56,4 +57,5 @@ jobs:
           --tag appaquet/exocore-cli:$TAG \
           --platform linux/amd64,linux/arm \
           --file ../.github/Dockerfile.buildx \
+          $BUILD_PARAMS \
           .
