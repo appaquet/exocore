@@ -6,9 +6,9 @@ on:
       - edited
       - published
       - created
-  # push:
-  #   branches:    
-  #     - gha-release
+  push:
+    branches:    
+      - gha-release
 
 jobs:
   docker_build:

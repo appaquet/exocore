@@ -5,8 +5,8 @@ on:
     tags:
       - 'v0.*'
       - 'v1.*'
-    branches:
-      - gha-release
+    # branches:
+    #   - gha-release
 
 jobs:
   exo_linux:
