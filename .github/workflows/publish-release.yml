@@ -2,7 +2,10 @@ name: Release publish
 
 on:
   release:
-    types: [edited, created, published]  # TODO: Remove created
+    types:
+      - edited
+      - published
+      - created
   # push:
   #   branches:    
   #     - gha-release
