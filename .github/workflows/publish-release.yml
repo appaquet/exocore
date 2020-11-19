@@ -1,15 +1,14 @@
 name: Release publish
 
 on:
-  release:
-    types:
-      - published
-
   workflow_dispatch:
     inputs:
       publish:
         description: 'Publish'  
         default: true
+  release:
+    types:
+      - published
 
 jobs:
   docker_build:
