@@ -5,7 +5,7 @@ on:
     tags:
       - 'v0.*'
       - 'v1.*'
-    branches:    
+    branches:
       - gha-release
 
 jobs:
