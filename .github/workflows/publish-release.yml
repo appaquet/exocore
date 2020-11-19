@@ -16,6 +16,17 @@ jobs:
     steps:
     - uses: actions/checkout@v2.3.4
 
+    - name: Download release files
+      run: |
+        TAG="${GITHUB_REF##*/}"
+        hub release download $TAG
+
+        tar -zxf exo.x86_64-unknown-linux-gnu.tar.gz
+        mv exo exo-amd64
+
+        tar -zxf exo.armv7-unknown-linux-gnueabihf.tar.gz
+        mv exo exo-arm
+
     - name: Build & publish Docker
       run: |
         TAG="${GITHUB_REF##*/}"
@@ -25,9 +36,6 @@ jobs:
 
         export DOCKER_CLI_EXPERIMENTAL=enabled
         docker buildx create --use --name exocore-builder 
-
-        touch exo-amd64
-        touch exo-arm
 
         if [[ "${{ github.event.action }}" == "modified" ]]; then 
           echo "modified"
