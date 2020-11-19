@@ -22,6 +22,8 @@ jobs:
       run: |
         set -x
         TAG="${GITHUB_REF##*/}"
+
+        mkdir assets && cd assets
         hub release download $TAG
 
         tar -zxf exo.x86_64-unknown-linux-gnu.tar.gz
@@ -45,8 +47,10 @@ jobs:
         fi
 
         echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+
+        cd assets/
         docker buildx build \
           --tag appaquet/exocore-cli:$TAG \
           --platform linux/amd64,linux/arm \
-          --file .github/Dockerfile.buildx \
+          --file ../.github/Dockerfile.buildx \
           .
