@@ -6,12 +6,16 @@ on:
       publish:
         description: 'Publish'  
         default: true
+      ref:
+        description: 'Checkout ref'
+        default: 'tags/v0.X.X'
 
 jobs:
   docker_build:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2.3.4
+      ref: ${{ github.event.inputs.ref }}
 
     - name: Download release files
       env:
