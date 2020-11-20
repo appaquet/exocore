@@ -49,7 +49,7 @@ jobs:
           mkdir archive
           cp target/${{ matrix.pair.target }}/release/${{ matrix.pair.bin }} archive
           cd archive/
-          tar -czf $GITHUB_WORKSPACE/exo.${{ matrix.pair.target }}.tar.gz *
+          tar -czf ../exo.${{ matrix.pair.target }}.tar.gz *
 
       - name: Upload artifact
         uses: actions/upload-artifact@v2.2.1
