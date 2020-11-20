@@ -10,7 +10,6 @@ on:
 
 jobs:
   exo:
-    runs-on: ${{ matrix.pair.target }}
     strategy:
       fail-fast: true
       matrix:
@@ -27,6 +26,8 @@ jobs:
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             bin: exo.exe
+
+    runs-on: ${{ matrix.pair.os }}
 
     steps:
       - uses: actions/checkout@v2.3.4
