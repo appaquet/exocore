@@ -3,8 +3,7 @@ name: Push tester
 on:
   push:
     branches:    
-      # - '**'
-      - disabled # TODO: remove
+      - '**'
 
 jobs:
   rust_checks:
