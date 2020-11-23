@@ -41,7 +41,7 @@ anyhow = "1.0"
 libp2p = { version = "0.29", features = ["noise"], default-features = false }
 chrono = "0.4"
 wasm-timer = "0.2"
-futures = { version = "0.3", features = ["async-await", "compat"] }
+futures = { version = "0.3", features = ["async-await"] }
 tokio = { version = "0.2", features = ["rt-core", "blocking"], default-features = false }
 protobuf = "2"
 prost = "0.6"
@@ -50,7 +50,7 @@ bytes = "0.6"
 uuid = { version = "0.8", features = ["v4", "wasm-bindgen"] }
 petname = "1.0"
 rand = "0.7"
-url = "2.1"
+url = "2.2"
 base64 = "0.13"
 
 # console_logger
