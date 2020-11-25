@@ -1,16 +1,16 @@
 use crate::payload::{CreatePayloadRequest, CreatePayloadResponse, Payload, PayloadID};
 use hyper::{
     service::{make_service_fn, service_fn},
-    Body, Method, Request, Response, Server, StatusCode,
+    Body, Method, Request, Response, StatusCode,
 };
 
 mod store;
 
-pub struct DiscoServer {
+pub struct Server {
     port: u16,
 }
 
-impl DiscoServer {
+impl Server {
     pub fn new(port: u16) -> Self {
         Self { port }
     }
@@ -19,7 +19,7 @@ impl DiscoServer {
         let store = store::Store::default();
 
         let addr = format!("0.0.0.0:{}", self.port).parse()?;
-        let server = Server::bind(&addr).serve(make_service_fn(move |_socket| {
+        let server = hyper::Server::bind(&addr).serve(make_service_fn(move |_socket| {
             let store = store.clone();
 
             async move {
@@ -41,6 +41,9 @@ impl DiscoServer {
             }
         }));
 
+        // TODO: Cleanup
+
+        info!("Discovery server started on port {}", self.port);
         server.await?;
 
         Ok(())
@@ -116,23 +119,23 @@ enum RequestType {
 
 impl RequestType {
     fn from_method_path(method: &Method, path: &str) -> Result<RequestType, RequestError> {
-        match method {
-            &Method::POST if path == "/" => Ok(RequestType::Post),
-            &Method::GET => {
+        match *method {
+            Method::POST if path == "/" => Ok(RequestType::Post),
+            Method::GET => {
                 let id: PayloadID = path
                     .replace("/", "")
                     .parse()
                     .map_err(|_| RequestError::InvalidRequestType)?;
                 Ok(RequestType::Get(id))
             }
-            &Method::OPTIONS => Ok(RequestType::Options),
+            Method::OPTIONS => Ok(RequestType::Options),
             _ => Err(RequestError::InvalidRequestType),
         }
     }
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum RequestError {
+enum RequestError {
     #[error("Invalid request type")]
     InvalidRequestType,
     #[error("Payload not found")]

@@ -45,7 +45,7 @@ members = [
   "clients/web",
   "clients/android",
   "clients/c",
-  "disco"
+  "discovery"
 ]
 exclude = [
     "3rd"
