@@ -46,7 +46,7 @@ impl Server {
                             let resp = match Self::handle_request(config, req, store).await {
                                 Ok(resp) => resp,
                                 Err(err) => {
-                                    error!("Error handling request: {}", err);
+                                    info!("Error handling request: {}", err);
                                     err.to_response()
                                 }
                             };
@@ -110,7 +110,9 @@ impl Server {
             serde_json::to_vec(&resp_payload).map_err(RequestError::Serialization)?;
         let resp_body = Body::from(resp_body_bytes);
 
-        Ok(Response::new(resp_body))
+        let mut resp = Response::new(resp_body);
+        Self::add_cors_headers(&mut resp);
+        Ok(resp)
     }
 
     async fn handle_get(
@@ -124,13 +126,19 @@ impl Server {
             serde_json::to_vec(&resp_payload).map_err(RequestError::Serialization)?;
         let resp_body = Body::from(resp_body_bytes);
 
-        Ok(Response::new(resp_body))
+        let mut resp = Response::new(resp_body);
+        Self::add_cors_headers(&mut resp);
+        Ok(resp)
     }
 
     async fn handle_request_options() -> Result<Response<Body>, RequestError> {
         let mut resp = Response::default();
+        Self::add_cors_headers(&mut resp);
+        Ok(resp)
+    }
 
-        let headers = resp.headers_mut();
+    fn add_cors_headers(response: &mut Response<Body>) {
+        let headers = response.headers_mut();
         headers.insert(
             hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
             "POST, GET".parse().unwrap(),
@@ -139,8 +147,6 @@ impl Server {
             hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN,
             "*".parse().unwrap(),
         );
-
-        Ok(resp)
     }
 }
 
@@ -156,14 +162,17 @@ impl RequestType {
         match *method {
             Method::POST if path == "/" => Ok(RequestType::Post),
             Method::GET => {
-                let id: PayloadID = path
-                    .replace("/", "")
-                    .parse()
-                    .map_err(|_| RequestError::InvalidRequestType)?;
+                let id: PayloadID = path.replace("/", "").parse().map_err(|err| {
+                    debug!("Couldn't parse path '{}': {}", path, err);
+                    RequestError::InvalidRequestType
+                })?;
                 Ok(RequestType::Get(id))
             }
             Method::OPTIONS => Ok(RequestType::Options),
-            _ => Err(RequestError::InvalidRequestType),
+            _ => {
+                debug!("Can't handle request: METHOD={} PATH={}", method, path);
+                Err(RequestError::InvalidRequestType)
+            }
         }
     }
 }
