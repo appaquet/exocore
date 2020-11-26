@@ -1,5 +1,6 @@
 use crate::Options;
 use clap::Clap;
+use exocore_discovery::ServerConfig;
 
 #[derive(Clap)]
 pub enum DiscoveryCommand {
@@ -20,7 +21,12 @@ pub async fn cmd_daemon(_opts: &Options, cmd: &DiscoveryCommand) -> anyhow::Resu
 }
 
 async fn start_daemon(opts: &DaemonOptions) -> anyhow::Result<()> {
-    let server = exocore_discovery::Server::new(opts.port);
+    let server_config = ServerConfig {
+        port: opts.port,
+        ..Default::default()
+    };
+
+    let server = exocore_discovery::Server::new(server_config);
     server.start().await?;
 
     Ok(())

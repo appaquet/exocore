@@ -1,75 +1,109 @@
+use std::time::Duration;
+
 use crate::payload::{CreatePayloadRequest, CreatePayloadResponse, Payload, PayloadID};
+use futures::prelude::*;
 use hyper::{
     service::{make_service_fn, service_fn},
     Body, Method, Request, Response, StatusCode,
 };
 
+mod config;
 mod store;
+pub use config::ServerConfig;
 
+/// Discovery service server.
+///
+/// The discovery service is simple REST API on which clients can push temporary payload for which the server
+/// generates a random code. Another client can then retrieves that payload by using the generated random code.
+/// Once a payload is consumed, it is deleted. Payloads are alost deleted after a certain expiration if not
+/// consumed.
 pub struct Server {
-    port: u16,
+    config: ServerConfig,
 }
 
 impl Server {
-    pub fn new(port: u16) -> Self {
-        Self { port }
+    /// Creates an instance of the server that then needs to be started using the `start` method.
+    pub fn new(config: ServerConfig) -> Self {
+        Self { config }
     }
 
+    /// Starts the server and blocks until it fails.
     pub async fn start(&self) -> anyhow::Result<()> {
-        let store = store::Store::default();
+        let config = self.config;
+        let store = store::Store::new(config);
 
-        let addr = format!("0.0.0.0:{}", self.port).parse()?;
-        let server = hyper::Server::bind(&addr).serve(make_service_fn(move |_socket| {
+        let server = {
             let store = store.clone();
+            let addr = format!("0.0.0.0:{}", config.port).parse()?;
+            hyper::Server::bind(&addr).serve(make_service_fn(move |_socket| {
+                let store = store.clone();
 
+                async move {
+                    Ok::<_, hyper::Error>(service_fn(move |req| {
+                        let store = store.clone();
+
+                        async move {
+                            let resp = match Self::handle_request(config, req, store).await {
+                                Ok(resp) => resp,
+                                Err(err) => {
+                                    error!("Error handling request: {}", err);
+                                    err.to_response()
+                                }
+                            };
+
+                            Ok::<_, hyper::Error>(resp)
+                        }
+                    }))
+                }
+            }))
+        };
+
+        let cleaner = {
+            let store = store.clone();
             async move {
-                Ok::<_, hyper::Error>(service_fn(move |req| {
-                    let store = store.clone();
-
-                    async {
-                        let resp = match Self::handle_request(req, store).await {
-                            Ok(resp) => resp,
-                            Err(err) => {
-                                error!("Error handling request: {}", err);
-                                err.to_response()
-                            }
-                        };
-
-                        Ok::<_, hyper::Error>(resp)
-                    }
-                }))
+                let mut interval_stream = tokio::time::interval(Duration::from_secs(1));
+                while interval_stream.next().await.is_some() {
+                    store.cleanup().await;
+                }
             }
-        }));
+        };
 
-        // TODO: Cleanup
-
-        info!("Discovery server started on port {}", self.port);
-        server.await?;
+        info!("Discovery server started on port {}", config.port);
+        futures::select! {
+            _ = server.fuse() => {},
+            _ = cleaner.fuse() => {},
+        };
 
         Ok(())
     }
 
     async fn handle_request(
+        config: ServerConfig,
         req: Request<Body>,
         store: store::Store,
     ) -> Result<Response<Body>, RequestError> {
         let request_type = RequestType::from_method_path(req.method(), req.uri().path())?;
         match request_type {
-            RequestType::Post => Self::handle_post(req, store).await,
+            RequestType::Post => Self::handle_post(&config, req, store).await,
             RequestType::Get(id) => Self::handle_get(store, id).await,
             RequestType::Options => Self::handle_request_options().await,
         }
     }
 
     async fn handle_post(
+        config: &ServerConfig,
         req: Request<Body>,
         store: store::Store,
     ) -> Result<Response<Body>, RequestError> {
         let req_body_bytes = hyper::body::to_bytes(req.into_body()).await?;
+
+        if req_body_bytes.len() > config.max_payload_size {
+            return Err(RequestError::PayloadTooLarge);
+        }
+
         let req_payload = serde_json::from_slice::<CreatePayloadRequest>(req_body_bytes.as_ref())
             .map_err(RequestError::Serialization)?;
-
-        let (id, expiration) = store.push(req_payload.data).await;
+        let (id, expiration) = store.push(req_payload.data).await?;
 
         let resp_payload = CreatePayloadResponse { id, expiration };
         let resp_body_bytes =
@@ -140,6 +174,10 @@ enum RequestError {
     InvalidRequestType,
     #[error("Payload not found")]
     NotFound,
+    #[error("Maximum payloads exceeded")]
+    Full,
+    #[error("Payload is too large")]
+    PayloadTooLarge,
     #[error("Invalid request body: {0}")]
     Serialization(#[source] serde_json::Error),
     #[error("Hyper error: {0}")]
@@ -152,6 +190,8 @@ impl RequestError {
         let status = match self {
             RequestError::InvalidRequestType => StatusCode::NOT_FOUND,
             RequestError::NotFound => StatusCode::NOT_FOUND,
+            RequestError::Full => StatusCode::INSUFFICIENT_STORAGE,
+            RequestError::PayloadTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             RequestError::Serialization(_) => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };

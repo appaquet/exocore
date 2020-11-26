@@ -1,19 +1,26 @@
 use crate::payload::{CreatePayloadRequest, CreatePayloadResponse, Payload, PayloadID};
-use hyper::StatusCode;
 use reqwest::IntoUrl;
 pub use reqwest::Url;
 
+/// Discovery service client.
+///
+/// The discovery service is simple REST API on which clients can push temporary payload for which the server
+/// generates a random code. Another client can then retrieves that payload by using the generated random code.
+/// Once a payload is consumed, it is deleted.
 pub struct Client {
     base_uri: Url,
 }
 
 impl Client {
+    /// Create a new client instance.
     pub fn new<U: IntoUrl>(base_uri: U) -> Result<Client, Error> {
         Ok(Client {
             base_uri: base_uri.into_url()?,
         })
     }
 
+    /// Creates a new payload on the server. If successfully created, the response contains
+    /// a unique identifier that can be used by another client to retrieve the payload.
     pub async fn create(&self, payload: &[u8]) -> Result<CreatePayloadResponse, Error> {
         let b64_payload = base64::encode(payload);
         let create_request = CreatePayloadRequest { data: b64_payload };
@@ -30,6 +37,7 @@ impl Client {
         Ok(create_resp)
     }
 
+    /// Gets a payload by unique identifier created by the call to `create` by another client.
     pub async fn get(&self, id: PayloadID) -> Result<Vec<u8>, Error> {
         let url = self
             .base_uri
@@ -37,7 +45,7 @@ impl Client {
             .expect("Couldn't create URL");
         let http_resp = reqwest::Client::builder().build()?.get(url).send().await?;
 
-        if http_resp.status() == StatusCode::NOT_FOUND {
+        if http_resp.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(Error::NotFound);
         }
 
