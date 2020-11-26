@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use crate::payload::{CreatePayloadRequest, CreatePayloadResponse, Payload, PayloadID};
 use futures::prelude::*;
 use hyper::{
@@ -13,21 +11,23 @@ pub use config::ServerConfig;
 
 /// Discovery service server.
 ///
-/// The discovery service is simple REST API on which clients can push temporary payload for which the server
-/// generates a random code. Another client can then retrieves that payload by using the generated random code.
-/// Once a payload is consumed, it is deleted. Payloads are alost deleted after a certain expiration if not
-/// consumed.
+/// The discovery service is a simple REST API on which clients can push temporary payload for which the server
+/// generates a random code. Another client can then retrieve that payload by using the generated random code.
+/// Once a payload is consumed, it is deleted.
+///
+/// Payloads expires after a certain configured delay.
 pub struct Server {
     config: ServerConfig,
 }
 
 impl Server {
-    /// Creates an instance of the server that then needs to be started using the `start` method.
+    /// Creates an instance of the server.
+    /// Needs to be started using the `start` method in order to start listening for requests.
     pub fn new(config: ServerConfig) -> Self {
         Self { config }
     }
 
-    /// Starts the server and blocks until it fails.
+    /// Starts the server that will listens for requests and block forever or until failure.
     pub async fn start(&self) -> anyhow::Result<()> {
         let config = self.config;
         let store = store::Store::new(config);
@@ -61,7 +61,7 @@ impl Server {
         let cleaner = {
             let store = store.clone();
             async move {
-                let mut interval_stream = tokio::time::interval(Duration::from_secs(1));
+                let mut interval_stream = tokio::time::interval(config.cleanup_interval);
                 while interval_stream.next().await.is_some() {
                     store.cleanup().await;
                 }
@@ -170,7 +170,10 @@ impl RequestType {
             }
             Method::OPTIONS => Ok(RequestType::Options),
             _ => {
-                debug!("Can't handle request: METHOD={} PATH={}", method, path);
+                debug!(
+                    "Received an unknown request: method={} path={}",
+                    method, path
+                );
                 Err(RequestError::InvalidRequestType)
             }
         }
@@ -183,7 +186,7 @@ enum RequestError {
     InvalidRequestType,
     #[error("Payload not found")]
     NotFound,
-    #[error("Maximum payloads exceeded")]
+    #[error("Maximum number of payloads exceeded")]
     Full,
     #[error("Payload is too large")]
     PayloadTooLarge,

@@ -4,15 +4,15 @@ pub use reqwest::Url;
 
 /// Discovery service client.
 ///
-/// The discovery service is simple REST API on which clients can push temporary payload for which the server
-/// generates a random code. Another client can then retrieves that payload by using the generated random code.
+/// The discovery service is a simple REST API on which clients can push temporary payload for which the server
+/// generates a random code. Another client can then retrieve that payload by using the generated random code.
 /// Once a payload is consumed, it is deleted.
 pub struct Client {
     base_uri: Url,
 }
 
 impl Client {
-    /// Create a new client instance.
+    /// Creates a new client instance.
     pub fn new<U: IntoUrl>(base_uri: U) -> Result<Client, Error> {
         Ok(Client {
             base_uri: base_uri.into_url()?,
@@ -64,7 +64,7 @@ pub enum Error {
     #[error("Request error: {0}")]
     Reqwest(#[from] reqwest::Error),
 
-    #[error("Payload with this id was not found or expired")]
+    #[error("Payload with this id was not found or has expired")]
     NotFound,
 
     #[error("Received an invalid payload from server")]

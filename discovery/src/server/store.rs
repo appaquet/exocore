@@ -24,7 +24,7 @@ impl Store {
 
     pub(super) async fn push(
         &self,
-        payload_data: String,
+        data: String,
     ) -> Result<(PayloadID, DateTime<Utc>), super::RequestError> {
         let mut inner = self.inner.lock().await;
 
@@ -32,19 +32,14 @@ impl Store {
             return Err(super::RequestError::Full);
         }
 
-        let id = inner.next_id();
-
         let expiration_duration = chrono::Duration::from_std(self.config.expiration)
             .expect("Couldn't convert expiration to chrono Duration");
         let expiration = Utc::now() + expiration_duration;
 
-        inner.payloads.insert(
-            id,
-            PendingPayload {
-                expiration,
-                data: payload_data,
-            },
-        );
+        let id = inner.next_id();
+        inner
+            .payloads
+            .insert(id, PendingPayload { expiration, data });
 
         Ok((id, expiration))
     }
