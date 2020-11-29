@@ -54,3 +54,7 @@ exclude = [
 [profile.release]
 lto = "thin"
 codegen-units = 1
+
+[patch.'https://github.com/appaquet/capnproto-rust.git']
+capnp = { path = "../capnproto-rust/capnp" }
+capnpc = { path = "../capnproto-rust/capnpc" }

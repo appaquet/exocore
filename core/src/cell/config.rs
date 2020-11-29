@@ -148,7 +148,7 @@ impl LocalNodeConfigExt for LocalNodeConfig {
                     cell.make_relative_paths(directory.as_ref());
                 }
                 Some(node_cell_config::Location::Path(path)) => {
-                    *path = child_to_relative_path_string(&self.path, path.clone());
+                    *path = child_to_relative_path_string(directory.as_ref(), path.clone());
                 }
                 _ => {}
             }
@@ -336,7 +336,7 @@ impl CellConfigExt for CellConfig {
                     app_manifest.make_relative_paths(directory.as_ref());
                 }
                 Some(cell_application_config::Location::Path(path)) => {
-                    *path = child_to_relative_path_string(&self.path, path.clone());
+                    *path = child_to_relative_path_string(directory.as_ref(), path.clone());
                 }
                 _ => {}
             }
