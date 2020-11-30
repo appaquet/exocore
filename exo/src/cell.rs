@@ -103,7 +103,11 @@ struct InitOptions {
 
 /// Cell join related options
 #[derive(Clap)]
-struct JoinOptions {}
+struct JoinOptions {
+    /// Manually join a cell using its cell configuration yaml.
+    #[clap(long)]
+    manual: bool,
+}
 
 #[derive(Clap)]
 struct NodeOptions {
@@ -279,7 +283,7 @@ fn cmd_init(
     print_success(format!(
         "Created cell named {} with public key {}",
         style_value(cell_config.name),
-        style_value(cell_config.public_key.to_string()),
+        style_value(cell_config.public_key),
     ));
 
     Ok(())
@@ -309,7 +313,7 @@ async fn cmd_node_add(
         )
     } else {
         print_spacer();
-        let pin = prompt_discovery_pin(ctx, "Joining node PIN");
+        let pin = prompt_discovery_pin(ctx, "Enter the joining node discovery PIN");
         let node_config = disco_client
             .get(pin)
             .await
@@ -378,7 +382,7 @@ async fn cmd_node_add(
 async fn cmd_join(
     ctx: &Context,
     _cell_opts: &CellOptions,
-    _join_opts: &JoinOptions,
+    join_opts: &JoinOptions,
 ) -> anyhow::Result<()> {
     let node_config = ctx.options.read_configuration();
     let disco_client = ctx.get_discovery_client();
@@ -393,25 +397,35 @@ async fn cmd_join(
         .to_yaml()
         .expect("Couldn't convert cell node config to yaml");
 
-    let create_resp = disco_client
-        .create(cell_node_yaml.as_bytes())
-        .await
-        .expect("Couldn't create payload on discovery server");
+    let cell_config = if !join_opts.manual {
+        let create_resp = disco_client
+            .create(cell_node_yaml.as_bytes())
+            .await
+            .expect("Couldn't create payload on discovery server");
 
-    print_action(format!(
-        "On the host node, enter this discovery pin:\n\n\t\t{}",
-        style_value(create_resp.id.to_formatted_string())
-    ));
+        print_action(format!(
+            "On the host node, enter this discovery pin:\n\n\t\t{}",
+            style_value(create_resp.id.to_formatted_string())
+        ));
 
-    print_spacer();
-    let pin = prompt_discovery_pin(ctx, "Host discovery PIN");
-    let cell_config = disco_client
-        .get(pin)
-        .await
-        .expect("Couldn't find host node using the given discovery pin");
+        print_spacer();
+        let pin = prompt_discovery_pin(ctx, "Enter the host discovery PIN");
+        let cell_config = disco_client
+            .get(pin)
+            .await
+            .expect("Couldn't find host node using the given discovery pin");
 
-    let cell_config = CellConfig::from_yaml(cell_config.as_slice())
-        .expect("Couldn't parse cell config from host node");
+        CellConfig::from_yaml(cell_config.as_slice())
+            .expect("Couldn't parse cell config from host node")
+    } else {
+        edit_string(
+            "# Paste config of the cell to join (result of `exo cell print --inline` on host node)",
+            |config| {
+                let config = CellConfig::from_yaml(config.as_bytes())?;
+                Ok(config)
+            },
+        )
+    };
 
     write_cell_config(ctx, &cell_config);
 
