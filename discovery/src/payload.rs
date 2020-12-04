@@ -1,4 +1,4 @@
-use std::convert::TryFrom;
+use std::{convert::TryFrom, str::FromStr};
 
 use chrono::{DateTime, Utc};
 
@@ -22,6 +22,19 @@ impl TryFrom<u32> for Pin {
         }
 
         Ok(Pin(value))
+    }
+}
+
+impl FromStr for Pin {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let pin_int: u32 = s
+            .replace(|c: char| c.is_whitespace(), "")
+            .parse()
+            .map_err(|_| ())?;
+
+        Pin::try_from(pin_int)
     }
 }
 
@@ -71,5 +84,14 @@ mod tests {
         assert_eq!(&Pin(123_456_789).to_formatted_string(), "123 456 789");
         assert_eq!(&Pin(100_000_000).to_formatted_string(), "100 000 000");
         assert_eq!(&Pin(999_999_999).to_formatted_string(), "999 999 999");
+    }
+
+    #[test]
+    fn pin_string_parsing() {
+        assert_eq!("123 456 789".parse().ok(), Some(Pin(123_456_789)));
+        assert_eq!("100 000 000".parse().ok(), Some(Pin(100_000_000)));
+        assert!("123".parse::<Pin>().is_err());
+        assert!("foo".parse::<Pin>().is_err());
+        assert_eq!(" 99 9 9 99 999 ".parse().ok(), Some(Pin(999_999_999)));
     }
 }

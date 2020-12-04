@@ -146,6 +146,12 @@ impl Server {
             hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN,
             "*".parse().unwrap(),
         );
+        headers.insert(
+            hyper::header::ACCESS_CONTROL_ALLOW_HEADERS,
+            "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+                .parse()
+                .unwrap(),
+        );
     }
 }
 

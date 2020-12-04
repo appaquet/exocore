@@ -24,7 +24,18 @@ class App extends React.Component<IAppProps, IAppState> {
             this.connect(state.config);
         }
 
+        Exocore.ensureLoaded().then(async () => {
+            await this.bleh();
+        });
+
         this.state = state;
+    }
+
+    async bleh() {
+        const node = Exocore.node.generate();
+        const disco = Exocore.discovery.create();
+        await disco.push_node_config(node);
+        console.log('yah');
     }
 
     render() {

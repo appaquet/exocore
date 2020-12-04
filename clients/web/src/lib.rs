@@ -1,12 +1,12 @@
-#![deny(bare_trait_objects)]
-
 #[macro_use]
 extern crate log;
 
-mod js;
-
 pub mod client;
+pub mod disco;
+pub mod node;
 pub mod watched_query;
+
+mod js;
 
 use wasm_bindgen::prelude::*;
 
