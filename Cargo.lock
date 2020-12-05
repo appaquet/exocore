@@ -1085,6 +1085,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tokio",
+ "wasm-timer",
 ]
 
 [[package]]

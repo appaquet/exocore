@@ -26,11 +26,11 @@ impl Discovery {
         let ret = async move {
             let payload = local_node.to_yaml()?; // TODO: Should be proto
             let create_resp = client
-                .create(payload.as_bytes())
+                .create(payload.as_bytes(), true)
                 .await
                 .map_err(into_js_error)?;
 
-            Ok(create_resp.id.to_formatted_string().into())
+            Ok(create_resp.pin.to_formatted_string().into())
         };
 
         wasm_bindgen_futures::future_to_promise(ret)
