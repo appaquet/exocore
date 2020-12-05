@@ -1,7 +1,7 @@
 import * as wasm from './wasm';
-import { Discovery, LocalNode } from './wasm';
+import { Discovery } from './wasm';
 
-export class DiscoveryWrapper {
+export class DiscoveryAccessor {
     create(discoveryServiceUrl?: string): Discovery {
         const module = wasm.getModule();
         return module.Discovery.new(discoveryServiceUrl);

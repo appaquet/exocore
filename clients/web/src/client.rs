@@ -7,16 +7,16 @@ use futures::StreamExt;
 use prost::Message;
 use wasm_bindgen::prelude::*;
 
-use exocore_core::futures::spawn_future_non_send;
-use exocore_core::protos::generated::exocore_store::EntityQuery;
-use exocore_core::time::Clock;
-use exocore_core::{cell::Cell, cell::LocalNodeConfigExt, protos::core::LocalNodeConfig};
+use exocore_core::{
+    cell::Cell, futures::spawn_future_non_send, protos::generated::exocore_store::EntityQuery,
+    time::Clock,
+};
 use exocore_store::remote::{Client, ClientConfiguration, ClientHandle};
-use exocore_transport::transport::ConnectionStatus;
-use exocore_transport::{InEvent, Libp2pTransport, ServiceType, TransportServiceHandle};
+use exocore_transport::{
+    transport::ConnectionStatus, InEvent, Libp2pTransport, ServiceType, TransportServiceHandle,
+};
 
-use crate::js::into_js_error;
-use crate::watched_query::WatchedQuery;
+use crate::{js::into_js_error, node::LocalNode, watched_query::WatchedQuery};
 use exocore_core::protos::{prost::ProstMessageExt, store::MutationRequest};
 use exocore_transport::p2p::Libp2pTransportConfig;
 
@@ -38,8 +38,7 @@ struct Inner {
 impl ExocoreClient {
     #[wasm_bindgen(constructor)]
     pub fn new(
-        node_config_bytes: js_sys::Uint8Array,
-        node_config_format: JsValue,
+        node: LocalNode,
         status_change_callback: Option<js_sys::Function>,
     ) -> Result<ExocoreClient, JsValue> {
         INIT.call_once(|| {
@@ -47,19 +46,8 @@ impl ExocoreClient {
             std::panic::set_hook(Box::new(console_error_panic_hook::hook));
         });
 
-        let config_bytes = Self::js_bytes_to_vec(node_config_bytes);
-        let node_config_format = node_config_format.as_string();
-        let node_config_format = node_config_format.as_deref();
-
-        let config = match node_config_format {
-            Some("json") => LocalNodeConfig::from_json_reader(config_bytes.as_slice()),
-            Some("yaml") => LocalNodeConfig::from_yaml_reader(config_bytes.as_slice()),
-            other => panic!("Invalid config format: {:?}", other),
-        }
-        .expect("Couldn't decode config");
-
         let (either_cells, local_node) =
-            Cell::new_from_local_node_config(config).expect("Couldn't create cell");
+            Cell::new_from_local_node_config(node.config).expect("Couldn't create cell");
 
         let either_cell = either_cells
             .first()
@@ -166,7 +154,7 @@ impl ExocoreClient {
 
     #[wasm_bindgen]
     pub fn store_mutate(&self, mutation_proto_bytes: js_sys::Uint8Array) -> js_sys::Promise {
-        let bytes = Self::js_bytes_to_vec(mutation_proto_bytes);
+        let bytes = js_bytes_to_vec(mutation_proto_bytes);
         let entity_mutation =
             MutationRequest::decode(bytes.as_ref()).expect("Couldn't encode query");
 
@@ -186,7 +174,7 @@ impl ExocoreClient {
 
     #[wasm_bindgen]
     pub fn store_query(&self, query_proto_bytes: js_sys::Uint8Array) -> js_sys::Promise {
-        let bytes = Self::js_bytes_to_vec(query_proto_bytes);
+        let bytes = js_bytes_to_vec(query_proto_bytes);
         let entity_query = EntityQuery::decode(bytes.as_ref()).expect("Couldn't encode query");
 
         let store_handle = self.store_handle.clone();
@@ -205,7 +193,7 @@ impl ExocoreClient {
 
     #[wasm_bindgen]
     pub fn store_watched_query(&self, query_proto_bytes: js_sys::Uint8Array) -> WatchedQuery {
-        let bytes = Self::js_bytes_to_vec(query_proto_bytes);
+        let bytes = js_bytes_to_vec(query_proto_bytes);
         let entity_query = EntityQuery::decode(bytes.as_ref()).expect("Couldn't encode query");
 
         WatchedQuery::new(self.store_handle.clone(), entity_query)
@@ -223,16 +211,16 @@ impl ExocoreClient {
 
         store_node_urls.collect()
     }
-
-    fn js_bytes_to_vec(js_bytes: js_sys::Uint8Array) -> Vec<u8> {
-        let mut bytes = vec![0u8; js_bytes.length() as usize];
-        js_bytes.copy_to(&mut bytes);
-        bytes
-    }
 }
 
 impl Drop for ExocoreClient {
     fn drop(&mut self) {
         info!("Got dropped");
     }
+}
+
+fn js_bytes_to_vec(js_bytes: js_sys::Uint8Array) -> Vec<u8> {
+    let mut bytes = vec![0u8; js_bytes.length() as usize];
+    js_bytes.copy_to(&mut bytes);
+    bytes
 }

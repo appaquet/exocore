@@ -20,7 +20,7 @@ impl LocalNode {
             config: LocalNodeConfig {
                 keypair: node.keypair().encode_base58_string(),
                 public_key: node.public_key().encode_base58_string(),
-                name: node.name().to_string(),
+                name: format!("web-{}", node.name()),
                 id: node.id().to_string(),
                 ..Default::default()
             },
@@ -46,7 +46,7 @@ impl LocalNode {
         Self::from_config(config)
     }
 
-    pub fn from_storage(&self, storage: web_sys::Storage) -> Result<LocalNode, JsValue> {
+    pub fn from_storage(storage: web_sys::Storage) -> Result<LocalNode, JsValue> {
         let config_str: Option<String> = storage.get("node_config")?;
         let config = config_str.ok_or("couldn't find `node_config` in storage")?;
         Self::from_json(config)
@@ -61,5 +61,9 @@ impl LocalNode {
 
     pub fn to_yaml(&self) -> Result<String, JsValue> {
         self.config.to_yaml().map_err(into_js_error)
+    }
+
+    pub fn has_configured_cell(&self) -> bool {
+        !self.config.cells.is_empty()
     }
 }

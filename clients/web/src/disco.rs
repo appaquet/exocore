@@ -32,9 +32,9 @@ impl Discovery {
         let client = self.client.clone();
 
         let ret = async move {
-            let payload = local_node.to_yaml()?; // TODO: Should be proto
+            let local_node_yml = local_node.to_yaml()?;
             let create_resp = client
-                .create(payload.as_bytes(), true)
+                .create(local_node_yml.as_bytes(), true)
                 .await
                 .map_err(into_js_error)?;
 
@@ -69,22 +69,4 @@ impl Discovery {
 
         wasm_bindgen_futures::future_to_promise(ret)
     }
-
-    // pub fn join_cell(&self, local_node: LocalNode, pin: String) -> js_sys::Promise {
-    //     let client = self.client.clone();
-
-    //     let ret = async move {
-    //         // let parsed_pin = Pin::from()
-
-    //         let payload = local_node.to_yaml()?; // TODO: Should be proto
-    //         let create_resp = client
-    //             .create(payload.as_bytes())
-    //             .await
-    //             .map_err(into_js_error)?;
-
-    //         Ok(create_resp.id.to_formatted_string().into())
-    //     };
-
-    //     wasm_bindgen_futures::future_to_promise(ret)
-    // }
 }

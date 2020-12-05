@@ -4,11 +4,11 @@ import { exocore } from '../protos';
 export { protos, exocore }
 
 import { CellWrapper } from './cell';
-import { DiscoveryWrapper } from './discovery';
+import { DiscoveryAccessor } from './discovery';
 export { CellWrapper as Cell };
 
-import { NodeWrapper } from './node';
-export { NodeWrapper };
+import { NodeAccessor } from './node';
+export { NodeAccessor };
 
 import { Registry, matchTrait } from './registry';
 export { Registry, matchTrait }
@@ -21,20 +21,17 @@ import { WasmModule, ExocoreClient, LocalNode, Discovery } from './wasm';
 export { WasmModule, ExocoreClient, LocalNode, Discovery };
 
 export class Exocore {
-    static defaultInstance: ExocoreInstance = null;
+    static default: ExocoreInstance = null;
 
     static get initialized(): boolean {
-        return Exocore.defaultInstance != null;
+        return Exocore.default != null;
     }
 
     static async ensureLoaded(): Promise<WasmModule> {
         return await wasm.getOrLoadModule();
     }
 
-    static async initialize(config: object): Promise<ExocoreInstance> {
-        const configJson = JSON.stringify(config); ``
-        const configBytes = new TextEncoder().encode(configJson);
-
+    static async initialize(node: LocalNode): Promise<ExocoreInstance> {
         const module = await Exocore.ensureLoaded();
 
         let instance: ExocoreInstance;
@@ -42,31 +39,31 @@ export class Exocore {
             instance._triggerStatusChange(status)
         }
 
-        const innerClient = new module.ExocoreClient(configBytes, 'json', onStatusChange);
+        const innerClient = new module.ExocoreClient(node, onStatusChange);
         instance = new ExocoreInstance(innerClient);
 
-        if (!Exocore.defaultInstance) {
-            Exocore.defaultInstance = instance;
+        if (!Exocore.default) {
+            Exocore.default = instance;
         }
 
         return instance;
     }
 
     static get cell(): CellWrapper {
-        return Exocore.defaultInstance.cell;
+        return Exocore.default.cell;
     }
 
     static get store(): Store {
-        return Exocore.defaultInstance.store;
+        return Exocore.default.store;
     }
 
     static get registry(): Registry {
-        return Exocore.defaultInstance.registry;
+        return Exocore.default.registry;
     }
 
-    static node = new NodeWrapper();
+    static node = new NodeAccessor();
 
-    static discovery = new DiscoveryWrapper();
+    static discovery = new DiscoveryAccessor();
 }
 
 export class ExocoreInstance {
@@ -75,7 +72,7 @@ export class ExocoreInstance {
     store: Store;
     status: string;
     registry: Registry;
-    node: Node;
+    node: NodeAccessor;
     onChange?: () => void;
 
     constructor(client: ExocoreClient) {
@@ -83,7 +80,7 @@ export class ExocoreInstance {
         this.cell = new CellWrapper(client);
         this.store = new Store(client);
         this.registry = new Registry();
-        this.node = new Node();
+        this.node = new NodeAccessor();
     }
 
     _triggerStatusChange(status: string): void {
