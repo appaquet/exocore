@@ -34,7 +34,9 @@ class App extends React.Component<IAppProps, IAppState> {
     async bleh() {
         const node = Exocore.node.generate();
         const disco = Exocore.discovery.create();
-        await disco.push_node_config(node);
+        const joined_node = await disco.push_node_config(node, (pin: string) => {
+            alert(pin);
+        });
         console.log('yah');
     }
 

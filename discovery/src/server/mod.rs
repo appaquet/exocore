@@ -130,7 +130,7 @@ impl Server {
         let resp_body = Body::from(resp_body_bytes);
 
         let mut resp = Response::new(resp_body);
-        Self::add_cors_headers(&mut resp);
+        add_cors_headers(&mut resp);
 
         Ok(resp)
     }
@@ -149,7 +149,7 @@ impl Server {
         let resp_body = Body::from(resp_body_bytes);
 
         let mut resp = Response::new(resp_body);
-        Self::add_cors_headers(&mut resp);
+        add_cors_headers(&mut resp);
 
         Ok(resp)
     }
@@ -196,33 +196,15 @@ impl Server {
         let resp_body = Body::from(resp_body_bytes);
 
         let mut resp = Response::new(resp_body);
-        Self::add_cors_headers(&mut resp);
+        add_cors_headers(&mut resp);
 
         Ok(resp)
     }
 
     async fn handle_request_options() -> Result<Response<Body>, RequestError> {
         let mut resp = Response::default();
-        Self::add_cors_headers(&mut resp);
+        add_cors_headers(&mut resp);
         Ok(resp)
-    }
-
-    fn add_cors_headers(response: &mut Response<Body>) {
-        let headers = response.headers_mut();
-        headers.insert(
-            hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
-            "POST, PUT, GET".parse().unwrap(),
-        );
-        headers.insert(
-            hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN,
-            "*".parse().unwrap(),
-        );
-        headers.insert(
-            hyper::header::ACCESS_CONTROL_ALLOW_HEADERS,
-            "Origin, X-Requested-With, Content-Type, Accept, Authorization"
-                .parse()
-                .unwrap(),
-        );
     }
 }
 
@@ -302,8 +284,27 @@ impl RequestError {
             RequestError::Serialization(_) => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
+        add_cors_headers(&mut resp);
 
         *resp.status_mut() = status;
         resp
     }
+}
+
+fn add_cors_headers(response: &mut Response<Body>) {
+    let headers = response.headers_mut();
+    headers.insert(
+        hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
+        "POST, PUT, GET".parse().unwrap(),
+    );
+    headers.insert(
+        hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN,
+        "*".parse().unwrap(),
+    );
+    headers.insert(
+        hyper::header::ACCESS_CONTROL_ALLOW_HEADERS,
+        "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+            .parse()
+            .unwrap(),
+    );
 }

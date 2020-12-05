@@ -1,13 +1,12 @@
-use std::{
-    convert::TryInto,
-    time::{Duration, Instant},
-};
+use std::convert::TryInto;
+use std::time::Duration;
 
 use crate::payload::{
     CreatePayloadRequest, CreatePayloadResponse, Payload, Pin, ReplyPayloadRequest, ReplyToken,
 };
 pub use reqwest::Url;
 use reqwest::{IntoUrl, StatusCode};
+use wasm_timer::Instant;
 
 /// Discovery service client.
 ///
@@ -95,6 +94,7 @@ impl Client {
                     return Err(Error::NotFound);
                 }
                 Err(Error::NotFound) if begin.elapsed() < timeout => {
+                    debug!("Payload not found on server... Waiting");
                     let _ = wasm_timer::Delay::new(Duration::from_millis(1000)).await;
                 }
                 Err(other) => return Err(other),

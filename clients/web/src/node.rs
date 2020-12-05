@@ -8,7 +8,7 @@ use crate::js::into_js_error;
 #[wasm_bindgen]
 pub struct LocalNode {
     _node: CoreLocalNode,
-    config: LocalNodeConfig,
+    pub(crate) config: LocalNodeConfig,
 }
 
 #[wasm_bindgen]
@@ -27,30 +27,29 @@ impl LocalNode {
         }
     }
 
-    pub fn from_storage(&self, storage: web_sys::Storage) -> Result<LocalNode, JsValue> {
-        let config_str: Option<String> = storage.get("node_config")?;
-        let config = config_str.ok_or("couldn't find `node_config` in storage")?;
-        Self::from_json(config)
+    pub(crate) fn from_config(config: LocalNodeConfig) -> Result<LocalNode, JsValue> {
+        let node = CoreLocalNode::new_from_config(config.clone()).map_err(into_js_error)?;
+
+        Ok(LocalNode {
+            _node: node,
+            config,
+        })
     }
 
     pub fn from_json(json: String) -> Result<LocalNode, JsValue> {
         let config = LocalNodeConfig::from_json_reader(json.as_bytes()).map_err(into_js_error)?;
-        let node = CoreLocalNode::new_from_config(config.clone()).map_err(into_js_error)?;
-
-        Ok(LocalNode {
-            _node: node,
-            config,
-        })
+        Self::from_config(config)
     }
 
     pub fn from_yaml(yaml: String) -> Result<LocalNode, JsValue> {
         let config = LocalNodeConfig::from_yaml_reader(yaml.as_bytes()).map_err(into_js_error)?;
-        let node = CoreLocalNode::new_from_config(config.clone()).map_err(into_js_error)?;
+        Self::from_config(config)
+    }
 
-        Ok(LocalNode {
-            _node: node,
-            config,
-        })
+    pub fn from_storage(&self, storage: web_sys::Storage) -> Result<LocalNode, JsValue> {
+        let config_str: Option<String> = storage.get("node_config")?;
+        let config = config_str.ok_or("couldn't find `node_config` in storage")?;
+        Self::from_json(config)
     }
 
     pub fn save_to_storage(&self, storage: web_sys::Storage) -> Result<(), JsValue> {
