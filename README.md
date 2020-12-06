@@ -58,10 +58,11 @@ A cell consists of:
 
 ## Usage & configuration
 * CLI:
-  * `./tools/install.sh` or `cd exo && cargo install --path .`
+  * `./tools/install.sh` or `cd exo && cargo install --path .` or grab latest release binary
 
 * Configuration
     * Most commands requires a node configuration file, for which an example can be found in here: [`./examples/node.yaml`].
+      `exo` can generate and managed configurations. See [Quick start](#quick-start).
     * At minimum, the config requires 2 keypair: one for the node, one for the cell.
     * The node keypair is unique per server/node, while the cell keypair is shared among servers that host the cell.
     * See [Quick start](#quick-start) section for example 2 nodes setup.
