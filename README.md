@@ -29,7 +29,6 @@ A cell consists of:
 * **Android SDK**
 
 ### v0.3 and beyond
-* **Nodes discovery**
 * **Blob storage**  (IPFS)
 * **Offline support**
 
@@ -58,11 +57,11 @@ A cell consists of:
 
 ## Usage & configuration
 * CLI:
-  * `./tools/install.sh` or `cd exo && cargo install --path .` or grab latest release binary
+  * `./tools/install.sh` or `cd exo && cargo install --path .` or grab latest released binary.
 
 * Configuration
     * Most commands requires a node configuration file, for which an example can be found in here: [`./examples/node.yaml`].
-      `exo` can generate and managed configurations. See [Quick start](#quick-start).
+      `exo` can also generate and manage configurations. See [Quick start](#quick-start).
     * At minimum, the config requires 2 keypair: one for the node, one for the cell.
     * The node keypair is unique per server/node, while the cell keypair is shared among servers that host the cell.
     * See [Quick start](#quick-start) section for example 2 nodes setup.
@@ -71,35 +70,48 @@ A cell consists of:
 
 ### Create a Cell hosted on 2 nodes
 * On node 1
-  * Generate node's configuration: 
+  * Generate configuration: 
+
     `exo --dir ./node1 node init --name node1`
-  * Edit configuration to include accessible addresses:
+
+  * Edit configuration to include unique and accessible addresses:
+
     `exo -d ./node1 config edit`
+
   * Generate a cell:
+
     `exo -d ./node1 cell init --name my_cell`
 
 * On node 2
-  * Generate node's configuration: 
+  * Generate configuration: 
+
     `exo --dir ./node2 node init --name node1`
-  * Edit configuration to include accessible addresses. 
-    If both nodes are running on same machine, make sure they have unique ports.
+
+  * Edit configuration to include unique and accessible addresses. 
+    If both nodes are running on the same machine, make sure they have unique ports.
+
     `exo -d ./node2 config edit`
-  * Request to join the cell using the exocore discovery server (`disco.exocore.io`):
+
+  * Request to join the cell. 
+    This will use exocore's discovery server (`disco.exocore.io`), but this can overriden:
+
     `exo -d ./node2 cell join`
-    and copy the discovery PIN.
+
+    and copy the displayed discovery PIN.
 
 * On node 1:
   * Add node 2 to cell:
+
     `exo -d ./node1 cell node add --chain --store` 
-    Paste the discovery PIN.
+
+    Paste node 2's discovery PIN.
 
 * Start both nodes:
   * Node 1: `exo -d ./node1 daemon`
   * Node 2: `exo -d ./node2 daemon`
 
-  ### Using Web example client
-  * See [Web example README](./examples/web/README.md#Running)
-
+### Join the example web client
+* See [Web example README](./examples/web/README.md#Running)
 
 ## Clients
 #### Web
