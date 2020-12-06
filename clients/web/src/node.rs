@@ -1,10 +1,10 @@
+use crate::js::into_js_error;
 use exocore_core::{
     cell::{LocalNode as CoreLocalNode, LocalNodeConfigExt},
     protos::core::LocalNodeConfig,
 };
 use wasm_bindgen::prelude::*;
 
-use crate::js::into_js_error;
 #[wasm_bindgen]
 pub struct LocalNode {
     _node: CoreLocalNode,

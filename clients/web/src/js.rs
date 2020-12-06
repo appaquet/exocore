@@ -1,5 +1,4 @@
 use std::fmt::Display;
-
 use wasm_bindgen::JsValue;
 
 pub fn into_js_error<A: Display, E: Display>(action: A, err: E) -> JsValue {

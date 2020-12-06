@@ -12,6 +12,7 @@ var module: WasmModule = null;
 export async function getOrLoadModule(): Promise<WasmModule> {
     if (module == null) {
         module = await import('../wasm/exocore_client_web');
+        module.init();
     }
 
     return module;

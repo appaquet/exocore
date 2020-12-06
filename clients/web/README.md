@@ -24,8 +24,8 @@
 * Build:
     * `./tools/build.sh`
 
-* Follow [Launch sample web project](../../README.md) on how to configure web.
-
+## Example use
+* See [Web example](../../examples/web/README.md)
 
 ## Known issues
 * Connection can only be via localhost or https since WebCrypto used in libp2p's secio implementation only works over secure code.

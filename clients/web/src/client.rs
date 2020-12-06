@@ -1,26 +1,24 @@
-use std::{
-    sync::{Arc, Mutex, Once},
-    time::Duration,
-};
-
-use futures::StreamExt;
-use prost::Message;
-use wasm_bindgen::prelude::*;
-
+use crate::{js::into_js_error, node::LocalNode, watched_query::WatchedQuery};
 use exocore_core::{
-    cell::Cell, futures::spawn_future_non_send, protos::generated::exocore_store::EntityQuery,
+    cell::Cell,
+    futures::spawn_future_non_send,
+    protos::{
+        generated::exocore_store::EntityQuery, prost::ProstMessageExt, store::MutationRequest,
+    },
     time::Clock,
 };
 use exocore_store::remote::{Client, ClientConfiguration, ClientHandle};
 use exocore_transport::{
-    transport::ConnectionStatus, InEvent, Libp2pTransport, ServiceType, TransportServiceHandle,
+    p2p::Libp2pTransportConfig, transport::ConnectionStatus, InEvent, Libp2pTransport, ServiceType,
+    TransportServiceHandle,
 };
-
-use crate::{js::into_js_error, node::LocalNode, watched_query::WatchedQuery};
-use exocore_core::protos::{prost::ProstMessageExt, store::MutationRequest};
-use exocore_transport::p2p::Libp2pTransportConfig;
-
-static INIT: Once = Once::new();
+use futures::StreamExt;
+use prost::Message;
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 pub struct ExocoreClient {
@@ -41,11 +39,6 @@ impl ExocoreClient {
         node: LocalNode,
         status_change_callback: Option<js_sys::Function>,
     ) -> Result<ExocoreClient, JsValue> {
-        INIT.call_once(|| {
-            wasm_logger::init(wasm_logger::Config::new(log::Level::Debug));
-            std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-        });
-
         let (either_cells, local_node) =
             Cell::new_from_local_node_config(node.config).expect("Couldn't create cell");
 

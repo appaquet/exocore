@@ -1,16 +1,15 @@
-use std::{rc::Rc, time::Duration};
-
+use crate::{
+    js::{into_js_error, wrap_js_error},
+    node::LocalNode,
+};
 use exocore_core::{
     cell::{CellConfigExt, LocalNodeConfigExt},
     protos::core::{node_cell_config, CellConfig, NodeCellConfig},
 };
 use exocore_discovery::{Client, DEFAULT_DISCO_SERVER};
+use std::{rc::Rc, time::Duration};
 use wasm_bindgen::prelude::*;
 
-use crate::{
-    js::{into_js_error, wrap_js_error},
-    node::LocalNode,
-};
 #[wasm_bindgen]
 pub struct Discovery {
     client: Rc<Client>,
@@ -20,7 +19,7 @@ pub struct Discovery {
 impl Discovery {
     pub fn new(disco_url: Option<String>) -> Discovery {
         let disco_url = disco_url.as_deref().unwrap_or(DEFAULT_DISCO_SERVER);
-        let client = Client::new(disco_url).expect("couldn't discovery create client");
+        let client = Client::new(disco_url).expect("couldn't create discovery client");
 
         Discovery {
             client: Rc::new(client),
@@ -34,7 +33,7 @@ impl Discovery {
     ) -> js_sys::Promise {
         let client = self.client.clone();
 
-        let ret = async move {
+        let fut = async move {
             let local_node_yml = local_node.to_yaml()?;
             let create_resp = client
                 .create(local_node_yml.as_bytes(), true)
@@ -57,10 +56,7 @@ impl Discovery {
                 .map_err(|_| "couldn't decode payload from discovery service")?;
             let cell_config =
                 CellConfig::from_yaml(get_cell_payload.as_slice()).map_err(|err| {
-                    into_js_error(
-                        "couldn't decode config retrieved from discovery service",
-                        err,
-                    )
+                    into_js_error("couldn't decode config retrieved from discovery", err)
                 })?;
 
             let mut local_node_config = local_node.config.clone();
@@ -73,6 +69,6 @@ impl Discovery {
             Ok(local_node.into())
         };
 
-        wasm_bindgen_futures::future_to_promise(ret)
+        wasm_bindgen_futures::future_to_promise(fut)
     }
 }

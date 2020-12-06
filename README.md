@@ -83,38 +83,22 @@ A cell consists of:
   * Edit configuration to include accessible addresses. 
     If both nodes are running on same machine, make sure they have unique ports.
     `exo -d ./node2 config edit`
-  * Copy node's public info:
-    `exo -d ./node2 config print --cell`
+  * Request to join the cell using the exocore discovery server (`disco.exocore.io`):
+    `exo -d ./node2 cell join`
+    and copy the discovery PIN.
 
 * On node 1:
-  * Add node 2:
+  * Add node 2 to cell:
     `exo -d ./node1 cell node add --chain --store` 
-    and then copy node 2's public info in editor.
-  * Copy cell's config:
-    `exo -d ./node1 cell print --inline` 
-
-* On node 2:
-  * Join the just created cell:
-    `exo -d ./node2 cell join`
-    and then copy cell's config in editor.
+    Paste the discovery PIN.
 
 * Start both nodes:
   * Node 1: `exo -d ./node1 daemon`
   * Node 2: `exo -d ./node2 daemon`
 
-### Launch sample web project
-* Run the [web example](./examples/web):
-  * Build WASM client
-    * `./clients/web/tools/build.sh`
-  * Start development server which will watch files and rebuild automatically:
-    * `cd ./examples/web && npm install && npm run start`
-  * Generate cell configuration for web:
-    * Follow [Quick start](#quick-start) as if web was another node, without a `chain` and `store` role.
-    * Then convert config to JSON: `exo -d ./web/node config print --inline --format json`
-  * Open browser to [http://127.0.0.1:8080](http://127.0.0.1:8080)
-    * Paste JSON config
-    * Remove listen addresses
-    * Save
+  ### Using Web example client
+  * See [Web example README](./examples/web/README.md#Running)
+
 
 ## Clients
 #### Web
