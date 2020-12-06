@@ -1,5 +1,5 @@
 import { Exocore, exocore } from ".";
-import { ExocoreClient, getModule } from "./wasm";
+import { ExocoreClient, getModule, WatchedQuery } from "./wasm";
 
 export class Store {
     wasmClient: ExocoreClient;
@@ -23,10 +23,10 @@ export class Store {
         return exocore.store.EntityResults.decode(resultsData);
     }
 
-    watchedQuery(query: exocore.store.IEntityQuery): WatchedQuery {
+    watchedQuery(query: exocore.store.IEntityQuery): WatchedQueryWrapper {
         const encoded = exocore.store.EntityQuery.encode(query).finish();
 
-        return new WatchedQuery(this.wasmClient.store_watched_query(encoded));
+        return new WatchedQueryWrapper(this.wasmClient.store_watched_query(encoded));
     }
 
     generateId(prefix?: string): string {
@@ -38,14 +38,14 @@ export class Store {
     }
 }
 
-export class WatchedQuery {
-    inner: any;
+export class WatchedQueryWrapper {
+    inner: WatchedQuery;
 
-    constructor(inner: any) {
+    constructor(inner: WatchedQuery) {
         this.inner = inner;
     }
 
-    onChange(cb: (results: exocore.store.EntityResults) => void): WatchedQuery {
+    onChange(cb: (results: exocore.store.EntityResults) => void): WatchedQueryWrapper {
         this.inner.on_change(() => {
             const resultsData: Uint8Array = this.inner.get();
             const res = exocore.store.EntityResults.decode(resultsData);

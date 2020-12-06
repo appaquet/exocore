@@ -13,8 +13,8 @@ export { NodeAccessor };
 import { Registry, matchTrait } from './registry';
 export { Registry, matchTrait }
 
-import { Store, WatchedQuery, MutationBuilder, QueryBuilder, TraitQueryBuilder } from './store';
-export { WatchedQuery, MutationBuilder, QueryBuilder, TraitQueryBuilder };
+import { Store, WatchedQueryWrapper, MutationBuilder, QueryBuilder, TraitQueryBuilder } from './store';
+export { WatchedQueryWrapper, MutationBuilder, QueryBuilder, TraitQueryBuilder };
 
 import * as wasm from './wasm';
 import { WasmModule, ExocoreClient, LocalNode, Discovery } from './wasm';
@@ -40,7 +40,7 @@ export class Exocore {
         }
 
         const innerClient = new module.ExocoreClient(node, onStatusChange);
-        instance = new ExocoreInstance(innerClient);
+        instance = new ExocoreInstance(innerClient, node);
 
         if (!Exocore.default) {
             Exocore.default = instance;
@@ -72,15 +72,15 @@ export class ExocoreInstance {
     store: Store;
     status: string;
     registry: Registry;
-    node: NodeAccessor;
+    node: LocalNode;
     onChange?: () => void;
 
-    constructor(client: ExocoreClient) {
+    constructor(client: ExocoreClient, node: LocalNode) {
         this.wasmClient = client;
         this.cell = new CellWrapper(client);
         this.store = new Store(client);
         this.registry = new Registry();
-        this.node = new NodeAccessor();
+        this.node = node;
     }
 
     _triggerStatusChange(status: string): void {

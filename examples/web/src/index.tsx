@@ -19,8 +19,8 @@ class App extends React.Component<IAppProps, IAppState> {
             status: 'disconnected',
         };
 
-        Exocore.ensureLoaded().then(async () => {
-            await this.configure();
+        Exocore.ensureLoaded().then(() => {
+            this.configure();
         });
 
         this.state = state;
@@ -60,17 +60,22 @@ class App extends React.Component<IAppProps, IAppState> {
 
         if (!node) {
             node = Exocore.node.generate();
+            node.save_to_storage(localStorage);
         }
 
         if (rejoin || !node.has_configured_cell()) {
             const disco = Exocore.discovery.create();
 
-            node = await disco.push_node_config(node, (pin: string) => {
-                this.setState({
-                    join_pin: pin,
-                })
-            });
-            node.save_to_storage(localStorage);
+            try {
+                node = await disco.push_node_config(node, (pin: string) => {
+                    this.setState({
+                        join_pin: pin,
+                    })
+                });
+                node.save_to_storage(localStorage);
+            } finally {
+                disco.free();
+            }
         }
 
         await this.createInstance(node);

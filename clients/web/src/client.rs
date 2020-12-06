@@ -146,7 +146,7 @@ impl ExocoreClient {
 
         let auth_token =
             exocore_core::sec::auth_token::AuthToken::new(&self.cell, &self.clock, expiration)
-                .map_err(into_js_error)?;
+                .map_err(|err| into_js_error("generating auth token", err))?;
 
         let auth_token_bs58 = auth_token.encode_base58_string();
         Ok(auth_token_bs58)
@@ -163,9 +163,11 @@ impl ExocoreClient {
             let result = store_handle
                 .mutate(entity_mutation)
                 .await
-                .map_err(into_js_error)?;
+                .map_err(|err| into_js_error("mutating", err))?;
 
-            let results_data = result.encode_to_vec().map_err(into_js_error)?;
+            let results_data = result
+                .encode_to_vec()
+                .map_err(|err| into_js_error("converting mutation result", err))?;
             Ok(js_sys::Uint8Array::from(results_data.as_ref()).into())
         };
 
@@ -182,9 +184,11 @@ impl ExocoreClient {
             let result = store_handle
                 .query(entity_query)
                 .await
-                .map_err(into_js_error)?;
+                .map_err(|err| into_js_error("querying", err))?;
 
-            let results_data = result.encode_to_vec().map_err(into_js_error)?;
+            let results_data = result
+                .encode_to_vec()
+                .map_err(|err| into_js_error("converting query result", err))?;
             Ok(js_sys::Uint8Array::from(results_data.as_ref()).into())
         };
 

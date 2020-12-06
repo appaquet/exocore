@@ -2,7 +2,7 @@
 extern crate log;
 
 pub mod client;
-pub mod disco;
+pub mod discovery;
 pub mod node;
 pub mod watched_query;
 

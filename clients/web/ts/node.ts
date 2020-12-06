@@ -12,11 +12,6 @@ export class NodeAccessor {
         return module.LocalNode.from_storage(storage);
     }
 
-    from_json(json: string): LocalNode {
-        const module = wasm.getModule();
-        return module.LocalNode.from_json(json);
-    }
-
     from_yaml(yaml: string): LocalNode {
         const module = wasm.getModule();
         return module.LocalNode.from_yaml(yaml);
