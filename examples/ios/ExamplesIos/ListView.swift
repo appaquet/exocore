@@ -105,7 +105,7 @@ class MyList: ObservableObject {
     func remove(atOffsets: IndexSet) {
         let item = self.items[atOffsets.first!]
 
-        let mutation = try! MutationBuilder
+        let mutation = MutationBuilder
                 .updateEntity(entityId: item.id)
                 .deleteEntity()
                 .build()

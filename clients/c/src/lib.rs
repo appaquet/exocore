@@ -1,54 +1,62 @@
-#![allow(clippy::not_unsafe_ptr_arg_deref)]
+// #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 #[macro_use]
 extern crate log;
 
-use std::os::raw::c_void;
-use std::sync::Arc;
 use std::{
     ffi::{CStr, CString},
+    os::raw::c_void,
+    sync::Arc,
     time::Duration,
 };
 
 use futures::StreamExt;
 use prost::Message;
 
-use exocore_core::cell::{Cell, LocalNodeConfigExt};
-use exocore_core::futures::Runtime;
-use exocore_core::protos::generated::exocore_core::LocalNodeConfig;
-use exocore_core::protos::generated::exocore_store::EntityQuery;
-use exocore_core::protos::{prost::ProstMessageExt, store::MutationRequest};
-use exocore_core::time::{Clock, ConsistentTimestamp};
-use exocore_core::utils::id::{generate_id, generate_prefixed_id};
-use exocore_store::remote::{Client, ClientConfiguration, ClientHandle};
-use exocore_transport::p2p::Libp2pTransportConfig;
-use exocore_transport::{Libp2pTransport, ServiceType, TransportServiceHandle};
+use exocore_core::{
+    cell::{Cell, LocalNodeConfigExt},
+    futures::Runtime,
+    protos::{
+        generated::{exocore_core::LocalNodeConfig, exocore_store::EntityQuery},
+        prost::ProstMessageExt,
+        store::MutationRequest,
+    },
+    time::{Clock, ConsistentTimestamp},
+    utils::id::{generate_id, generate_prefixed_id},
+};
+use exocore_store::remote::{Client as StoreClient, ClientConfiguration, ClientHandle};
+use exocore_transport::{
+    p2p::Libp2pTransportConfig, Libp2pTransport, ServiceType, TransportServiceHandle,
+};
 
-pub struct Context {
+/// Exocore client instance of a bootstrapped node.
+///
+/// This structure is opaque to the client, and is used as context for calls.
+pub struct Client {
     _runtime: Runtime,
     clock: Clock,
     cell: Cell,
     store_handle: Arc<ClientHandle>,
 }
 
-impl Context {
-    fn new(
+impl Client {
+    unsafe fn new(
         config_bytes: *const libc::c_uchar,
         config_size: usize,
         config_format: ConfigFormat,
-    ) -> Result<Context, ContextStatus> {
+    ) -> Result<Client, ClientStatus> {
         exocore_core::logging::setup(Some(log::LevelFilter::Debug));
 
-        let config_bytes = unsafe { std::slice::from_raw_parts(config_bytes, config_size) };
+        let config_bytes = std::slice::from_raw_parts(config_bytes, config_size);
         let config = match config_format {
             ConfigFormat::Protobuf => LocalNodeConfig::decode(config_bytes).map_err(|err| {
                 error!("Couldn't decode node config from Protobuf: {}", err);
-                ContextStatus::Error
+                ClientStatus::Error
             })?,
             ConfigFormat::Yaml => {
                 LocalNodeConfig::from_yaml_reader(config_bytes).map_err(|err| {
                     error!("Couldn't parse node config from YAML: {}", err);
-                    ContextStatus::Error
+                    ClientStatus::Error
                 })?
             }
         };
@@ -56,19 +64,19 @@ impl Context {
         let (either_cells, local_node) =
             Cell::new_from_local_node_config(config).map_err(|err| {
                 error!("Error creating cell: {}", err);
-                ContextStatus::Error
+                ClientStatus::Error
             })?;
 
         let either_cell = either_cells.first().cloned().ok_or_else(|| {
             error!("Configuration doesn't have any cell config");
-            ContextStatus::Error
+            ClientStatus::Error
         })?;
 
         let cell = either_cell.cell().clone();
 
         let mut runtime = Runtime::new().map_err(|err| {
             error!("Couldn't start Runtime: {}", err);
-            ContextStatus::Error
+            ClientStatus::Error
         })?;
 
         let transport_config = Libp2pTransportConfig::default();
@@ -80,10 +88,10 @@ impl Context {
             .get_handle(cell.clone(), ServiceType::Store)
             .map_err(|err| {
                 error!("Couldn't get transport handle for remote store: {}", err);
-                ContextStatus::Error
+                ClientStatus::Error
             })?;
         let remote_store_config = ClientConfiguration::default();
-        let remote_store_client = Client::new(
+        let remote_store_client = StoreClient::new(
             remote_store_config,
             cell.clone(),
             clock.clone(),
@@ -91,7 +99,7 @@ impl Context {
         )
         .map_err(|err| {
             error!("Couldn't create remote store client: {}", err);
-            ContextStatus::Error
+            ClientStatus::Error
         })?;
 
         let store_handle = Arc::new(remote_store_client.get_handle());
@@ -99,7 +107,7 @@ impl Context {
             .get_handle(cell.clone(), ServiceType::None)
             .map_err(|err| {
                 error!("Couldn't get transport handle: {}", err);
-                ContextStatus::Error
+                ClientStatus::Error
             })?;
 
         runtime.spawn(async move {
@@ -114,7 +122,7 @@ impl Context {
             info!("Remote store is done");
         });
 
-        Ok(Context {
+        Ok(Client {
             _runtime: runtime,
             clock,
             cell,
@@ -122,14 +130,14 @@ impl Context {
         })
     }
 
-    pub fn mutate(
+    unsafe fn mutate(
         &mut self,
         mutation_bytes: *const libc::c_uchar,
         mutation_size: usize,
         callback: extern "C" fn(status: MutationStatus, *const libc::c_uchar, usize, *const c_void),
         callback_ctx: *const c_void,
     ) -> Result<MutationHandle, MutationStatus> {
-        let mutation_bytes = unsafe { std::slice::from_raw_parts(mutation_bytes, mutation_size) };
+        let mutation_bytes = std::slice::from_raw_parts(mutation_bytes, mutation_size);
         let mutation =
             MutationRequest::decode(mutation_bytes).map_err(|_| MutationStatus::Error)?;
 
@@ -173,14 +181,14 @@ impl Context {
         })
     }
 
-    pub fn query(
+    unsafe fn query(
         &mut self,
         query_bytes: *const libc::c_uchar,
         query_size: usize,
         callback: extern "C" fn(status: QueryStatus, *const libc::c_uchar, usize, *const c_void),
         callback_ctx: *const c_void,
     ) -> Result<QueryHandle, QueryStatus> {
-        let query_bytes = unsafe { std::slice::from_raw_parts(query_bytes, query_size) };
+        let query_bytes = std::slice::from_raw_parts(query_bytes, query_size);
         let query = EntityQuery::decode(query_bytes).map_err(|_| QueryStatus::Error)?;
 
         let future_result = self.store_handle.query(query);
@@ -223,14 +231,14 @@ impl Context {
         })
     }
 
-    pub fn watched_query(
+    unsafe fn watched_query(
         &mut self,
         query_bytes: *const libc::c_uchar,
         query_size: usize,
         callback: extern "C" fn(status: QueryStatus, *const libc::c_uchar, usize, *const c_void),
         callback_ctx: *const c_void,
     ) -> Result<QueryStreamHandle, QueryStreamStatus> {
-        let query_bytes = unsafe { std::slice::from_raw_parts(query_bytes, query_size) };
+        let query_bytes = std::slice::from_raw_parts(query_bytes, query_size);
         let query = EntityQuery::decode(query_bytes).map_err(|_| QueryStreamStatus::Error)?;
 
         let result_stream = self.store_handle.watched_query(query);
@@ -282,17 +290,22 @@ impl Context {
 }
 
 #[repr(C)]
-pub struct ContextResult {
-    status: ContextStatus,
-    context: *mut Context,
+pub struct ClientResult {
+    status: ClientStatus,
+    client: *mut Client,
 }
 
 #[repr(u8)]
-enum ContextStatus {
+enum ClientStatus {
     Success = 0,
     Error,
 }
 
+/// Used to wrap the context specified by client to be included in a callback call.
+///
+/// This wrapping is necessary to make the point Send + Sync since Rust doesn't
+/// know if it's safe to do it. In our case, we push the burden to the client to
+/// make sure can safely be send and used across threads.
 struct CallbackContext {
     ctx: *const c_void,
 }
@@ -344,90 +357,102 @@ pub struct MutationHandle {
     status: MutationStatus,
 }
 
+/// Creates a new exocore client instance of a bootstrapped node.
+///
+/// The client needs to be freed with `exocore_free_client` once it's not needed anymore. This will
+/// trigger runtime and connections to be cleaned up.
+///
+/// # Safety
+/// * `config_bytes` should be a valid byte array of size `config_size`.
+/// * If return status code is success, a client is returned and needs to be freed with `exocore_free_client`.
 #[no_mangle]
-pub extern "C" fn exocore_context_new(
+pub unsafe extern "C" fn exocore_new_client(
     config_bytes: *const libc::c_uchar,
     config_size: usize,
     config_format: ConfigFormat,
-) -> ContextResult {
-    let context = match Context::new(config_bytes, config_size, config_format) {
-        Ok(context) => context,
+) -> ClientResult {
+    let client = match Client::new(config_bytes, config_size, config_format) {
+        Ok(client) => client,
         Err(err) => {
-            return ContextResult {
+            return ClientResult {
                 status: err,
-                context: std::ptr::null_mut(),
+                client: std::ptr::null_mut(),
             };
         }
     };
 
-    ContextResult {
-        status: ContextStatus::Success,
-        context: Box::into_raw(Box::new(context)),
+    ClientResult {
+        status: ClientStatus::Success,
+        client: Box::into_raw(Box::new(client)),
     }
 }
 
+/// Frees an instance of exocore client.
+///
+/// # Safety
+/// * `client` needs to be a valid client created by `exocore_new_client`.
+/// * This method shall only be called once per instance.
 #[no_mangle]
-pub extern "C" fn exocore_context_free(ctx: *mut Context) {
-    let context = unsafe { Box::from_raw(ctx) };
-    drop(context);
+pub unsafe extern "C" fn exocore_free_client(client: *mut Client) {
+    let client = Box::from_raw(client);
+    drop(client);
 }
 
+/// Executes am entity mutation for which results or failure will be reported via the given `callback`.
+///
+/// `mutation_bytes` and `mutation_size` describes a protobuf encoded `EntityMutation`. They are still
+/// owned by caller after call.
+///
+/// `callback` is called exactly once (with `callback_ctx` as first argument) when result is received or failed.
+///
+/// # Safety
+/// * `client` needs to be a valid client created with `exocore_new_client`.
+/// * `query_bytes` needs to be a bytes array of size `query_size`.
+/// * `query_bytes` are owned by the caller.
+/// * `callback_ctx` needs to be safe to send and use across threads.
+/// * `callback_ctx` is owned by client and should be freed when after callback got called.
 #[no_mangle]
-pub extern "C" fn exocore_cell_generate_auth_token(
-    ctx: *mut Context,
-    expiration_days: usize,
-) -> *mut libc::c_char {
-    let context = unsafe { ctx.as_mut().unwrap() };
-
-    let expiration = if expiration_days > 0 {
-        let now = context
-            .clock
-            .consistent_time(context.cell.local_node().node());
-        Some(now + Duration::from_secs(expiration_days as u64 * 86400))
-    } else {
-        None
-    };
-
-    let auth_token =
-        exocore_core::sec::auth_token::AuthToken::new(&context.cell, &context.clock, expiration);
-    let auth_token = if let Ok(token) = auth_token {
-        token
-    } else {
-        return CString::new("").unwrap().into_raw();
-    };
-
-    let auth_token_bs58 = auth_token.encode_base58_string();
-
-    CString::new(auth_token_bs58).unwrap().into_raw()
-}
-
-#[no_mangle]
-pub extern "C" fn exocore_store_mutate(
-    ctx: *mut Context,
+pub unsafe extern "C" fn exocore_store_mutate(
+    client: *mut Client,
     mutation_bytes: *const libc::c_uchar,
     mutation_size: usize,
     callback: extern "C" fn(status: MutationStatus, *const libc::c_uchar, usize, *const c_void),
     callback_ctx: *const c_void,
 ) -> MutationHandle {
-    let context = unsafe { ctx.as_mut().unwrap() };
+    let client = client.as_mut().unwrap();
 
-    match context.mutate(mutation_bytes, mutation_size, callback, callback_ctx) {
+    match client.mutate(mutation_bytes, mutation_size, callback, callback_ctx) {
         Ok(res) => res,
         Err(status) => MutationHandle { status },
     }
 }
 
+/// Executes a entity query for which results or failure will be reported via the given `callback`.
+///
+/// `query_bytes` and `query_size` describes a protobuf encoded `EntityQuery`. They are still owned
+/// by caller after call.
+///
+/// `callback` is called exactly once (with `callback_ctx` as first argument) when results are received or failed.
+///
+/// Unless it has already completed or failed, a query can be cancelled with `exocore_store_query_cancelled`.
+///
+/// # Safety
+/// * `client` needs to be a valid client created with `exocore_new_client`.
+/// * `query_bytes` needs to be a bytes array of size `query_size`.
+/// * `query_bytes` are owned by the caller.
+/// * `callback_ctx` needs to be safe to send and use across threads.
+/// * `callback_ctx` is owned by client and should be freed when after callback got called.
 #[no_mangle]
-pub extern "C" fn exocore_store_query(
-    ctx: *mut Context,
+pub unsafe extern "C" fn exocore_store_query(
+    ctx: *mut Client,
     query_bytes: *const libc::c_uchar,
     query_size: usize,
     callback: extern "C" fn(status: QueryStatus, *const libc::c_uchar, usize, *const c_void),
     callback_ctx: *const c_void,
 ) -> QueryHandle {
-    let context = unsafe { ctx.as_mut().unwrap() };
+    let client = ctx.as_mut().unwrap();
 
-    match context.query(query_bytes, query_size, callback, callback_ctx) {
+    match client.query(query_bytes, query_size, callback, callback_ctx) {
         Ok(res) => res,
         Err(status) => QueryHandle {
             status,
@@ -436,11 +461,19 @@ pub extern "C" fn exocore_store_query(
     }
 }
 
+/// Cancels a query for which results weren't returned yet.
+///
+/// If the query is successfully cancelled, the callback will be called with an error status.
+/// and the context will need to be freed by caller.
+///
+/// # Safety
+/// * `client` needs to be a valid client created with `exocore_new_client`.
+/// * It is OK to cancel a query even if it may have been cancelled, closed or failed before.
 #[no_mangle]
-pub extern "C" fn exocore_store_query_cancel(ctx: *mut Context, handle: QueryHandle) {
-    let context = unsafe { ctx.as_mut().unwrap() };
+pub unsafe extern "C" fn exocore_store_query_cancel(client: *mut Client, handle: QueryHandle) {
+    let client = client.as_mut().unwrap();
 
-    if let Err(err) = context
+    if let Err(err) = client
         .store_handle
         .cancel_query(ConsistentTimestamp(handle.query_id))
     {
@@ -448,17 +481,37 @@ pub extern "C" fn exocore_store_query_cancel(ctx: *mut Context, handle: QueryHan
     }
 }
 
+/// Executes a watched entity query, for which a first version of the results will be emitted and then
+/// new results will be emitted every time one of the result have changed. Calls are also made when
+/// an error occurred, after which no subsequent calls will be made.
+///
+/// `query_bytes` and `query_size` describes a protobuf encoded `EntityQuery`. They are still owned
+/// by caller after call.
+///
+/// `callback` is called (with `callback_ctx` as first argument) when results are received, or when the watched
+/// has completed. When a call with a `Done` or `Error` status is done, no results are given, and no further calls
+/// will be done.
+///
+/// Unless it has already completed or failed, a watched query needs to be cancelled with
+/// `exocore_store_watched_query_cancelled`.
+///
+/// # Safety
+/// * `client` needs to be a valid client created with `exocore_new_client`.
+/// * `query_bytes` needs to be a bytes array of size `query_size`.
+/// * `query_bytes` are owned by the caller.
+/// * `callback_ctx` needs to be safe to send and use across threads.
+/// * `callback_ctx` is owned by client and should be freed when receiving a `Done` or `Error` status.
 #[no_mangle]
-pub extern "C" fn exocore_store_watched_query(
-    ctx: *mut Context,
+pub unsafe extern "C" fn exocore_store_watched_query(
+    client: *mut Client,
     query_bytes: *const libc::c_uchar,
     query_size: usize,
     callback: extern "C" fn(status: QueryStatus, *const libc::c_uchar, usize, *const c_void),
     callback_ctx: *const c_void,
 ) -> QueryStreamHandle {
-    let context = unsafe { ctx.as_mut().unwrap() };
+    let client = client.as_mut().unwrap();
 
-    match context.watched_query(query_bytes, query_size, callback, callback_ctx) {
+    match client.watched_query(query_bytes, query_size, callback, callback_ctx) {
         Ok(res) => res,
         Err(status) => QueryStreamHandle {
             status,
@@ -467,11 +520,22 @@ pub extern "C" fn exocore_store_watched_query(
     }
 }
 
+/// Cancels a `WatchedQuery` so that no further results can be received.
+///
+/// It is OK to cancel a query even if it may have already been cancelled, closed or failed.
+/// If the query is successfully cancelled, the callback will be called with a `Done` status,
+/// and the context will need to be freed by caller.
+///
+/// # Safety
+/// * `client` needs to be a valid client created with `exocore_new_client`.
 #[no_mangle]
-pub extern "C" fn exocore_store_watched_query_cancel(ctx: *mut Context, handle: QueryStreamHandle) {
-    let context = unsafe { ctx.as_mut().unwrap() };
+pub unsafe extern "C" fn exocore_store_watched_query_cancel(
+    client: *mut Client,
+    handle: QueryStreamHandle,
+) {
+    let client = client.as_mut().unwrap();
 
-    if let Err(err) = context
+    if let Err(err) = client
         .store_handle
         .cancel_query(ConsistentTimestamp(handle.query_id))
     {
@@ -479,11 +543,17 @@ pub extern "C" fn exocore_store_watched_query_cancel(ctx: *mut Context, handle: 
     }
 }
 
+/// Returns a list of HTTP endpoints available on nodes of the cell, returned in a `;` delimited
+/// string.
+///
+/// # Safety
+/// * `client` needs to be a valid client created with `exocore_new_client`.
+/// * Returned string must be freed using `exocore_free_string`.
 #[no_mangle]
-pub extern "C" fn exocore_store_http_endpoints(ctx: *mut Context) -> *mut libc::c_char {
-    let context = unsafe { ctx.as_mut().unwrap() };
+pub unsafe extern "C" fn exocore_store_http_endpoints(client: *mut Client) -> *mut libc::c_char {
+    let client = client.as_mut().unwrap();
 
-    let store_node_urls = context
+    let store_node_urls = client
         .store_handle
         .store_node()
         .map(|node| node.http_addresses())
@@ -497,19 +567,64 @@ pub extern "C" fn exocore_store_http_endpoints(ctx: *mut Context) -> *mut libc::
     CString::new(joined).unwrap().into_raw()
 }
 
+/// Returns a standalone authentication token that can be used via an HTTP endpoint.
+///
+/// # Safety
+/// * `client` needs to be a valid client created with `exocore_new_client`.
+/// * Returned string must be freed using `exocore_free_string`.
 #[no_mangle]
-pub extern "C" fn exocore_generate_id(prefix: *const libc::c_char) -> *mut libc::c_char {
+pub unsafe extern "C" fn exocore_cell_generate_auth_token(
+    client: *mut Client,
+    expiration_days: usize,
+) -> *mut libc::c_char {
+    let client = client.as_mut().unwrap();
+
+    let expiration = if expiration_days > 0 {
+        let now = client
+            .clock
+            .consistent_time(client.cell.local_node().node());
+        Some(now + Duration::from_secs(expiration_days as u64 * 86400))
+    } else {
+        None
+    };
+
+    let auth_token =
+        exocore_core::sec::auth_token::AuthToken::new(&client.cell, &client.clock, expiration);
+    let auth_token = if let Ok(token) = auth_token {
+        token
+    } else {
+        return CString::new("").unwrap().into_raw();
+    };
+
+    let auth_token_bs58 = auth_token.encode_base58_string();
+
+    CString::new(auth_token_bs58).unwrap().into_raw()
+}
+
+/// Generates a unique identifier, optionally prefixed by the given string.
+///
+/// # Safety
+/// * `prefix` can be null OR a valid string.
+/// * `prefix` is owned by caller.
+/// * Returned string must be freed using `exocore_free_string`.
+#[no_mangle]
+pub unsafe extern "C" fn exocore_generate_id(prefix: *const libc::c_char) -> *mut libc::c_char {
     let generated = if prefix.is_null() {
         generate_id()
     } else {
-        let prefix = unsafe { CStr::from_ptr(prefix).to_string_lossy() };
+        let prefix = CStr::from_ptr(prefix).to_string_lossy();
         generate_prefixed_id(&prefix)
     };
 
     CString::new(generated).unwrap().into_raw()
 }
 
+/// Frees a string returned by one of the method of this library.
+///
+/// # Safety
+/// * `ptr` should be a valid string returned by one of the method of this library.
+/// * This method shall only be called once per string.
 #[no_mangle]
-pub extern "C" fn exocore_free_string(ptr: *mut libc::c_char) {
-    unsafe { drop(CString::from_raw(ptr)) }
+pub unsafe extern "C" fn exocore_free_string(ptr: *mut libc::c_char) {
+    drop(CString::from_raw(ptr))
 }

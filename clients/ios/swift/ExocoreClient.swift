@@ -24,10 +24,10 @@ public class ExocoreClient {
     static func contextFromConfig(configData: Data, format: UInt8) throws -> OpaquePointer {
         try configData.withUnsafeBytes { (ptr) -> OpaquePointer in
             let addr = ptr.bindMemory(to: UInt8.self).baseAddress
-            let res = exocore_context_new(addr, UInt(configData.count), format);
+            let res = exocore_new_client(addr, UInt(configData.count), format);
 
             if res.status == UInt8(ExocoreQueryStatus_Success.rawValue) {
-                return res.context
+                return res.client
             } else {
                 throw ExocoreError.initialization
             }
@@ -75,8 +75,8 @@ public class ClientInstance {
 
     deinit {
         if self.context != nil {
-            // free context, which will trigger all query to fail and get freed
-            exocore_context_free(self.context)
+            // free client, which will trigger all query to fail and get freed
+            exocore_free_client(self.context)
         }
     }
 }
