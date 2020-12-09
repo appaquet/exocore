@@ -35,6 +35,8 @@ pub struct LocalNodeConfig {
     pub addresses: ::std::option::Option<NodeAddresses>,
     #[prost(message, repeated, tag = "7")]
     pub cells: ::std::vec::Vec<NodeCellConfig>,
+    #[prost(message, optional, tag = "8")]
+    pub store: ::std::option::Option<StoreConfig>,
 }
 #[derive(Clone, PartialEq, ::prost::Message, Serialize, Deserialize)]
 pub struct NodeAddresses {
@@ -60,6 +62,51 @@ pub mod node_cell_config {
         #[prost(string, tag = "2")]
         Path(std::string::String),
     }
+}
+#[derive(Clone, PartialEq, ::prost::Message, Serialize, Deserialize)]
+pub struct StoreConfig {
+    #[prost(message, optional, tag = "1")]
+    pub index: ::std::option::Option<EntityIndexConfig>,
+}
+#[derive(Clone, PartialEq, ::prost::Message, Serialize, Deserialize)]
+pub struct EntityIndexConfig {
+    #[prost(uint64, tag = "1")]
+    pub chain_index_min_depth: u64,
+    #[prost(uint64, tag = "2")]
+    pub chain_index_depth_leeway: u64,
+    #[prost(message, optional, tag = "3")]
+    pub pending_index_config: ::std::option::Option<MutationIndexConfig>,
+    #[prost(message, optional, tag = "4")]
+    pub chain_index_config: ::std::option::Option<MutationIndexConfig>,
+    #[prost(bool, tag = "5")]
+    pub chain_index_in_memory: bool,
+}
+#[derive(Clone, PartialEq, ::prost::Message, Serialize, Deserialize)]
+pub struct MutationIndexConfig {
+    #[prost(uint64, tag = "1")]
+    pub indexer_num_threads: u64,
+    #[prost(uint64, tag = "2")]
+    pub indexer_heap_size_bytes: u64,
+    #[prost(uint32, tag = "3")]
+    pub iterator_page_size: u32,
+    #[prost(uint64, tag = "4")]
+    pub iterator_max_pages: u64,
+    #[prost(uint64, tag = "5")]
+    pub entity_mutations_cache_size: u64,
+    #[prost(uint32, tag = "6")]
+    pub dynamic_reference_fields: u32,
+    #[prost(uint32, tag = "7")]
+    pub dynamic_string_fields: u32,
+    #[prost(uint32, tag = "8")]
+    pub dynamic_text_fields: u32,
+    #[prost(uint32, tag = "9")]
+    pub dynamic_i64_fields: u32,
+    #[prost(uint32, tag = "10")]
+    pub dynamic_i64_sortable_fields: u32,
+    #[prost(uint32, tag = "11")]
+    pub dynamic_u64_fields: u32,
+    #[prost(uint32, tag = "12")]
+    pub dynamic_u64_sortable_fields: u32,
 }
 #[derive(Clone, PartialEq, ::prost::Message, Serialize, Deserialize)]
 pub struct CellConfig {

@@ -1,6 +1,20 @@
-use crate::local::mutation_index::MutationIndexConfig;
+use exocore_core::protos::generated::exocore_core::{EntityIndexConfig, MutationIndexConfig};
 use exocore_chain::block::BlockHeight;
 
+impl EntityIndexConfig {
+
+    fn with_default_values() -> self {
+        EntityIndexConfig {
+            chain_index_min_depth: 3,
+            chain_index_depth_leeway: 10,
+            pending_index_config: MutationIndexConfig::with_default_values(),
+            chain_index_config: MutationIndexConfig::with_default_values(),
+            chain_index_in_memory: false,
+        }
+    }
+
+}
+/*
 /// Configuration of the entities index
 #[derive(Clone, Copy, Debug)]
 pub struct EntityIndexConfig {
@@ -38,3 +52,4 @@ impl Default for EntityIndexConfig {
         }
     }
 }
+*/

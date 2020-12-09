@@ -44,6 +44,9 @@ fn main() {
                     "#[serde(rename_all = \"lowercase\")]",
                 )
                 .field_attribute("NodeCellConfig.location", "#[serde(flatten)]")
+                .type_attribute("StoreConfig", "#[derive(Serialize, Deserialize)]")
+                .type_attribute("EntityIndexConfig", "#[derive(Serialize, Deserialize)]")
+                .type_attribute("MutationIndexConfig", "#[derive(Serialize, Deserialize)]")
                 .type_attribute("CellConfig", "#[derive(Serialize, Deserialize)]")
                 .type_attribute("CellNodeConfig", "#[derive(Serialize, Deserialize)]")
                 .type_attribute("CellNodeConfig.Role", "#[derive(Serialize, Deserialize)]")

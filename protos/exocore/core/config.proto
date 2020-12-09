@@ -18,6 +18,8 @@ message LocalNodeConfig {
     NodeAddresses addresses = 6;
 
     repeated NodeCellConfig cells = 7;
+
+    StoreConfig store = 8;
 }
 
 message NodeAddresses {
@@ -28,9 +30,43 @@ message NodeAddresses {
 
 message NodeCellConfig {
     oneof location {
-       CellConfig inline = 1;
-       string path = 2;
+       CellConfig instance = 1;
+       string directory = 2;
     }
+}
+
+message StoreConfig {
+    EntityIndexConfig index = 1;
+}
+
+message EntityIndexConfig {
+    uint64 chain_index_min_depth = 1;
+
+    uint64 chain_index_depth_leeway = 2;
+
+    MutationIndexConfig pending_index_config = 3;
+
+    MutationIndexConfig chain_index_config = 4;
+
+    bool chain_index_in_memory = 5;    
+}
+
+message MutationIndexConfig {        
+    uint64 indexer_num_threads = 1;
+    uint64 indexer_heap_size_bytes = 2;
+
+    uint32 iterator_page_size = 3;
+    uint64 iterator_max_pages = 4;
+
+    uint64 entity_mutations_cache_size = 5;
+
+    uint32 dynamic_reference_fields = 6;
+    uint32 dynamic_string_fields = 7;
+    uint32 dynamic_text_fields = 8;
+    uint32 dynamic_i64_fields = 9;
+    uint32 dynamic_i64_sortable_fields = 10;
+    uint32 dynamic_u64_fields = 11;
+    uint32 dynamic_u64_sortable_fields = 12;
 }
 
 message CellConfig {
