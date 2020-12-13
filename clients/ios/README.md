@@ -27,7 +27,7 @@
 * Build the universal lib: `./tools/build.sh`
 
 ## Usage
-* See [iOS example](../../examples/iOS/README.md)
+* See [iOS example](../../examples/ios/README.md)
 
 ## Known issues
 * App gets terminated due to signal 13 when resuming from background.
