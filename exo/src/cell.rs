@@ -632,6 +632,7 @@ fn cmd_import_chain(
     let full_cell = cell.unwrap_full();
 
     let chain_dir = full_cell
+        .cell()
         .chain_directory()
         .expect("Cell doesn't have a path configured");
 
@@ -674,7 +675,7 @@ fn cmd_import_chain(
             let operations = BlockOperations::from_operations(operations_buffer.iter())
                 .expect("Couldn't create BlockOperations from operations buffer");
             let block = BlockOwned::new_with_prev_block(
-                &full_cell,
+                full_cell.cell(),
                 &previous_block,
                 block_op_id,
                 operations,
@@ -820,12 +821,13 @@ fn cell_config_path(cell: &Cell) -> PathBuf {
 
 fn create_genesis_block(cell: FullCell) -> anyhow::Result<()> {
     let chain_dir = cell
+        .cell()
         .chain_directory()
         .expect("Couldn't find chain directory");
 
     print_step(format!(
         "Creating genesis block for cell {}",
-        style_value(cell.public_key().encode_base58_string())
+        style_value(cell.cell().public_key().encode_base58_string())
     ));
 
     std::fs::create_dir_all(&chain_dir)

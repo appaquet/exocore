@@ -43,7 +43,7 @@ pub struct BytesVec {
 }
 
 impl BytesVec {
-    pub unsafe fn from_vec(bytes: Vec<u8>) -> Self {
+    pub fn from_vec(bytes: Vec<u8>) -> Self {
         // TODO: Use `into_raw_parts` once its stabilized
         let size = bytes.len();
         let boxed = bytes.into_boxed_slice();

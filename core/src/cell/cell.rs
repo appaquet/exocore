@@ -7,7 +7,6 @@ use crate::protos::registry::Registry;
 use crate::sec::keys::{Keypair, PublicKey};
 use libp2p::core::PeerId;
 use std::collections::HashMap;
-use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
@@ -337,14 +336,6 @@ impl FullCell {
     }
 }
 
-impl Deref for FullCell {
-    type Target = Cell;
-
-    fn deref(&self) -> &Self::Target {
-        &self.cell
-    }
-}
-
 /// Enum wrapping a full or non-full cell
 #[derive(Clone)]
 pub enum EitherCell {
@@ -355,14 +346,14 @@ pub enum EitherCell {
 impl EitherCell {
     pub fn nodes(&self) -> CellNodesRead {
         match self {
-            EitherCell::Full(cell) => cell.nodes(),
+            EitherCell::Full(full_cell) => full_cell.cell().nodes(),
             EitherCell::Cell(cell) => cell.nodes(),
         }
     }
 
     pub fn nodes_mut(&self) -> CellNodesWrite {
         match self {
-            EitherCell::Full(cell) => cell.nodes_mut(),
+            EitherCell::Full(full_cell) => full_cell.cell().nodes_mut(),
             EitherCell::Cell(cell) => cell.nodes_mut(),
         }
     }

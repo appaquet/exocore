@@ -9,8 +9,6 @@ public class Discovery {
     }
 
     public convenience init() throws {
-        exocore_init()
-
         let res = exocore_discovery_new(nil)
         if res.status == ExocoreQueryStatus_Error.rawValue {
             throw DiscoveryError.initialization

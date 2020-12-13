@@ -659,7 +659,7 @@ mod tests {
             let cell = cells[1].clone().unwrap_full();
 
             {
-                let nodes = cell.nodes();
+                let nodes = cell.cell().nodes();
                 assert_eq!(2, nodes.count());
 
                 let nodes_iter = nodes.iter();
@@ -669,6 +669,7 @@ mod tests {
 
             {
                 let schemas = cell
+                    .cell()
                     .schemas()
                     .get_message_descriptor("exocore.example_app.Task");
                 assert!(schemas.is_ok());
@@ -680,12 +681,13 @@ mod tests {
             let cell = cells[1].clone().unwrap_full();
 
             {
-                let nodes = cell.nodes();
+                let nodes = cell.cell().nodes();
                 assert_eq!(2, nodes.count());
             }
 
             {
                 let schemas = cell
+                    .cell()
                     .schemas()
                     .get_message_descriptor("exocore.example_app.Task");
                 assert!(schemas.is_ok());

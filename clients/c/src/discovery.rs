@@ -1,3 +1,4 @@
+use crate::exocore_init;
 use crate::{node::LocalNode, utils::CallbackContext};
 use exocore_core::{
     cell::{CellConfigExt, LocalNodeConfigExt},
@@ -12,18 +13,22 @@ pub struct Discovery {
     client: Arc<Client>,
 }
 
-/// Create a new discovery service client. This client can be used to join a cell by using
-/// the discovery service to exchange node config and cell config.
+/// Creates a new discovery service client. This client can be used to join a cell by using the discovery
+/// service to exchange node and cell configs.
+///
+/// If null is passed to `service_url`, the default service will be used.
 ///
 /// # Safety
-/// * `service_url` need null to fallback to default service, or needs to be a valid \0 delimited string.
+/// * `service_url` needs to be a valid \0 delimited string or null.
 /// * Returns a `DiscoveryResult` in which the `status` field indicates if the client was successfully
 ///   created. In case it wasn't, the `client` field will be null.
-/// * If the method succeeded, the `client` in result needs to be freed using `exocore_discovery_free`.
+/// * If the method succeeds, the `client` in result needs to be freed using `exocore_discovery_free`.
 #[no_mangle]
 pub unsafe extern "C" fn exocore_discovery_new(
     service_url: *const libc::c_char,
 ) -> DiscoveryResult {
+    exocore_init();
+
     let service_url = if service_url.is_null() {
         DEFAULT_DISCO_SERVER.to_string()
     } else {
@@ -41,7 +46,7 @@ pub unsafe extern "C" fn exocore_discovery_new(
     let runtime = match Runtime::new() {
         Ok(rt) => rt,
         Err(err) => {
-            error!("Couldn't start runtime: {}", err);
+            error!("Couldn't start a Tokio runtime: {}", err);
             return DiscoveryResult::err();
         }
     };
@@ -66,11 +71,11 @@ pub unsafe extern "C" fn exocore_discovery_new(
 ///      pin to be displayed to the user.
 ///
 ///   3) The discovery pin is entered on a node currently in the cell, which will
-///      get the config of the joining node. The joining node is added to the
-///      cell and the cell's config is pushed back to discovery service on the
+///      get the config of the joining node. The joining node will be added to the
+///      cell and the cell's config will be pushed back to discovery service on the
 ///      reply pin.
 ///
-///   4) The cell configuration is then fetched the discovery service using
+///   4) The cell configuration is then fetched from the discovery service using
 ///      the reply pin. The cell is added to local node configuration and the
 ///      `callback` is called with a `Success` status and the new `LocalNode` config.
 ///
@@ -141,7 +146,6 @@ pub unsafe extern "C" fn exocore_discovery_join_cell(
                     std::ptr::null_mut(),
                     callback_ctx.ctx,
                 );
-                return;
             }
         }
     };
@@ -159,6 +163,8 @@ pub unsafe extern "C" fn exocore_discovery_free(disco: *mut Discovery) {
     drop(disco);
 }
 
+/// Parts of the cell joining process. Pushes the node's config to the discovery service and returns a
+/// discovery pin and reply pin.
 async fn push_config(node_config: &LocalNodeConfig, client: Arc<Client>) -> Result<(Pin, Pin), ()> {
     let node_yml = node_config.to_yaml().map_err(|err| {
         error!("Error converting config to yaml: {}", err);
@@ -177,6 +183,8 @@ async fn push_config(node_config: &LocalNodeConfig, client: Arc<Client>) -> Resu
     Ok((disco_pin, reply_pin))
 }
 
+/// Parts of the cell joining process. Waits for the cell's config to be pushed to the discovery service
+/// on the reply pin.
 async fn join_cell(
     node_config: &LocalNodeConfig,
     client: Arc<Client>,

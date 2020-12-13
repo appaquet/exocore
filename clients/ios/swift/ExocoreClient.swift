@@ -5,8 +5,6 @@ public class ExocoreClient {
 
     @discardableResult
     public static func initialize(node: LocalNode, defaultInstance: Bool = true) throws -> ClientInstance {
-        exocore_init()
-
         let instance = try ClientInstance(node: node)
         if (defaultInstance) {
             ExocoreClient.defaultInstance = instance
@@ -16,8 +14,6 @@ public class ExocoreClient {
 
     @discardableResult
     public static func initialize(config: Exocore_Core_LocalNodeConfig, defaultInstance: Bool = true) throws -> ClientInstance {
-        exocore_init()
-
         let node = try LocalNode.from(config: config)
         return try initialize(node: node)
     }

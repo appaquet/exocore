@@ -9,8 +9,6 @@ public class LocalNode {
     }
 
     public static func generate() throws -> LocalNode {
-        exocore_init()
-
         let res = exocore_local_node_generate()
         if res.status == ExocoreLocalNodeStatus_Error.rawValue {
             throw LocalNodeError.initialization
@@ -20,8 +18,6 @@ public class LocalNode {
     }
 
     public static func from(config: Exocore_Core_LocalNodeConfig) throws -> LocalNode {
-        exocore_init()
-
         let configData = try config.serializedData()
         return try configData.withUnsafeBytes { (dataPtr) throws in
             let configAddr = dataPtr.bindMemory(to: UInt8.self).baseAddress

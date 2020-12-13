@@ -1,34 +1,45 @@
-use std::borrow::Borrow;
-use std::collections::{HashMap, HashSet};
-use std::hash::Hasher;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::{sync::Arc, time::Instant};
+use std::{
+    borrow::Borrow,
+    collections::{HashMap, HashSet},
+    hash::Hasher,
+    path::PathBuf,
+    rc::Rc,
+    sync::Arc,
+    time::Instant,
+};
 
 use itertools::Itertools;
 use prost::Message;
 
-use exocore_chain::block::{BlockHeight, BlockOffset};
-use exocore_chain::engine::Event;
-use exocore_chain::operation::{Operation, OperationId};
-use exocore_chain::{chain, pending};
-use exocore_chain::{EngineHandle, EngineOperationStatus};
-use exocore_core::cell::FullCell;
-use exocore_core::protos::generated::exocore_store::entity_mutation::Mutation;
-use exocore_core::protos::generated::exocore_store::{
-    Entity, EntityMutation, EntityQuery, EntityResult as EntityResultProto, EntityResultSource,
-    EntityResults, Trait,
+use exocore_chain::{
+    block::{BlockHeight, BlockOffset},
+    chain,
+    engine::Event,
+    operation::{Operation, OperationId},
+    pending, EngineHandle, EngineOperationStatus,
 };
-use exocore_core::protos::{prost::ProstDateTimeExt, registry::Registry};
+use exocore_core::{
+    cell::FullCell,
+    protos::{
+        generated::exocore_store::{
+            entity_mutation::Mutation, Entity, EntityMutation, EntityQuery,
+            EntityResult as EntityResultProto, EntityResultSource, EntityResults, Trait,
+        },
+        prost::ProstDateTimeExt,
+        registry::Registry,
+    },
+};
 
-use crate::error::Error;
 use crate::{
     entity::EntityId,
+    error::Error,
     ordering::{OrderingValueExt, OrderingValueWrapper},
 };
 
-use super::mutation_index::{IndexOperation, MutationIndex, MutationMetadata};
-use super::top_results::RescoredTopResultsIterable;
+use super::{
+    mutation_index::{IndexOperation, MutationIndex, MutationMetadata},
+    top_results::RescoredTopResultsIterable,
+};
 
 mod config;
 pub use config::*;
@@ -75,11 +86,14 @@ where
         config: EntityIndexConfig,
         chain_handle: EngineHandle<CS, PS>,
     ) -> Result<EntityIndex<CS, PS>, Error> {
-        let pending_index =
-            MutationIndex::create_in_memory(config.pending_index_config, cell.schemas().clone())?;
+        let pending_index = MutationIndex::create_in_memory(
+            config.pending_index_config,
+            cell.cell().schemas().clone(),
+        )?;
 
         // make sure directories are created
         let mut chain_index_dir = cell
+            .cell()
             .store_directory()
             .ok_or_else(|| Error::Other("Cell doesn't have an path configured".to_string()))?;
         chain_index_dir.push("chain");
@@ -87,7 +101,8 @@ where
             std::fs::create_dir_all(&chain_index_dir)?;
         }
 
-        let chain_index = Self::create_chain_index(config, cell.schemas(), &chain_index_dir)?;
+        let chain_index =
+            Self::create_chain_index(config, cell.cell().schemas(), &chain_index_dir)?;
         let mut index = EntityIndex {
             config,
             pending_index,
@@ -450,7 +465,7 @@ where
     fn reindex_pending(&mut self) -> Result<(), Error> {
         self.pending_index = MutationIndex::create_in_memory(
             self.config.pending_index_config,
-            self.cell.schemas().clone(),
+            self.cell.cell().schemas().clone(),
         )?;
 
         let last_chain_indexed_offset = self
@@ -511,7 +526,7 @@ where
         // create temporary in-memory to wipe directory
         self.chain_index = MutationIndex::create_in_memory(
             self.config.pending_index_config,
-            self.cell.schemas().clone(),
+            self.cell.cell().schemas().clone(),
         )?;
 
         // remove and re-create data dir
@@ -519,8 +534,11 @@ where
         std::fs::create_dir_all(&self.chain_index_dir)?;
 
         // re-create index, and force re-index of chain
-        self.chain_index =
-            Self::create_chain_index(self.config, self.cell.schemas(), &self.chain_index_dir)?;
+        self.chain_index = Self::create_chain_index(
+            self.config,
+            self.cell.cell().schemas(),
+            &self.chain_index_dir,
+        )?;
         self.index_chain_new_blocks(None)?;
 
         self.reindex_pending()?;
@@ -761,8 +779,11 @@ where
                 }?;
 
                 if let Some(projection) = &agg.projection {
-                    let res =
-                        project_trait(self.cell.schemas().as_ref(), &mut trt, projection.as_ref());
+                    let res = project_trait(
+                        self.cell.cell().schemas().as_ref(),
+                        &mut trt,
+                        projection.as_ref(),
+                    );
 
                     if let Err(err) = res {
                         error!(

@@ -14,19 +14,22 @@ use futures::StreamExt;
 use prost::Message;
 use std::{ffi::CString, os::raw::c_void, sync::Arc, time::Duration};
 
+use crate::exocore_init;
 use crate::node::LocalNode;
 use crate::utils::CallbackContext;
 
-/// Creates a new exocore client instance of a bootstrapped node.
+/// Creates a new exocore client instance of a node that has join a cell.
 ///
 /// The client needs to be freed with `exocore_client_free` once it's not needed anymore. This will
 /// trigger runtime and connections to be cleaned up.
 ///
 /// # Safety
-/// * `config_bytes` should be a valid byte array of size `config_size`.
+/// * `node` should be a valid `LocalNode`.
 /// * If return status code is success, a client is returned and needs to be freed with `exocore_client_free`.
 #[no_mangle]
 pub unsafe extern "C" fn exocore_client_new(node: *mut LocalNode) -> ClientResult {
+    exocore_init();
+
     let client = match Client::new(node) {
         Ok(client) => client,
         Err(err) => {
@@ -55,34 +58,17 @@ enum ClientStatus {
     Error,
 }
 
-#[repr(u8)]
-pub enum ConfigFormat {
-    Protobuf = 0,
-    Yaml,
-}
-
-/// Frees an instance of exocore client.
-///
-/// # Safety
-/// * `client` needs to be a valid client created by `exocore_client_new`.
-/// * This method shall only be called once per instance.
-#[no_mangle]
-pub unsafe extern "C" fn exocore_client_free(client: *mut Client) {
-    let client = Box::from_raw(client);
-    drop(client);
-}
-
 /// Executes an entity mutation for which results or failure will be reported via the given `callback`.
 ///
-/// `mutation_bytes` and `mutation_size` describes a protobuf encoded `EntityMutation`. They are still
-/// owned by caller after call.
+/// `mutation_bytes` and `mutation_size` describes a protobuf encoded `EntityMutation`. It is is still
+/// owned by caller after call. Callback's results are owned by the library.
 ///
 /// `callback` is called exactly once (with `callback_ctx` as first argument) when result is received or failed.
 ///
 /// # Safety
-/// * `client` needs to be a valid client created with `exocore_client_new`.
-/// * `query_bytes` needs to be a bytes array of size `query_size`.
-/// * `query_bytes` are owned by the caller.
+/// * `client` needs to be a valid `Client`.
+/// * `query_bytes` needs to be a byte array of size `query_size`.
+/// * `query_bytes` is owned by the caller.
 /// * `callback_ctx` needs to be safe to send and use across threads.
 /// * `callback_ctx` is owned by the caller and should be freed when after callback got called.
 #[no_mangle]
@@ -112,19 +98,19 @@ pub struct MutationHandle {
     status: MutationStatus,
 }
 
-/// Executes a entity query for which results or failure will be reported via the given `callback`.
+/// Executes an entity query for which results or failure will be reported via the given `callback`.
 ///
-/// `query_bytes` and `query_size` describes a protobuf encoded `EntityQuery`. They are still owned
-/// by caller after call.
+/// `query_bytes` and `query_size` describes a protobuf encoded `EntityQuery`. It is still owned
+/// by caller after call. Callback's results are owned by the library.
 ///
 /// `callback` is called exactly once (with `callback_ctx` as first argument) when results are received or failed.
 ///
 /// Unless it has already completed or failed, a query can be cancelled with `exocore_store_query_cancelled`.
 ///
 /// # Safety
-/// * `client` needs to be a valid client created with `exocore_client_new`.
-/// * `query_bytes` needs to be a bytes array of size `query_size`.
-/// * `query_bytes` are owned by the caller.
+/// * `client` needs to be a valid `Client`.
+/// * `query_bytes` needs to be a byte array of size `query_size`.
+/// * `query_bytes` is owned by the caller.
 /// * `callback_ctx` needs to be safe to send and use across threads.
 /// * `callback_ctx` is owned by caller and should be freed when after callback got called.
 #[no_mangle]
@@ -152,7 +138,7 @@ pub unsafe extern "C" fn exocore_store_query(
 /// and the context will need to be freed by caller.
 ///
 /// # Safety
-/// * `client` needs to be a valid client created with `exocore_client_new`.
+/// * `client` needs to be a valid `Client`.
 /// * It is OK to cancel a query even if it may have been cancelled, closed or failed before.
 #[no_mangle]
 pub unsafe extern "C" fn exocore_store_query_cancel(client: *mut Client, handle: QueryHandle) {
@@ -179,22 +165,22 @@ pub enum QueryStatus {
 }
 
 /// Executes a watched entity query, for which a first version of the results will be emitted and then
-/// new results will be emitted every time one of the result have changed. Calls are also made when
-/// an error occurred, after which no subsequent calls will be made.
+/// new results will be emitted every time results have changed. Calls are also made when an error
+/// occurred, after which no subsequent calls to `callback` will be made.
 ///
-/// `query_bytes` and `query_size` describes a protobuf encoded `EntityQuery`. They are still owned
+/// `query_bytes` and `query_size` describes a protobuf encoded `EntityQuery`. It is still owned
 /// by caller after call.
 ///
 /// `callback` is called (with `callback_ctx` as first argument) when results are received, or when the watched
-/// has completed. When a call with a `Done` or `Error` status is done, no results are given, and no further calls
-/// will be done.
+/// has completed. When a call with a `Done` or `Error` status is made, no results are given and no further calls
+/// will be done. Callback's results are owned by the library.
 ///
 /// Unless it has already completed or failed, a watched query needs to be cancelled with
 /// `exocore_store_watched_query_cancelled`.
 ///
 /// # Safety
-/// * `client` needs to be a valid client created with `exocore_client_new`.
-/// * `query_bytes` needs to be a bytes array of size `query_size`.
+/// * `client` needs to be a valid `Client`.
+/// * `query_bytes` needs to be a byte array of size `query_size`.
 /// * `query_bytes` are owned by the caller.
 /// * `callback_ctx` needs to be safe to send and use across threads.
 /// * `callback_ctx` is owned by client and should be freed when receiving a `Done` or `Error` status.
@@ -237,7 +223,7 @@ pub struct WatchedQueryHandle {
 /// and the context will need to be freed by caller.
 ///
 /// # Safety
-/// * `client` needs to be a valid client created with `exocore_client_new`.
+/// * `client` needs to be a valid `Client`.
 #[no_mangle]
 pub unsafe extern "C" fn exocore_store_watched_query_cancel(
     client: *mut Client,
@@ -253,11 +239,10 @@ pub unsafe extern "C" fn exocore_store_watched_query_cancel(
     }
 }
 
-/// Returns a list of HTTP endpoints available on nodes of the cell, returned in a `;` delimited
-/// string.
+/// Returns a list of HTTP endpoints available on nodes of the cell, returned as a `;` delimited string.
 ///
 /// # Safety
-/// * `client` needs to be a valid client created with `exocore_client_new`.
+/// * `client` needs to be a valid `Client`.
 /// * Returned string must be freed using `exocore_free_string`.
 #[no_mangle]
 pub unsafe extern "C" fn exocore_store_http_endpoints(client: *mut Client) -> *mut libc::c_char {
@@ -279,8 +264,10 @@ pub unsafe extern "C" fn exocore_store_http_endpoints(client: *mut Client) -> *m
 
 /// Returns a standalone authentication token that can be used via an HTTP endpoint.
 ///
+/// If a 0 value is given for `expiration_days`, the token will never expire.
+///
 /// # Safety
-/// * `client` needs to be a valid client created with `exocore_client_new`.
+/// * `client` needs to be a valid `Client`.
 /// * Returned string must be freed using `exocore_free_string`.
 #[no_mangle]
 pub unsafe extern "C" fn exocore_cell_generate_auth_token(
@@ -311,6 +298,17 @@ pub unsafe extern "C" fn exocore_cell_generate_auth_token(
     CString::new(auth_token_bs58).unwrap().into_raw()
 }
 
+/// Frees an instance of exocore client.
+///
+/// # Safety
+/// * `client` needs to be a valid `Client`.
+/// * This method shall only be called once per instance.
+#[no_mangle]
+pub unsafe extern "C" fn exocore_client_free(client: *mut Client) {
+    let client = Box::from_raw(client);
+    drop(client);
+}
+
 /// Exocore client instance of a bootstrapped node.
 ///
 /// This structure is opaque to the client and is used as context for calls.
@@ -339,7 +337,7 @@ impl Client {
         let cell = either_cell.cell().clone();
 
         let mut runtime = Runtime::new().map_err(|err| {
-            error!("Couldn't start Runtime: {}", err);
+            error!("Couldn't start a tokio Runtime: {}", err);
             ClientStatus::Error
         })?;
 
