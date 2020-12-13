@@ -3,12 +3,14 @@
 ## Dependencies
 * Install Rust's WASM target
     * `rustup target add wasm32-unknown-unknown`
+
+* Install [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/)
     
 * Install Clang
     * On Ubuntu: 
         * `apt install clang`
     * On MacOS: 
-        * Xcode 12.2+
+        * Xcode 12.2+ (Big Sur+)
           * Make sure Xcode command line tools are installed.
 
         * For Xcode prior to 12.2, unfortunately, clang installed by Xcode isn't recent enough to compile to WASM. 

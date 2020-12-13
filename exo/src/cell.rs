@@ -269,8 +269,8 @@ fn cmd_init(
     if !init_opts.no_genesis {
         // Create genesis block
         let node_config = ctx.options.read_configuration();
-        let (either_cells, _local_node) = Cell::new_from_local_node_config(node_config)
-            .expect("Couldn't create cell from config");
+        let (either_cells, _local_node) =
+            Cell::from_local_node_config(node_config).expect("Couldn't create cell from config");
 
         let cell = extract_cell_by_pk(either_cells, &cell_config.public_key)
             .expect("Couldn't find just created cell in config");
@@ -493,7 +493,7 @@ fn cmd_print(
 fn cmd_list(ctx: &Context, _cell_opts: &CellOptions) -> anyhow::Result<()> {
     let config = ctx.options.read_configuration();
     let (either_cells, _local_node) =
-        Cell::new_from_local_node_config(config).expect("Couldn't create cell from config");
+        Cell::from_local_node_config(config).expect("Couldn't create cell from config");
 
     print_spacer();
     let mut rows = Vec::new();
@@ -778,7 +778,7 @@ fn cmd_create_genesis_block(ctx: &Context, cell_opts: &CellOptions) -> anyhow::R
 fn get_cell(ctx: &Context, cell_opts: &CellOptions) -> (LocalNodeConfig, EitherCell) {
     let config = ctx.options.read_configuration();
     let (either_cells, _local_node) =
-        Cell::new_from_local_node_config(config.clone()).expect("Couldn't create cell from config");
+        Cell::from_local_node_config(config.clone()).expect("Couldn't create cell from config");
 
     let cell = if let Some(pk) = &cell_opts.public_key {
         extract_cell_by_pk(either_cells, pk.as_str())

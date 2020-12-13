@@ -4,24 +4,25 @@ import Exocore
 
 struct ListView: View {
     @EnvironmentObject var appState: AppState
-    @ObservedObject var list: MyList
+    @ObservedObject var list: ItemList
     @State private var text = ""
 
     #if DEBUG
     init(mockedItems items: [Item]) {
-        self.list = MyList(defaultItems: items)
+        self.list = ItemList(defaultItems: items)
     }
     #endif
 
     init() {
-        self.list = MyList()
+        self.list = ItemList()
     }
 
     var body: some View {
         VStack {
             HStack {
-                Button("Bootstrap") {
-                    self.appState.currentView = .bootstrap
+                Button("Rejoin") {
+                    self.appState.forceDiscovery = true
+                    self.appState.triggerChanged()
                 }
                 Button("Connect") {
                     self.list.connect(appState: self.appState)
@@ -55,7 +56,7 @@ struct ListView: View {
     }
 }
 
-class MyList: ObservableObject {
+class ItemList: ObservableObject {
     var resultStream: QueryStreamHandle?
 
     @Published var items: [Item] = []

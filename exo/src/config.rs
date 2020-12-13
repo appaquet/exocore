@@ -66,7 +66,7 @@ fn cmd_validate(ctx: &Context, _conf_opts: &ConfigOptions) -> anyhow::Result<()>
     let config = ctx.options.read_configuration();
 
     // create instance to validate the config
-    let (_cells, _node) = exocore_core::cell::Cell::new_from_local_node_config(config)?;
+    let (_cells, _node) = exocore_core::cell::Cell::from_local_node_config(config)?;
 
     Ok(())
 }

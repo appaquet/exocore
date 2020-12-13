@@ -14,14 +14,14 @@ use wasm_timer::Instant;
 /// generates a random code. Another client can then retrieve that payload by using the generated random code.
 /// Once a payload is consumed, it is deleted.
 pub struct Client {
-    base_uri: Url,
+    base_url: Url,
 }
 
 impl Client {
     /// Creates a new client instance.
-    pub fn new<U: IntoUrl>(base_uri: U) -> Result<Client, Error> {
+    pub fn new<U: IntoUrl>(base_url: U) -> Result<Client, Error> {
         Ok(Client {
-            base_uri: base_uri.into_url()?,
+            base_url: base_url.into_url()?,
         })
     }
 
@@ -40,7 +40,7 @@ impl Client {
 
         let http_resp = reqwest::Client::builder()
             .build()?
-            .post(self.base_uri.clone())
+            .post(self.base_url.clone())
             .json(&create_request)
             .send()
             .await?;
@@ -58,7 +58,7 @@ impl Client {
     pub async fn get<P: TryInto<Pin>>(&self, pin: P) -> Result<Payload, Error> {
         let pin_u32: u32 = pin.try_into().map_err(|_| Error::InvalidPin)?.into();
         let url = self
-            .base_uri
+            .base_url
             .join(&format!("/{}", pin_u32))
             .expect("Couldn't create URL");
         let http_resp = reqwest::Client::builder().build()?.get(url).send().await?;
@@ -113,7 +113,7 @@ impl Client {
     ) -> Result<CreatePayloadResponse, Error> {
         let pin_u32: u32 = reply_pin.into();
         let url = self
-            .base_uri
+            .base_url
             .join(&format!("/{}", pin_u32))
             .expect("Couldn't create URL");
 

@@ -34,7 +34,7 @@ impl Cell {
         Self::build(public_key, local_node, None, None)
     }
 
-    pub fn new_from_config(config: CellConfig, local_node: LocalNode) -> Result<EitherCell, Error> {
+    pub fn from_config(config: CellConfig, local_node: LocalNode) -> Result<EitherCell, Error> {
         let either_cell = if !config.keypair.is_empty() {
             let keypair = Keypair::decode_base58_string(&config.keypair)
                 .map_err(|err| Error::Cell(format!("Couldn't parse cell keypair: {}", err)))?;
@@ -100,7 +100,7 @@ impl Cell {
         Ok(either_cell)
     }
 
-    pub fn new_from_directory<P: AsRef<Path>>(
+    pub fn from_directory<P: AsRef<Path>>(
         directory: P,
         local_node: LocalNode,
     ) -> Result<EitherCell, Error> {
@@ -109,22 +109,27 @@ impl Cell {
 
         let cell_config = CellConfig::from_yaml_file(config_path)?;
 
-        Self::new_from_config(cell_config, local_node)
+        Self::from_config(cell_config, local_node)
     }
 
-    pub fn new_from_local_node_config(
-        config: LocalNodeConfig,
-    ) -> Result<(Vec<EitherCell>, LocalNode), Error> {
-        let local_node = LocalNode::new_from_config(config.clone())?;
+    pub fn from_local_node(local_node: LocalNode) -> Result<(Vec<EitherCell>, LocalNode), Error> {
+        let config = local_node.config();
 
         let mut either_cells = Vec::new();
         for node_cell_config in &config.cells {
             let cell_config = CellConfig::from_node_cell(node_cell_config)?;
-            let either_cell = Self::new_from_config(cell_config, local_node.clone())?;
+            let either_cell = Self::from_config(cell_config, local_node.clone())?;
             either_cells.push(either_cell);
         }
 
         Ok((either_cells, local_node))
+    }
+
+    pub fn from_local_node_config(
+        config: LocalNodeConfig,
+    ) -> Result<(Vec<EitherCell>, LocalNode), Error> {
+        let local_node = LocalNode::new_from_config(config)?;
+        Self::from_local_node(local_node)
     }
 
     fn build(

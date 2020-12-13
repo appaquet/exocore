@@ -22,7 +22,7 @@ use futures::{Future, FutureExt};
 
 pub async fn cmd_daemon(ctx: &Context) -> anyhow::Result<()> {
     let config = ctx.options.read_configuration();
-    let (either_cells, local_node) = Cell::new_from_local_node_config(config)?;
+    let (either_cells, local_node) = Cell::from_local_node_config(config)?;
 
     let clock = Clock::new();
 
