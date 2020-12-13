@@ -22,7 +22,8 @@ pub unsafe extern "C" fn exocore_generate_id(prefix: *const libc::c_char) -> *mu
 /// Frees a string returned by one of the method of this library.
 ///
 /// # Safety
-/// * `ptr` should be a valid string returned by one of the method of this library.
+/// * `ptr` should be a valid string returned by one of the method of this
+///   library.
 /// * This method shall only be called once per string.
 #[no_mangle]
 pub unsafe extern "C" fn exocore_free_string(ptr: *mut libc::c_char) {

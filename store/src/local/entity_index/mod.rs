@@ -38,7 +38,7 @@ use crate::{
 
 use super::{
     mutation_index::{IndexOperation, MutationIndex, MutationMetadata},
-    top_results::RescoredTopResultsIterable,
+    top_results::ReScoredTopResultsIterable,
 };
 
 mod config;
@@ -71,7 +71,7 @@ where
     chain_index_dir: PathBuf,
     chain_index: MutationIndex,
     chain_index_last_block: Option<BlockOffset>,
-    cell: FullCell,
+    full_cell: FullCell,
     chain_handle: EngineHandle<CS, PS>,
 }
 
@@ -109,7 +109,7 @@ where
             chain_index_dir,
             chain_index,
             chain_index_last_block: None,
-            cell,
+            full_cell: cell,
             chain_handle,
         };
 
@@ -319,15 +319,15 @@ where
                 if (entity_mutations.deletion_date.is_some() || !operation_still_present)
                     && !query_include_deleted
                 {
-                    // we are here if the entity has been deleted (ex: explicitely or no traits remaining)
+                    // we are here if the entity has been deleted (ex: explicitly or no traits remaining)
                     // or if the mutation metadata that was returned by the mutation index is not active anymore,
-                    // which means that it got overriden by a subsequent operation.
+                    // which means that it got overridden by a subsequent operation.
                     return None;
                 }
 
                 matched_entities.insert(matched_mutation.entity_id.clone());
 
-                // TODO: Support for negative rescoring https://github.com/appaquet/exocore/issues/143
+                // TODO: Support for negative re-scoring https://github.com/appaquet/exocore/issues/143
                 let ordering_value = matched_mutation.sort_value.clone();
                 if ordering_value.value.is_within_page_bound(&current_page) {
                     got_results = true;
@@ -346,7 +346,7 @@ where
                                 creation_date,
                                 modification_date,
                                 deletion_date,
-                                last_operation_id: entity_mutations.last_operatin_id,
+                                last_operation_id: entity_mutations.last_operation_id,
                             }),
                             source: index_source.into(),
                             ordering_value: Some(ordering_value.value),
@@ -465,7 +465,7 @@ where
     fn reindex_pending(&mut self) -> Result<(), Error> {
         self.pending_index = MutationIndex::create_in_memory(
             self.config.pending_index_config,
-            self.cell.cell().schemas().clone(),
+            self.full_cell.cell().schemas().clone(),
         )?;
 
         let last_chain_indexed_offset = self
@@ -474,7 +474,7 @@ where
             .unwrap_or(0);
 
         info!(
-            "Clearing & reindexing pending index. last_chain_indexed_offset={}",
+            "Clearing & re-indexing pending index. last_chain_indexed_offset={}",
             last_chain_indexed_offset
         );
 
@@ -526,7 +526,7 @@ where
         // create temporary in-memory to wipe directory
         self.chain_index = MutationIndex::create_in_memory(
             self.config.pending_index_config,
-            self.cell.cell().schemas().clone(),
+            self.full_cell.cell().schemas().clone(),
         )?;
 
         // remove and re-create data dir
@@ -536,7 +536,7 @@ where
         // re-create index, and force re-index of chain
         self.chain_index = Self::create_chain_index(
             self.config,
-            self.cell.cell().schemas(),
+            self.full_cell.cell().schemas(),
             &self.chain_index_dir,
         )?;
         self.index_chain_new_blocks(None)?;
@@ -699,7 +699,7 @@ where
             creation_date: mutations.creation_date.map(|t| t.to_proto_timestamp()),
             modification_date: mutations.modification_date.map(|t| t.to_proto_timestamp()),
             deletion_date: mutations.deletion_date.map(|t| t.to_proto_timestamp()),
-            last_operation_id: mutations.last_operatin_id,
+            last_operation_id: mutations.last_operation_id,
         })
     }
 
@@ -780,7 +780,7 @@ where
 
                 if let Some(projection) = &agg.projection {
                     let res = project_trait(
-                        self.cell.cell().schemas().as_ref(),
+                        self.full_cell.cell().schemas().as_ref(),
                         &mut trt,
                         projection.as_ref(),
                     );

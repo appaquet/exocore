@@ -29,11 +29,13 @@ pub struct PrintOptions {
     #[clap(long, default_value = "yaml")]
     pub format: String,
 
-    /// Print configuration in `NodeConfig` format to be used to configure cell nodes.
+    /// Print configuration in `NodeConfig` format to be used to configure cell
+    /// nodes.
     #[clap(long)]
     pub cell: bool,
 
-    /// Inline configuration instead of pointing to external objects (cells / apps).
+    /// Inline configuration instead of pointing to external objects (cells /
+    /// apps).
     #[clap(long)]
     pub inline: bool,
 

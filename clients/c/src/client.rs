@@ -20,12 +20,13 @@ use crate::utils::CallbackContext;
 
 /// Creates a new exocore client instance of a node that has join a cell.
 ///
-/// The client needs to be freed with `exocore_client_free` once it's not needed anymore. This will
-/// trigger runtime and connections to be cleaned up.
+/// The client needs to be freed with `exocore_client_free` once it's not needed
+/// anymore. This will trigger runtime and connections to be cleaned up.
 ///
 /// # Safety
 /// * `node` should be a valid `LocalNode`.
-/// * If return status code is success, a client is returned and needs to be freed with `exocore_client_free`.
+/// * If return status code is success, a client is returned and needs to be
+///   freed with `exocore_client_free`.
 #[no_mangle]
 pub unsafe extern "C" fn exocore_client_new(node: *mut LocalNode) -> ClientResult {
     exocore_init();
@@ -58,19 +59,23 @@ enum ClientStatus {
     Error,
 }
 
-/// Executes an entity mutation for which results or failure will be reported via the given `callback`.
+/// Executes an entity mutation for which results or failure will be reported
+/// via the given `callback`.
 ///
-/// `mutation_bytes` and `mutation_size` describes a protobuf encoded `EntityMutation`. It is is still
-/// owned by caller after call. Callback's results are owned by the library.
+/// `mutation_bytes` and `mutation_size` describes a protobuf encoded
+/// `EntityMutation`. It is is still owned by caller after call. Callback's
+/// results are owned by the library.
 ///
-/// `callback` is called exactly once (with `callback_ctx` as first argument) when result is received or failed.
+/// `callback` is called exactly once (with `callback_ctx` as first argument)
+/// when result is received or failed.
 ///
 /// # Safety
 /// * `client` needs to be a valid `Client`.
 /// * `query_bytes` needs to be a byte array of size `query_size`.
 /// * `query_bytes` is owned by the caller.
 /// * `callback_ctx` needs to be safe to send and use across threads.
-/// * `callback_ctx` is owned by the caller and should be freed when after callback got called.
+/// * `callback_ctx` is owned by the caller and should be freed when after
+///   callback got called.
 #[no_mangle]
 pub unsafe extern "C" fn exocore_store_mutate(
     client: *mut Client,
@@ -98,21 +103,26 @@ pub struct MutationHandle {
     status: MutationStatus,
 }
 
-/// Executes an entity query for which results or failure will be reported via the given `callback`.
+/// Executes an entity query for which results or failure will be reported via
+/// the given `callback`.
 ///
-/// `query_bytes` and `query_size` describes a protobuf encoded `EntityQuery`. It is still owned
-/// by caller after call. Callback's results are owned by the library.
+/// `query_bytes` and `query_size` describes a protobuf encoded `EntityQuery`.
+/// It is still owned by caller after call. Callback's results are owned by the
+/// library.
 ///
-/// `callback` is called exactly once (with `callback_ctx` as first argument) when results are received or failed.
+/// `callback` is called exactly once (with `callback_ctx` as first argument)
+/// when results are received or failed.
 ///
-/// Unless it has already completed or failed, a query can be cancelled with `exocore_store_query_cancelled`.
+/// Unless it has already completed or failed, a query can be cancelled with
+/// `exocore_store_query_cancelled`.
 ///
 /// # Safety
 /// * `client` needs to be a valid `Client`.
 /// * `query_bytes` needs to be a byte array of size `query_size`.
 /// * `query_bytes` is owned by the caller.
 /// * `callback_ctx` needs to be safe to send and use across threads.
-/// * `callback_ctx` is owned by caller and should be freed when after callback got called.
+/// * `callback_ctx` is owned by caller and should be freed when after callback
+///   got called.
 #[no_mangle]
 pub unsafe extern "C" fn exocore_store_query(
     ctx: *mut Client,
@@ -134,12 +144,13 @@ pub unsafe extern "C" fn exocore_store_query(
 
 /// Cancels a query for which results weren't returned yet.
 ///
-/// If the query is successfully cancelled, the callback will be called with an error status.
-/// and the context will need to be freed by caller.
+/// If the query is successfully cancelled, the callback will be called with an
+/// error status. and the context will need to be freed by caller.
 ///
 /// # Safety
 /// * `client` needs to be a valid `Client`.
-/// * It is OK to cancel a query even if it may have been cancelled, closed or failed before.
+/// * It is OK to cancel a query even if it may have been cancelled, closed or
+///   failed before.
 #[no_mangle]
 pub unsafe extern "C" fn exocore_store_query_cancel(client: *mut Client, handle: QueryHandle) {
     let client = client.as_mut().unwrap();
@@ -164,26 +175,29 @@ pub enum QueryStatus {
     Error,
 }
 
-/// Executes a watched entity query, for which a first version of the results will be emitted and then
-/// new results will be emitted every time results have changed. Calls are also made when an error
-/// occurred, after which no subsequent calls to `callback` will be made.
+/// Executes a watched entity query, for which a first version of the results
+/// will be emitted and then new results will be emitted every time results have
+/// changed. Calls are also made when an error occurred, after which no
+/// subsequent calls to `callback` will be made.
 ///
-/// `query_bytes` and `query_size` describes a protobuf encoded `EntityQuery`. It is still owned
-/// by caller after call.
+/// `query_bytes` and `query_size` describes a protobuf encoded `EntityQuery`.
+/// It is still owned by caller after call.
 ///
-/// `callback` is called (with `callback_ctx` as first argument) when results are received, or when the watched
-/// has completed. When a call with a `Done` or `Error` status is made, no results are given and no further calls
-/// will be done. Callback's results are owned by the library.
+/// `callback` is called (with `callback_ctx` as first argument) when results
+/// are received, or when the watched has completed. When a call with a `Done`
+/// or `Error` status is made, no results are given and no further calls will be
+/// done. Callback's results are owned by the library.
 ///
-/// Unless it has already completed or failed, a watched query needs to be cancelled with
-/// `exocore_store_watched_query_cancelled`.
+/// Unless it has already completed or failed, a watched query needs to be
+/// cancelled with `exocore_store_watched_query_cancelled`.
 ///
 /// # Safety
 /// * `client` needs to be a valid `Client`.
 /// * `query_bytes` needs to be a byte array of size `query_size`.
 /// * `query_bytes` are owned by the caller.
 /// * `callback_ctx` needs to be safe to send and use across threads.
-/// * `callback_ctx` is owned by client and should be freed when receiving a `Done` or `Error` status.
+/// * `callback_ctx` is owned by client and should be freed when receiving a
+///   `Done` or `Error` status.
 #[no_mangle]
 pub unsafe extern "C" fn exocore_store_watched_query(
     client: *mut Client,
@@ -218,9 +232,10 @@ pub struct WatchedQueryHandle {
 
 /// Cancels a `WatchedQuery` so that no further results can be received.
 ///
-/// It is OK to cancel a query even if it may have already been cancelled, closed or failed.
-/// If the query is successfully cancelled, the callback will be called with a `Done` status,
-/// and the context will need to be freed by caller.
+/// It is OK to cancel a query even if it may have already been cancelled,
+/// closed or failed. If the query is successfully cancelled, the callback will
+/// be called with a `Done` status, and the context will need to be freed by
+/// caller.
 ///
 /// # Safety
 /// * `client` needs to be a valid `Client`.
@@ -239,7 +254,8 @@ pub unsafe extern "C" fn exocore_store_watched_query_cancel(
     }
 }
 
-/// Returns a list of HTTP endpoints available on nodes of the cell, returned as a `;` delimited string.
+/// Returns a list of HTTP endpoints available on nodes of the cell, returned as
+/// a `;` delimited string.
 ///
 /// # Safety
 /// * `client` needs to be a valid `Client`.
@@ -262,7 +278,8 @@ pub unsafe extern "C" fn exocore_store_http_endpoints(client: *mut Client) -> *m
     CString::new(joined).unwrap().into_raw()
 }
 
-/// Returns a standalone authentication token that can be used via an HTTP endpoint.
+/// Returns a standalone authentication token that can be used via an HTTP
+/// endpoint.
 ///
 /// If a 0 value is given for `expiration_days`, the token will never expire.
 ///

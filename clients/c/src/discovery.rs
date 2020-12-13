@@ -13,16 +13,18 @@ pub struct Discovery {
     client: Arc<Client>,
 }
 
-/// Creates a new discovery service client. This client can be used to join a cell by using the discovery
-/// service to exchange node and cell configs.
+/// Creates a new discovery service client. This client can be used to join a
+/// cell by using the discovery service to exchange node and cell configs.
 ///
 /// If null is passed to `service_url`, the default service will be used.
 ///
 /// # Safety
 /// * `service_url` needs to be a valid \0 delimited string or null.
-/// * Returns a `DiscoveryResult` in which the `status` field indicates if the client was successfully
-///   created. In case it wasn't, the `client` field will be null.
-/// * If the method succeeds, the `client` in result needs to be freed using `exocore_discovery_free`.
+/// * Returns a `DiscoveryResult` in which the `status` field indicates if the
+///   client was successfully created. In case it wasn't, the `client` field
+///   will be null.
+/// * If the method succeeds, the `client` in result needs to be freed using
+///   `exocore_discovery_free`.
 #[no_mangle]
 pub unsafe extern "C" fn exocore_discovery_new(
     service_url: *const libc::c_char,
@@ -70,26 +72,29 @@ pub unsafe extern "C" fn exocore_discovery_new(
 ///   2) The `callback` is called with the `InProgress` status and the discovery
 ///      pin to be displayed to the user.
 ///
-///   3) The discovery pin is entered on a node currently in the cell, which will
-///      get the config of the joining node. The joining node will be added to the
-///      cell and the cell's config will be pushed back to discovery service on the
-///      reply pin.
+///   3) The discovery pin is entered on a node currently in the cell, which
+///      will get the config of the joining node. The joining node will be added
+///      to the cell and the cell's config will be pushed back to discovery
+///      service on the  reply pin.
 ///
 ///   4) The cell configuration is then fetched from the discovery service using
 ///      the reply pin. The cell is added to local node configuration and the
-///      `callback` is called with a `Success` status and the new `LocalNode` config.
+///      `callback` is called with a `Success` status and the new `LocalNode`
+///      config.
 ///
-///   *) If any errors occurred during the process, the `callback` is called with a
-///      `Error` status. No pin and LocalNode will be specified. The discovery client
-///      still needs to be freed.
+///   *) If any errors occurred during the process, the `callback` is called
+///      with a  `Error` status. No pin and LocalNode will be specified. The
+///      discovery client still needs to be freed.
 ///
 /// # Safety
 /// * `disco` needs to be a valid client created with `exocore_disco_new`.
-/// * `node` needs to be a valid LocalNode created with `exocore_local_node_*` and
-///    is still owned by caller after.
+/// * `node` needs to be a valid LocalNode created with `exocore_local_node_*`
+///   and is still owned by caller after.
 /// * `callback_ctx` needs to be safe to send and use across threads.
-/// * `callback_ctx` is owned by the caller and should be freed when after callback got called.
-/// * On success, the `LocalNode` passed is owned by client and will need to be freed.
+/// * `callback_ctx` is owned by the caller and should be freed when after
+///   callback got called.
+/// * On success, the `LocalNode` passed is owned by client and will need to be
+///   freed.
 #[no_mangle]
 pub unsafe extern "C" fn exocore_discovery_join_cell(
     disco: *mut Discovery,
@@ -163,8 +168,8 @@ pub unsafe extern "C" fn exocore_discovery_free(disco: *mut Discovery) {
     drop(disco);
 }
 
-/// Parts of the cell joining process. Pushes the node's config to the discovery service and returns a
-/// discovery pin and reply pin.
+/// Parts of the cell joining process. Pushes the node's config to the discovery
+/// service and returns a discovery pin and reply pin.
 async fn push_config(node_config: &LocalNodeConfig, client: Arc<Client>) -> Result<(Pin, Pin), ()> {
     let node_yml = node_config.to_yaml().map_err(|err| {
         error!("Error converting config to yaml: {}", err);
@@ -183,8 +188,8 @@ async fn push_config(node_config: &LocalNodeConfig, client: Arc<Client>) -> Resu
     Ok((disco_pin, reply_pin))
 }
 
-/// Parts of the cell joining process. Waits for the cell's config to be pushed to the discovery service
-/// on the reply pin.
+/// Parts of the cell joining process. Waits for the cell's config to be pushed
+/// to the discovery service on the reply pin.
 async fn join_cell(
     node_config: &LocalNodeConfig,
     client: Arc<Client>,

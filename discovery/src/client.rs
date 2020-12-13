@@ -10,8 +10,9 @@ use wasm_timer::Instant;
 
 /// Discovery service client.
 ///
-/// The discovery service is a simple REST API on which clients can push temporary payload for which the server
-/// generates a random code. Another client can then retrieve that payload by using the generated random code.
+/// The discovery service is a simple REST API on which clients can push
+/// temporary payload for which the server generates a random code. Another
+/// client can then retrieve that payload by using the generated random code.
 /// Once a payload is consumed, it is deleted.
 pub struct Client {
     base_url: Url,
@@ -25,8 +26,9 @@ impl Client {
         })
     }
 
-    /// Creates a new payload on the server. If successfully created, the response contains
-    /// a unique pin that can be used by another client to retrieve the payload.
+    /// Creates a new payload on the server. If successfully created, the
+    /// response contains a unique pin that can be used by another client to
+    /// retrieve the payload.
     pub async fn create(
         &self,
         payload: &[u8],
@@ -54,7 +56,8 @@ impl Client {
         Ok(create_resp)
     }
 
-    /// Gets a payload by unique pin created by the call to `create` by another client.
+    /// Gets a payload by unique pin created by the call to `create` by another
+    /// client.
     pub async fn get<P: TryInto<Pin>>(&self, pin: P) -> Result<Payload, Error> {
         let pin_u32: u32 = pin.try_into().map_err(|_| Error::InvalidPin)?.into();
         let url = self
@@ -78,8 +81,9 @@ impl Client {
         Ok(payload)
     }
 
-    /// Gets a payload by unique pin created by the call to `create` by another client
-    /// and retries fetching if it hasn't been found it until `timeout`.
+    /// Gets a payload by unique pin created by the call to `create` by another
+    /// client and retries fetching if it hasn't been found it until
+    /// `timeout`.
     pub async fn get_loop<P: TryInto<Pin>>(
         &self,
         pin: P,
@@ -102,8 +106,9 @@ impl Client {
         }
     }
 
-    /// Replies to a payload on the server using the given reply pin and authentication token.
-    /// If successfully created, the response contains can be retrieved using the reply pin.
+    /// Replies to a payload on the server using the given reply pin and
+    /// authentication token. If successfully created, the response contains
+    /// can be retrieved using the reply pin.
     pub async fn reply(
         &self,
         reply_pin: Pin,

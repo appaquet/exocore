@@ -96,7 +96,8 @@ pub async fn cmd_daemon(ctx: &Context) -> anyhow::Result<()> {
                     store_engine_handle.clone(),
                 )?;
 
-                // create a combined p2p + http transport for entities store so that it can received mutation / query over http
+                // create a combined p2p + http transport for entities store so that it can
+                // received mutation / query over http
                 let entities_p2p_transport =
                     p2p_transport.get_handle(cell.clone(), ServiceType::Store)?;
                 let entities_http_transport =

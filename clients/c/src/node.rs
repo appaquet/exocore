@@ -36,7 +36,8 @@ impl LocalNode {
 ///
 /// # Safety
 /// * Needs to be freed using `exocore_local_node_free`.
-/// * If result's status is not success, the node pointer will be null and shouldn't be freed.
+/// * If result's status is not success, the node pointer will be null and
+///   shouldn't be freed.
 #[no_mangle]
 pub unsafe extern "C" fn exocore_local_node_generate() -> LocalNodeResult {
     exocore_init();
@@ -56,7 +57,8 @@ pub unsafe extern "C" fn exocore_local_node_generate() -> LocalNodeResult {
 /// * `config_bytes` needs to be a byte array of size `config_bytes_size`.
 /// * `config_bytes` are owned by the caller.
 /// * Needs to be freed using `exocore_local_node_free`.
-/// * If result's status is not success, the node pointer will be null and shouldn't be freed.
+/// * If result's status is not success, the node pointer will be null and
+///   shouldn't be freed.
 #[no_mangle]
 pub unsafe extern "C" fn exocore_local_node_new(
     config_bytes: *const libc::c_uchar,
@@ -86,7 +88,8 @@ pub unsafe extern "C" fn exocore_local_node_new(
 ///
 /// # Safety
 /// * `node` needs to be a valid node created by `exocore_local_node_*`.
-/// * Returned `BytesVec` will be owned by caller and needs to be freed using `exocore_bytes_free`.
+/// * Returned `BytesVec` will be owned by caller and needs to be freed using
+///   `exocore_bytes_free`.
 #[no_mangle]
 pub unsafe extern "C" fn exocore_local_node_protobuf_config(node: *mut LocalNode) -> BytesVec {
     let node = node.as_mut().unwrap();
