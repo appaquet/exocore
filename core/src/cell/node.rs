@@ -196,16 +196,16 @@ impl LocalNode {
             ..Default::default()
         };
 
-        Self::new_from_config(config).expect("Couldn't create node config generated config")
+        Self::new_from_config(&config).expect("Couldn't create node config generated config")
     }
 
-    pub fn new_from_config(config: LocalNodeConfig) -> Result<Self, Error> {
+    pub fn new_from_config(config: &LocalNodeConfig) -> Result<Self, Error> {
         let keypair = Keypair::decode_base58_string(&config.keypair)
             .map_err(|err| Error::Cell(format!("Couldn't decode local node keypair: {}", err)))?;
 
         let node = LocalNode {
             node: Node::new_from_public_key(keypair.public()),
-            identity: Arc::new(LocalNodeIdentity { keypair, config }),
+            identity: Arc::new(LocalNodeIdentity { keypair, config: config.clone() }),
         };
 
         if let Some(addresses) = &node.identity.config.addresses {
@@ -374,7 +374,7 @@ mod tests {
     #[test]
     fn local_node_from_generated_config() {
         let node1 = LocalNode::generate();
-        let node2 = LocalNode::new_from_config(node1.config().clone()).unwrap();
+        let node2 = LocalNode::new_from_config(&node1.config().clone()).unwrap();
 
         assert_eq!(node1.keypair().public(), node2.keypair().public());
         assert_eq!(node1.config(), node2.config());

@@ -128,7 +128,7 @@ pub(crate) fn build_tantivy_schema(
     let schema = schema_builder.build();
 
     let fields = Fields {
-        config: config.clone(),
+        config: *config,
         trait_type,
         entity_id,
         trait_id,

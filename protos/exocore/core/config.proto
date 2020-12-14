@@ -41,26 +41,14 @@ message NodeStoreConfig {
 
 /// Configuration of the entities index
 message EntityIndexConfig {
-    /// What is the minimum depth that a block needs to be the chain to be
-    /// indexed. This is required to lower the odds that we are going to
-    /// revert the block if our local chain forked.
-    ///
-    /// `CommitManagerConfig`.`operations_cleanup_after_block_depth`
     uint64 chain_index_min_depth = 1;
 
-    /// If specified, prevent indexing every new block on each commit.
-    /// Operations will be kept in pending index for a bit longer and
-    /// preventing the costly chain index modification.
     uint64 chain_index_depth_leeway = 2;
 
-    /// Configuration for the in-memory traits index that are in the pending
-    /// store
     MutationIndexConfig pending_index_config = 3;
 
-    /// Configuration for the persisted traits index that are in the chain
     MutationIndexConfig chain_index_config = 4;
 
-    /// For tests, allow not hitting the disk
     bool chain_index_in_memory = 5;    
 }
 
@@ -73,14 +61,6 @@ message MutationIndexConfig {
     uint32 iterator_max_pages = 4;
 
     uint32 entity_mutations_cache_size = 5;
-
-    uint32 dynamic_reference_fields = 6;
-    uint32 dynamic_string_fields = 7;
-    uint32 dynamic_text_fields = 8;
-    uint32 dynamic_i64_fields = 9;
-    uint32 dynamic_i64_sortable_fields = 10;
-    uint32 dynamic_u64_fields = 11;
-    uint32 dynamic_u64_sortable_fields = 12;
 }
 
 message CellConfig {

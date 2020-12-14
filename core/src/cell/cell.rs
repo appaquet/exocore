@@ -125,7 +125,7 @@ impl Cell {
     }
 
     pub fn from_local_node_config(
-        config: LocalNodeConfig,
+        config: &LocalNodeConfig,
     ) -> Result<(Vec<EitherCell>, LocalNode), Error> {
         let local_node = LocalNode::new_from_config(config)?;
         Self::from_local_node(local_node)

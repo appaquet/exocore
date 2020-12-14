@@ -67,31 +67,22 @@ pub mod node_cell_config {
 #[derive(Clone, PartialEq, ::prost::Message, Serialize, Deserialize)]
 pub struct NodeStoreConfig {
     #[prost(message, optional, tag = "1")]
+    #[serde(default)]
     pub index: ::std::option::Option<EntityIndexConfig>,
 }
 //// Configuration of the entities index
 #[derive(Clone, PartialEq, ::prost::Message, Serialize, Deserialize)]
 pub struct EntityIndexConfig {
-    //// What is the minimum depth that a block needs to be the chain to be
-    //// indexed. This is required to lower the odds that we are going to
-    //// revert the block if our local chain forked.
-    ////
-    //// `CommitManagerConfig`.`operations_cleanup_after_block_depth`
     #[prost(uint64, tag = "1")]
     pub chain_index_min_depth: u64,
-    //// If specified, prevent indexing every new block on each commit.
-    //// Operations will be kept in pending index for a bit longer and
-    //// preventing the costly chain index modification.
     #[prost(uint64, tag = "2")]
     pub chain_index_depth_leeway: u64,
-    //// Configuration for the in-memory traits index that are in the pending
-    //// store
     #[prost(message, optional, tag = "3")]
+    #[serde(default)]
     pub pending_index_config: ::std::option::Option<MutationIndexConfig>,
-    //// Configuration for the persisted traits index that are in the chain
     #[prost(message, optional, tag = "4")]
+    #[serde(default)]
     pub chain_index_config: ::std::option::Option<MutationIndexConfig>,
-    //// For tests, allow not hitting the disk
     #[prost(bool, tag = "5")]
     pub chain_index_in_memory: bool,
 }
@@ -99,29 +90,20 @@ pub struct EntityIndexConfig {
 #[derive(Clone, PartialEq, ::prost::Message, Serialize, Deserialize)]
 pub struct MutationIndexConfig {
     #[prost(uint32, tag = "1")]
+    #[serde(default)]
     pub indexer_num_threads: u32,
     #[prost(uint32, tag = "2")]
+    #[serde(default)]
     pub indexer_heap_size_bytes: u32,
     #[prost(uint32, tag = "3")]
+    #[serde(default)]
     pub iterator_page_size: u32,
     #[prost(uint32, tag = "4")]
+    #[serde(default)]
     pub iterator_max_pages: u32,
     #[prost(uint32, tag = "5")]
+    #[serde(default)]
     pub entity_mutations_cache_size: u32,
-    #[prost(uint32, tag = "6")]
-    pub dynamic_reference_fields: u32,
-    #[prost(uint32, tag = "7")]
-    pub dynamic_string_fields: u32,
-    #[prost(uint32, tag = "8")]
-    pub dynamic_text_fields: u32,
-    #[prost(uint32, tag = "9")]
-    pub dynamic_i64_fields: u32,
-    #[prost(uint32, tag = "10")]
-    pub dynamic_i64_sortable_fields: u32,
-    #[prost(uint32, tag = "11")]
-    pub dynamic_u64_fields: u32,
-    #[prost(uint32, tag = "12")]
-    pub dynamic_u64_sortable_fields: u32,
 }
 #[derive(Clone, PartialEq, ::prost::Message, Serialize, Deserialize)]
 pub struct CellConfig {

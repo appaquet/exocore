@@ -53,7 +53,7 @@ impl TestEntityIndex {
 
         let index = EntityIndex::<DirectoryChainStore, MemoryPendingStore>::open_or_create(
             cluster.cells[0].clone(),
-            &config,
+            &config.clone(),
             cluster.get_handle(0).clone(),
         )?;
 

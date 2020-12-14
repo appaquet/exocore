@@ -48,11 +48,11 @@ impl From<ProtoEntityIndexConfig> for EntityIndexConfig {
             pending_index_config: proto
                 .pending_index_config
                 .map(|m| m.into())
-                .unwrap_or(MutationIndexConfig::default()),
+                .unwrap_or_default(),
             chain_index_config: proto
                 .chain_index_config
                 .map(|m| m.into())
-                .unwrap_or(MutationIndexConfig::default()),
+                .unwrap_or_default(),
             chain_index_in_memory: proto.chain_index_in_memory,
         }
     }

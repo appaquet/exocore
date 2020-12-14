@@ -45,14 +45,7 @@ impl From<ProtoMutationIndexConfig> for MutationIndexConfig {
             iterator_page_size: proto.iterator_page_size,
             iterator_max_pages: proto.iterator_max_pages as usize,
             entity_mutations_cache_size: proto.entity_mutations_cache_size as usize,
-
-            dynamic_reference_fields: proto.dynamic_reference_fields,
-            dynamic_string_fields: proto.dynamic_string_fields,
-            dynamic_text_fields: proto.dynamic_text_fields,
-            dynamic_i64_fields: proto.dynamic_i64_fields,
-            dynamic_i64_sortable_fields: proto.dynamic_i64_sortable_fields,
-            dynamic_u64_fields: proto.dynamic_u64_fields,
-            dynamic_u64_sortable_fields: proto.dynamic_u64_sortable_fields,
+            ..MutationIndexConfig::default()
         }
     }
 }

@@ -80,6 +80,7 @@ where
     CS: chain::ChainStore,
     PS: pending::PendingStore,
 {
+
     /// Opens or create an entities index
     pub fn open_or_create(
         cell: FullCell,
@@ -104,7 +105,7 @@ where
         let chain_index =
             Self::create_chain_index(config, cell.cell().schemas(), &chain_index_dir)?;
         let mut index = EntityIndex {
-            config: config.clone(),
+            config: *config,
             pending_index,
             chain_index_dir,
             chain_index,

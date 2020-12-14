@@ -94,7 +94,7 @@ impl MutationIndex {
         };
 
         Ok(MutationIndex {
-            config: config.clone(),
+            config: *config,
             index,
             index_reader,
             index_writer: Mutex::new(index_writer),
@@ -127,7 +127,7 @@ impl MutationIndex {
         };
 
         Ok(MutationIndex {
-            config: config.clone(),
+            config: *config,
             index,
             index_reader,
             index_writer: Mutex::new(index_writer),
