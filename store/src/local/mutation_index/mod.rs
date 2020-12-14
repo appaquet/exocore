@@ -71,7 +71,7 @@ enum Storage {
 impl MutationIndex {
     /// Creates or opens a disk persisted index.
     pub fn open_or_create_mmap(
-        config: MutationIndexConfig,
+        config: &MutationIndexConfig,
         schemas: Arc<Registry>,
         directory: &Path,
     ) -> Result<MutationIndex, Error> {
@@ -94,20 +94,20 @@ impl MutationIndex {
         };
 
         Ok(MutationIndex {
-            config,
+            config: config.clone(),
             index,
             index_reader,
             index_writer: Mutex::new(index_writer),
             schemas,
             fields,
             storage: Storage::Disk,
-            entity_cache: EntityMutationsCache::new(config.entity_mutations_cache_size),
+            entity_cache: EntityMutationsCache::new(config.entity_mutations_cache_size as usize),
         })
     }
 
     /// Creates or opens a in-memory index.
     pub fn create_in_memory(
-        config: MutationIndexConfig,
+        config: &MutationIndexConfig,
         schemas: Arc<Registry>,
     ) -> Result<MutationIndex, Error> {
         let (tantivy_schema, fields) = schema::build_tantivy_schema(config, schemas.as_ref());
@@ -127,14 +127,14 @@ impl MutationIndex {
         };
 
         Ok(MutationIndex {
-            config,
+            config: config.clone(),
             index,
             index_reader,
             index_writer: Mutex::new(index_writer),
             schemas,
             fields,
             storage: Storage::Memory,
-            entity_cache: EntityMutationsCache::new(config.entity_mutations_cache_size),
+            entity_cache: EntityMutationsCache::new(config.entity_mutations_cache_size as usize),
         })
     }
 
@@ -278,7 +278,7 @@ impl MutationIndex {
             total_results: results.total,
             current_results: results.mutations.into_iter(),
             next_page: results.next_page,
-            max_pages: self.config.iterator_max_pages,
+            max_pages: self.config.iterator_max_pages as usize,
         })
     }
 

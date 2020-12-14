@@ -1,20 +1,7 @@
-use exocore_core::protos::generated::exocore_core::{EntityIndexConfig, MutationIndexConfig};
+use crate::local::mutation_index::MutationIndexConfig;
 use exocore_chain::block::BlockHeight;
+use exocore_core::protos::generated::exocore_core::EntityIndexConfig as ProtoEntityIndexConfig;
 
-impl EntityIndexConfig {
-
-    fn with_default_values() -> self {
-        EntityIndexConfig {
-            chain_index_min_depth: 3,
-            chain_index_depth_leeway: 10,
-            pending_index_config: MutationIndexConfig::with_default_values(),
-            chain_index_config: MutationIndexConfig::with_default_values(),
-            chain_index_in_memory: false,
-        }
-    }
-
-}
-/*
 /// Configuration of the entities index
 #[derive(Clone, Copy, Debug)]
 pub struct EntityIndexConfig {
@@ -52,4 +39,21 @@ impl Default for EntityIndexConfig {
         }
     }
 }
-*/
+
+impl From<ProtoEntityIndexConfig> for EntityIndexConfig {
+    fn from(proto: ProtoEntityIndexConfig) -> Self {
+        EntityIndexConfig {
+            chain_index_min_depth: proto.chain_index_min_depth,
+            chain_index_depth_leeway: proto.chain_index_depth_leeway,
+            pending_index_config: proto
+                .pending_index_config
+                .map(|m| m.into())
+                .unwrap_or(MutationIndexConfig::default()),
+            chain_index_config: proto
+                .chain_index_config
+                .map(|m| m.into())
+                .unwrap_or(MutationIndexConfig::default()),
+            chain_index_in_memory: proto.chain_index_in_memory,
+        }
+    }
+}

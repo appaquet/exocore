@@ -1,8 +1,7 @@
 use crate::entity::{EntityId, TraitId};
-use crate::error::Error;
-use crate::local::mutation_index::MutationIndexConfig;
-use crate::local::{EntityIndex, EntityIndexConfig};
+use crate::local::EntityIndex;
 use crate::mutation::{MutationBuilder, MutationRequestLike};
+use crate::{error::Error, local::mutation_index::MutationIndexConfig};
 use exocore_chain::engine::Event;
 use exocore_chain::operation::OperationId;
 use exocore_chain::tests_utils::TestChainCluster;
@@ -10,6 +9,8 @@ use exocore_chain::{DirectoryChainStore, MemoryPendingStore};
 use exocore_core::protos::generated::exocore_store::Trait;
 use exocore_core::protos::generated::exocore_test::TestMessage;
 use exocore_core::protos::prost::{ProstAnyPackMessageExt, ProstMessageExt};
+
+use super::EntityIndexConfig;
 
 /// Utility to test entities index
 pub struct TestEntityIndex {
@@ -29,7 +30,7 @@ impl TestEntityIndex {
         let cluster = TestChainCluster::new_single_and_start().await?;
 
         let chain_handle = cluster.get_handle(0).clone();
-        let index = EntityIndex::open_or_create(cluster.cells[0].clone(), config, chain_handle)?;
+        let index = EntityIndex::open_or_create(cluster.cells[0].clone(), &config, chain_handle)?;
 
         Ok(TestEntityIndex {
             cluster,
@@ -52,7 +53,7 @@ impl TestEntityIndex {
 
         let index = EntityIndex::<DirectoryChainStore, MemoryPendingStore>::open_or_create(
             cluster.cells[0].clone(),
-            config,
+            &config,
             cluster.get_handle(0).clone(),
         )?;
 

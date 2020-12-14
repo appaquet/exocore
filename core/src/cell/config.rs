@@ -557,7 +557,10 @@ mod tests {
     use crate::{
         protos::{
             apps::manifest_schema,
-            core::{cell_application_config, CellApplicationConfig, NodeAddresses},
+            core::{
+                cell_application_config, CellApplicationConfig, EntityIndexConfig,
+                MutationIndexConfig, NodeAddresses,
+            },
             generated::exocore_core::{
                 cell_node_config, node_cell_config, CellConfig, CellNodeConfig, LocalNodeConfig,
                 NodeCellConfig, NodeConfig,
@@ -568,6 +571,8 @@ mod tests {
 
     #[test]
     fn parse_node_config_yaml_ser_deser() -> anyhow::Result<()> {
+        use crate::protos::generated::exocore_core::NodeStoreConfig;
+
         let conf_ser = LocalNodeConfig {
             keypair: "keypair".to_string(),
             public_key: "pk".to_string(),
@@ -618,6 +623,43 @@ mod tests {
             addresses: Some(NodeAddresses {
                 p2p: vec!["maddr".to_string()],
                 http: vec!["httpaddr".to_string()],
+            }),
+            store: Some(NodeStoreConfig {
+                index: Some(EntityIndexConfig {
+                    chain_index_min_depth: 3,
+                    chain_index_depth_leeway: 10,
+                    pending_index_config: Some(MutationIndexConfig {
+                        indexer_num_threads: 2,
+                        indexer_heap_size_bytes: 30_000_000,
+                        iterator_page_size: 50,
+                        iterator_max_pages: 20,
+                        entity_mutations_cache_size: 2000,
+
+                        dynamic_reference_fields: 5,
+                        dynamic_string_fields: 5,
+                        dynamic_text_fields: 5,
+                        dynamic_i64_fields: 2,
+                        dynamic_i64_sortable_fields: 2,
+                        dynamic_u64_fields: 2,
+                        dynamic_u64_sortable_fields: 2,
+                    }),
+                    chain_index_config: Some(MutationIndexConfig {
+                        indexer_num_threads: 2,
+                        indexer_heap_size_bytes: 30_000_000,
+                        iterator_page_size: 50,
+                        iterator_max_pages: 20,
+                        entity_mutations_cache_size: 2000,
+
+                        dynamic_reference_fields: 5,
+                        dynamic_string_fields: 5,
+                        dynamic_text_fields: 5,
+                        dynamic_i64_fields: 2,
+                        dynamic_i64_sortable_fields: 2,
+                        dynamic_u64_fields: 2,
+                        dynamic_u64_sortable_fields: 2,
+                    }),
+                    chain_index_in_memory: false,
+                }),
             }),
         };
 
@@ -855,9 +897,29 @@ cells:
         - inline:
              name: some application
              public_key: peHZC1CM51uAugeMNxbXkVukFzCwMJY52m1xDCfLmm1pc1
+
+store:
+  index:
+    chain_index_min_depth: 2
+    chain_index_depth_leeway: 6
+    chain_index_in_memory: true
+
 "#;
 
         let config = LocalNodeConfig::from_yaml_reader(yaml.as_bytes())?;
+
+        {
+            let index_entity = config.clone().store.unwrap().index.unwrap();
+            assert_eq!(2, index_entity.chain_index_min_depth);
+            assert_eq!(6, index_entity.chain_index_depth_leeway);
+            assert_eq!(true, index_entity.chain_index_in_memory);
+
+            let pending_mutation = index_entity.pending_index_config.unwrap();
+            assert_eq!(3, pending_mutation.indexer_num_threads);
+
+            let chain_mutation = index_entity.chain_index_config.unwrap();
+            assert_eq!(3, chain_mutation.indexer_num_threads);
+        }
 
         let (cells, node) = Cell::from_local_node_config(config)?;
         assert_eq!(1, cells.len());

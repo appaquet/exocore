@@ -11,6 +11,7 @@ use crate::local::EntityIndexConfig;
 use crate::mutation::{MutationBuilder, MutationRequestLike};
 
 use super::*;
+
 use chrono::Utc;
 use exocore_core::protos::generated::exocore_store::{
     EntityQuery, EntityResults, MutationResult, Trait,
@@ -49,7 +50,7 @@ impl TestStore {
         };
         let index = EntityIndex::<DirectoryChainStore, MemoryPendingStore>::open_or_create(
             cluster.cells[0].clone(),
-            index_config,
+            &index_config,
             cluster.get_handle(0).clone(),
         )?;
 

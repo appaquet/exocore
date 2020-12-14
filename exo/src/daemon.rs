@@ -3,14 +3,13 @@ use exocore_chain::{
     DirectoryChainStore, DirectoryChainStoreConfig, Engine, EngineConfig, EngineHandle,
     MemoryPendingStore,
 };
-use exocore_core::protos::generated::exocore_core::EntityIndexConfig;
 use exocore_core::{
     cell::{Cell, CellNodeRole, EitherCell, FullCell},
     futures::owned_spawn,
     time::Clock,
 };
 use exocore_store::{
-    local::{EntityIndex, Store},
+    local::{EntityIndex, EntityIndexConfig, Store},
     remote::server::Server,
 };
 use exocore_transport::{
@@ -90,10 +89,10 @@ pub async fn cmd_daemon(ctx: &Context) -> anyhow::Result<()> {
                     }
                 };
 
-                let entities_index_config = EntityIndexConfig::with_default_values();
+                let entities_index_config = EntityIndexConfig::default();
                 let entities_index = EntityIndex::open_or_create(
                     full_cell.clone(),
-                    entities_index_config,
+                    &entities_index_config,
                     store_engine_handle.clone(),
                 )?;
 

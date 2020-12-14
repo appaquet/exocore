@@ -90,7 +90,7 @@ pub(crate) struct MappedDynamicField {
 /// sequentially by fields of each registered messages. This means that we only
 /// support a limited amount of indexed/sorted fields per message.
 pub(crate) fn build_tantivy_schema(
-    config: MutationIndexConfig,
+    config: &MutationIndexConfig,
     registry: &Registry,
 ) -> (Schema, Fields) {
     let mut schema_builder = SchemaBuilder::default();
@@ -128,7 +128,7 @@ pub(crate) fn build_tantivy_schema(
     let schema = schema_builder.build();
 
     let fields = Fields {
-        config,
+        config: config.clone(),
         trait_type,
         entity_id,
         trait_id,
