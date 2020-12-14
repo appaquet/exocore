@@ -3,38 +3,40 @@ import Exocore
 
 struct DiscoveryView: View {
     @EnvironmentObject var appState: AppState
-    @ObservedObject var state: DiscoveryState
-
-    init() {
-        self.state = DiscoveryState()
-    }
+    @StateObject var state: DiscoveryState = DiscoveryState()
 
     var body: some View {
         NavigationView {
             VStack {
                 discoView()
                 Spacer()
-                HStack {
-                    errorView()
-                    Spacer()
-                    Button("Save") {
-                        self.appState.refreshNodeConfig()
-                    }
-                    .padding()
+                errorView()
+                Spacer()
+                Button("Generate new node") {
+                    appState.node = try? LocalNode.generate()
+                    appState.refreshNodeConfig()
+                    state.performJoinCell(appState)
                 }
             }
-            .navigationBarTitle("Bootstrap")
+            .navigationBarTitle("Cell discovery")
             .onAppear {
                 state.performJoinCell(appState)
             }
         }
     }
 
+    @ViewBuilder
     func discoView() -> some View {
         if let pin = state.pin {
-            return Text("Discovery PIN: \(pin)")
+            VStack {
+                Text("Discovery PIN:")
+                    .padding()
+                Text(formatPin(pin))
+                    .bold()
+                    .font(.system(size: 30))
+            }
         } else {
-            return Text("Joining...")
+            Text("Joining...")
         }
     }
 
@@ -49,17 +51,12 @@ struct DiscoveryView: View {
     }
 }
 
-
 class DiscoveryState: ObservableObject {
     private var discovery: Discovery?
     @Published var pin: UInt32?
     @Published var error: String?
 
     func performJoinCell(_ appState: AppState) {
-        if self.discovery != nil {
-            return
-        }
-
         guard let node = appState.node else {
             self.error = "No node configured"
             return
@@ -68,6 +65,8 @@ class DiscoveryState: ObservableObject {
         do {
             let discovery = try Discovery()
             self.discovery = discovery
+            self.pin = nil
+            self.error = nil
 
             discovery.joinCell(localNode: node) { (stage) in
                 DispatchQueue.main.async {
@@ -86,8 +85,20 @@ class DiscoveryState: ObservableObject {
         } catch {
             self.error = error.localizedDescription
         }
-
     }
+}
+
+private func formatPin(_ pin: UInt32) -> String {
+    let strPin = pin.description
+
+    var ret = ""
+    for (i, char) in strPin.enumerated() {
+        if i == 3 || i == 6 {
+            ret += " "
+        }
+        ret += String(char)
+    }
+    return ret
 }
 
 #if DEBUG

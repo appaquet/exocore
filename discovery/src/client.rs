@@ -11,8 +11,8 @@ use wasm_timer::Instant;
 /// Discovery service client.
 ///
 /// The discovery service is a simple REST API on which clients can push
-/// temporary payload for which the server generates a random code. Another
-/// client can then retrieve that payload by using the generated random code.
+/// temporary payload for which the server generates a random PIN. Another
+/// client can then retrieve that payload by using the generated random PIN.
 /// Once a payload is consumed, it is deleted.
 pub struct Client {
     base_url: Url,
