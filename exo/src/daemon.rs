@@ -8,7 +8,10 @@ use exocore_core::{
     futures::owned_spawn,
     time::Clock,
 };
-use exocore_store::{local::{EntityIndex, EntityIndexConfig, Store}, remote::server::Server};
+use exocore_store::{
+    local::{EntityIndex, EntityIndexConfig, Store},
+    remote::server::Server,
+};
 use exocore_transport::{
     either::EitherTransportServiceHandle,
     http::{HTTPTransportConfig, HTTPTransportServer},
@@ -86,7 +89,12 @@ pub async fn cmd_daemon(ctx: &Context) -> anyhow::Result<()> {
                     }
                 };
 
-                let entities_index_config: EntityIndexConfig = config.clone().store.and_then(|s| s.index).unwrap_or_default().into();
+                let entities_index_config: EntityIndexConfig = config
+                    .clone()
+                    .store
+                    .and_then(|s| s.index)
+                    .unwrap_or_default()
+                    .into();
                 let entities_index = EntityIndex::open_or_create(
                     full_cell.clone(),
                     &entities_index_config,

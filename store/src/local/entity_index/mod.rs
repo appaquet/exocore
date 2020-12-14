@@ -80,7 +80,6 @@ where
     CS: chain::ChainStore,
     PS: pending::PendingStore,
 {
-
     /// Opens or create an entities index
     pub fn open_or_create(
         cell: FullCell,
@@ -466,7 +465,7 @@ where
     fn reindex_pending(&mut self) -> Result<(), Error> {
         self.pending_index = MutationIndex::create_in_memory(
             &self.config.pending_index_config.clone(),
-            self.full_cell.cell().schemas().clone(),        
+            self.full_cell.cell().schemas().clone(),
         )?;
 
         let last_chain_indexed_offset = self

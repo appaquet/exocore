@@ -205,7 +205,10 @@ impl LocalNode {
 
         let node = LocalNode {
             node: Node::new_from_public_key(keypair.public()),
-            identity: Arc::new(LocalNodeIdentity { keypair, config: config.clone() }),
+            identity: Arc::new(LocalNodeIdentity {
+                keypair,
+                config: config.clone(),
+            }),
         };
 
         if let Some(addresses) = &node.identity.config.addresses {
