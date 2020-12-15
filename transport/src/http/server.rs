@@ -1,20 +1,19 @@
 use super::{
-    handles::ServiceHandle, handles::ServiceHandles, requests::RequestTracker,
-    requests::TrackedRequest, HTTPTransportConfig, HTTPTransportServiceHandle,
+    handles::{ServiceHandle, ServiceHandles},
+    requests::{RequestTracker, TrackedRequest},
+    HTTPTransportConfig, HTTPTransportServiceHandle,
 };
 
-use crate::Error;
-use crate::{transport::ConnectionID, InMessage, OutEvent, OutMessage, ServiceType};
+use crate::{transport::ConnectionID, Error, InMessage, OutEvent, OutMessage, ServiceType};
 
 use exocore_core::{
     capnp,
     cell::{Cell, CellNodes, LocalNode, Node},
     framing::{CapnpFrameBuilder, FrameBuilder},
     futures::block_on,
-    protos::generated::store_transport_capnp::mutation_request,
-    protos::generated::store_transport_capnp::mutation_response,
-    protos::generated::store_transport_capnp::query_request,
-    protos::generated::store_transport_capnp::query_response,
+    protos::generated::store_transport_capnp::{
+        mutation_request, mutation_response, query_request, query_response,
+    },
     sec::auth_token::AuthToken,
     time::Clock,
     utils::handle_set::HandleSet,
@@ -23,9 +22,8 @@ use exocore_core::{
 use futures::{channel::mpsc, lock::Mutex, FutureExt, StreamExt};
 use hyper::{
     service::{make_service_fn, service_fn},
-    StatusCode,
+    Body, Request, Response, Server, StatusCode,
 };
-use hyper::{Body, Request, Response, Server};
 
 use std::{borrow::Cow, sync::Arc};
 
@@ -158,7 +156,7 @@ impl HTTPTransportServer {
             let services = self.service_handles.clone();
             let request_tracker = request_tracker.clone();
 
-            async move {
+            let futures = async move {
                 let mut inner = services.lock().await;
 
                 let mut futures = Vec::new();
@@ -184,16 +182,18 @@ impl HTTPTransportServer {
                         }
                     });
                 }
-                futures::future::join_all(futures)
-            }
-            .await
+
+                futures
+            }.await;
+
+            futures::future::join_all(futures)
         };
 
         info!("HTTP transport now running");
         futures::select! {
-            _ = servers.fuse() => (),
-            _ = handles_dispatcher.fuse() => (),
-            _ = self.handle_set.on_handles_dropped().fuse() => (),
+            _ = servers.fuse() => {},
+            _ = handles_dispatcher.fuse() => {},
+            _ = self.handle_set.on_handles_dropped().fuse() => {},
         };
         info!("HTTP transport is done");
 
@@ -254,7 +254,7 @@ async fn handle_request(
         .map_err(|_| RequestError::Unauthorized)?;
 
     match request_type {
-        RequestType::EntitiesQuery => {
+        RequestType::StoreQuery => {
             let body_bytes = hyper::body::to_bytes(req.into_body()).await?;
             let tracked_request = request_tracker.push().await;
             let cell = service.cell.clone();
@@ -272,7 +272,7 @@ async fn handle_request(
 
             Ok(receive_entity_query(&cell, tracked_request).await?)
         }
-        RequestType::EntitiesMutation => {
+        RequestType::StoreMutation => {
             let body_bytes = hyper::body::to_bytes(req.into_body()).await?;
             let tracked_request = request_tracker.push().await;
             let cell = service.cell.clone();
@@ -415,16 +415,16 @@ fn get_query_token(pairs: url::form_urlencoded::Parse) -> Option<Cow<str>> {
 /// Type of an incoming HTTP request.
 #[derive(Debug, PartialEq)]
 enum RequestType {
-    EntitiesQuery,
-    EntitiesMutation,
+    StoreQuery,
+    StoreMutation,
 }
 
 impl RequestType {
     fn from_url_path(path: &str) -> Result<RequestType, RequestError> {
-        if path == "/entities/query" {
-            Ok(RequestType::EntitiesQuery)
-        } else if path == "/entities/mutate" {
-            Ok(RequestType::EntitiesMutation)
+        if path == "/store/query" {
+            Ok(RequestType::StoreQuery)
+        } else if path == "/store/mutate" {
+            Ok(RequestType::StoreMutation)
         } else {
             Err(RequestError::InvalidRequestType)
         }
@@ -432,8 +432,8 @@ impl RequestType {
 
     fn service_type(&self) -> ServiceType {
         match self {
-            RequestType::EntitiesQuery => ServiceType::Store,
-            RequestType::EntitiesMutation => ServiceType::Store,
+            RequestType::StoreQuery => ServiceType::Store,
+            RequestType::StoreMutation => ServiceType::Store,
         }
     }
 }

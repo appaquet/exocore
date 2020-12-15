@@ -1,31 +1,48 @@
 use super::Error;
 use crate::{
-    protos::apps::manifest_schema,
-    protos::generated::exocore_core::{
-        node_cell_config, CellConfig, CellNodeConfig, LocalNodeConfig, NodeCellConfig,
+    protos::{
+        apps::manifest_schema,
+        core::{cell_application_config, NodeConfig},
+        generated::{
+            exocore_apps::Manifest,
+            exocore_core::{
+                node_cell_config, CellConfig, CellNodeConfig, LocalNodeConfig, NodeCellConfig,
+            },
+        },
     },
-    protos::{core::cell_application_config, core::NodeConfig, generated::exocore_apps::Manifest},
-    utils::path::child_to_abs_path_string,
-    utils::path::child_to_relative_path_string,
+    utils::path::{child_to_abs_path_string, child_to_relative_path_string},
 };
-use std::fs::File;
-use std::io::prelude::*;
-use std::path::Path;
-use std::path::PathBuf;
+use std::{
+    fs::File,
+    io::prelude::*,
+    path::{Path, PathBuf},
+};
 
 /// Extension for `LocalNodeConfig` proto.
 pub trait LocalNodeConfigExt {
     fn config(&self) -> &LocalNodeConfig;
+
     fn from_yaml_reader<R: Read>(reader: R) -> Result<LocalNodeConfig, Error>;
+
     fn from_yaml_file<P: AsRef<Path>>(path: P) -> Result<LocalNodeConfig, Error>;
+
     fn from_json_reader<R: Read>(bytes: R) -> Result<LocalNodeConfig, Error>;
+
     fn to_yaml(&self) -> Result<String, Error>;
+
     fn to_yaml_writer<W: Write>(&self, write: W) -> Result<(), Error>;
+
     fn to_yaml_file<P: AsRef<Path>>(&self, path: P) -> Result<(), Error>;
+
     fn to_json(&self) -> Result<String, Error>;
+
     fn inlined(&self) -> Result<LocalNodeConfig, Error>;
+
     fn make_absolute_paths<P: AsRef<Path>>(&mut self, directory: P);
+
     fn make_relative_paths<P: AsRef<Path>>(&mut self, directory: P);
+
+    fn add_cell(&mut self, cell: NodeCellConfig);
 }
 
 impl LocalNodeConfigExt for LocalNodeConfig {
@@ -148,11 +165,41 @@ impl LocalNodeConfigExt for LocalNodeConfig {
                     cell.make_relative_paths(directory.as_ref());
                 }
                 Some(node_cell_config::Location::Path(path)) => {
-                    *path = child_to_relative_path_string(&self.path, path.clone());
+                    *path = child_to_relative_path_string(directory.as_ref(), path.clone());
                 }
                 _ => {}
             }
         }
+    }
+
+    fn add_cell(&mut self, cell: NodeCellConfig) {
+        let mut current_position: Option<usize> = None;
+
+        use node_cell_config::Location;
+        for (idx, other_cell) in self.cells.iter().enumerate() {
+            match (other_cell.location.as_ref(), &cell.location.as_ref()) {
+                (Some(Location::Path(other_path)), Some(Location::Path(path))) => {
+                    let abs_path = child_to_abs_path_string(&self.path, path);
+                    if other_path == path || other_path == &abs_path {
+                        current_position = Some(idx);
+                        break;
+                    }
+                }
+                (Some(Location::Inline(other_cell)), Some(Location::Inline(cell))) => {
+                    if other_cell.id == cell.id {
+                        current_position = Some(idx);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if let Some(current_position) = current_position {
+            self.cells.remove(current_position);
+        }
+
+        self.cells.push(cell);
     }
 }
 
@@ -197,6 +244,8 @@ pub trait CellConfigExt {
     fn make_absolute_paths<P: AsRef<Path>>(&mut self, directory: P);
 
     fn make_relative_paths<P: AsRef<Path>>(&mut self, directory: P);
+
+    fn add_node(&mut self, node: CellNodeConfig);
 }
 
 impl CellConfigExt for CellConfig {
@@ -336,11 +385,31 @@ impl CellConfigExt for CellConfig {
                     app_manifest.make_relative_paths(directory.as_ref());
                 }
                 Some(cell_application_config::Location::Path(path)) => {
-                    *path = child_to_relative_path_string(&self.path, path.clone());
+                    *path = child_to_relative_path_string(directory.as_ref(), path.clone());
                 }
                 _ => {}
             }
         }
+    }
+
+    fn add_node(&mut self, node: CellNodeConfig) {
+        let new_node_id = node.node.as_ref().map(|n| n.id.as_str());
+
+        // check if node exists first
+        for cell_node in &mut self.nodes {
+            let is_node = {
+                let node_id = cell_node.node.as_ref().map(|n| n.id.as_str());
+                new_node_id == node_id
+            };
+
+            if is_node {
+                *cell_node = node;
+                return;
+            }
+        }
+
+        // otherwise it doesn't exist, we just add it
+        self.nodes.push(node);
     }
 }
 
@@ -369,9 +438,13 @@ impl NodeConfigExt for NodeConfig {
 /// Extension for `Manifest` proto.
 pub trait ManifestExt {
     fn manifest(&self) -> &Manifest;
+
     fn inlined(&self) -> Result<Manifest, Error>;
+
     fn read_yaml_file<P: AsRef<Path>>(path: P) -> Result<Manifest, Error>;
+
     fn make_absolute_paths<P: AsRef<Path>>(&mut self, directory: P);
+
     fn make_relative_paths<P: AsRef<Path>>(&mut self, directory: P);
 }
 
@@ -477,18 +550,21 @@ impl ManifestExt for Manifest {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{Cell, CellNodeRole, CellNodes};
-    use super::*;
-    use crate::protos::{
-        apps::manifest_schema,
-        core::NodeAddresses,
-        core::{cell_application_config, CellApplicationConfig},
-        generated::exocore_core::{
-            cell_node_config, node_cell_config, CellConfig, CellNodeConfig, LocalNodeConfig,
-            NodeCellConfig, NodeConfig,
-        },
+    use super::{
+        super::{Cell, CellNodeRole, CellNodes},
+        *,
     };
-    use crate::tests_utils::root_test_fixtures_path;
+    use crate::{
+        protos::{
+            apps::manifest_schema,
+            core::{cell_application_config, CellApplicationConfig, NodeAddresses},
+            generated::exocore_core::{
+                cell_node_config, node_cell_config, CellConfig, CellNodeConfig, LocalNodeConfig,
+                NodeCellConfig, NodeConfig,
+            },
+        },
+        tests_utils::root_test_fixtures_path,
+    };
 
     #[test]
     fn parse_node_config_yaml_ser_deser() -> anyhow::Result<()> {
@@ -574,7 +650,7 @@ mod tests {
         let config_path = root_test_fixtures_path("examples/node.yaml");
         let config = LocalNodeConfig::from_yaml_file(config_path)?;
 
-        let (cells, node) = Cell::new_from_local_node_config(config)?;
+        let (cells, node) = Cell::from_local_node_config(config)?;
         assert_eq!(2, cells.len());
         assert_eq!(2, node.p2p_addresses().len());
 
@@ -583,7 +659,7 @@ mod tests {
             let cell = cells[1].clone().unwrap_full();
 
             {
-                let nodes = cell.nodes();
+                let nodes = cell.cell().nodes();
                 assert_eq!(2, nodes.count());
 
                 let nodes_iter = nodes.iter();
@@ -593,6 +669,7 @@ mod tests {
 
             {
                 let schemas = cell
+                    .cell()
                     .schemas()
                     .get_message_descriptor("exocore.example_app.Task");
                 assert!(schemas.is_ok());
@@ -604,12 +681,13 @@ mod tests {
             let cell = cells[1].clone().unwrap_full();
 
             {
-                let nodes = cell.nodes();
+                let nodes = cell.cell().nodes();
                 assert_eq!(2, nodes.count());
             }
 
             {
                 let schemas = cell
+                    .cell()
                     .schemas()
                     .get_message_descriptor("exocore.example_app.Task");
                 assert!(schemas.is_ok());
@@ -683,7 +761,61 @@ mod tests {
         }
 
         // should be able to load cell inlined
-        assert!(Cell::new_from_local_node_config(inlined_config).is_ok());
+        assert!(Cell::from_local_node_config(inlined_config).is_ok());
+
+        Ok(())
+    }
+
+    #[test]
+    fn node_config_add_cell() -> anyhow::Result<()> {
+        {
+            // cell by path
+            let mut config = LocalNodeConfig::default();
+
+            config.add_cell(NodeCellConfig {
+                location: Some(node_cell_config::Location::Path("some_path".to_string())),
+            });
+            assert_eq!(1, config.cells.len());
+
+            config.add_cell(NodeCellConfig {
+                location: Some(node_cell_config::Location::Path("some_path".to_string())),
+            });
+            assert_eq!(1, config.cells.len());
+
+            config.add_cell(NodeCellConfig {
+                location: Some(node_cell_config::Location::Path("other_path".to_string())),
+            });
+            assert_eq!(2, config.cells.len());
+        }
+
+        {
+            // cell inlined
+            let mut config = LocalNodeConfig::default();
+
+            config.add_cell(NodeCellConfig {
+                location: Some(node_cell_config::Location::Inline(CellConfig {
+                    id: "id1".to_string(),
+                    ..Default::default()
+                })),
+            });
+            assert_eq!(1, config.cells.len());
+
+            config.add_cell(NodeCellConfig {
+                location: Some(node_cell_config::Location::Inline(CellConfig {
+                    id: "id1".to_string(),
+                    ..Default::default()
+                })),
+            });
+            assert_eq!(1, config.cells.len());
+
+            config.add_cell(NodeCellConfig {
+                location: Some(node_cell_config::Location::Inline(CellConfig {
+                    id: "id2".to_string(),
+                    ..Default::default()
+                })),
+            });
+            assert_eq!(2, config.cells.len());
+        }
 
         Ok(())
     }
@@ -727,7 +859,7 @@ cells:
 
         let config = LocalNodeConfig::from_yaml_reader(yaml.as_bytes())?;
 
-        let (cells, node) = Cell::new_from_local_node_config(config)?;
+        let (cells, node) = Cell::from_local_node_config(config)?;
         assert_eq!(1, cells.len());
         assert_eq!(2, node.p2p_addresses().len());
         assert_eq!(1, node.http_addresses().len());
@@ -796,6 +928,49 @@ cells:
         config_read.path = "".to_string();
 
         assert_eq!(config_init, config_read);
+
+        Ok(())
+    }
+
+    #[test]
+    fn cell_config_add_node() -> anyhow::Result<()> {
+        let mut config = CellConfig {
+            ..Default::default()
+        };
+
+        let node1 = CellNodeConfig {
+            node: Some(NodeConfig {
+                id: "id1".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        config.add_node(node1);
+        assert_eq!(config.nodes.len(), 1);
+
+        let node1_changed = CellNodeConfig {
+            node: Some(NodeConfig {
+                id: "id1".to_string(),
+                name: "new name".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        config.add_node(node1_changed);
+        assert_eq!(config.nodes.len(), 1);
+        assert_eq!("new name", config.nodes[0].node.as_ref().unwrap().name);
+
+        let node2 = CellNodeConfig {
+            node: Some(NodeConfig {
+                id: "id2".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        config.add_node(node2);
+        assert_eq!(config.nodes.len(), 2);
 
         Ok(())
     }

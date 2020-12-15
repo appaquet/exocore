@@ -1,4 +1,4 @@
-use crate::{utils::edit_file, Options};
+use crate::{utils::edit_file, Context};
 use clap::Clap;
 use exocore_core::{
     cell::{LocalNodeConfigExt, NodeConfigExt},
@@ -29,11 +29,13 @@ pub struct PrintOptions {
     #[clap(long, default_value = "yaml")]
     pub format: String,
 
-    /// Print configuration in `NodeConfig` format to be used to configure cell nodes.
+    /// Print configuration in `NodeConfig` format to be used to configure cell
+    /// nodes.
     #[clap(long)]
     pub cell: bool,
 
-    /// Inline configuration instead of pointing to external objects (cells / apps).
+    /// Inline configuration instead of pointing to external objects (cells /
+    /// apps).
     #[clap(long)]
     pub inline: bool,
 
@@ -42,16 +44,16 @@ pub struct PrintOptions {
     pub exclude_app_schemas: bool,
 }
 
-pub fn handle_cmd(exo_opts: &Options, config_opts: &ConfigOptions) -> anyhow::Result<()> {
+pub fn handle_cmd(ctx: &Context, config_opts: &ConfigOptions) -> anyhow::Result<()> {
     match &config_opts.command {
-        ConfigCommand::Edit => cmd_edit(&exo_opts, config_opts),
-        ConfigCommand::Print(print_opts) => cmd_print(&exo_opts, config_opts, print_opts),
-        ConfigCommand::Validate => cmd_validate(&exo_opts, config_opts),
+        ConfigCommand::Edit => cmd_edit(ctx, config_opts),
+        ConfigCommand::Print(print_opts) => cmd_print(ctx, config_opts, print_opts),
+        ConfigCommand::Validate => cmd_validate(ctx, config_opts),
     }
 }
 
-fn cmd_edit(exo_opts: &Options, _conf_opts: &ConfigOptions) -> anyhow::Result<()> {
-    let config_path = exo_opts.conf_path();
+fn cmd_edit(ctx: &Context, _conf_opts: &ConfigOptions) -> anyhow::Result<()> {
+    let config_path = ctx.options.conf_path();
 
     edit_file(config_path, |temp_path| {
         LocalNodeConfig::from_yaml_file(temp_path)?;
@@ -61,22 +63,22 @@ fn cmd_edit(exo_opts: &Options, _conf_opts: &ConfigOptions) -> anyhow::Result<()
     Ok(())
 }
 
-fn cmd_validate(exo_opts: &Options, _conf_opts: &ConfigOptions) -> anyhow::Result<()> {
+fn cmd_validate(ctx: &Context, _conf_opts: &ConfigOptions) -> anyhow::Result<()> {
     // parse config
-    let config = exo_opts.read_configuration();
+    let config = ctx.options.read_configuration();
 
     // create instance to validate the config
-    let (_cells, _node) = exocore_core::cell::Cell::new_from_local_node_config(config)?;
+    let (_cells, _node) = exocore_core::cell::Cell::from_local_node_config(config)?;
 
     Ok(())
 }
 
 fn cmd_print(
-    exo_opts: &Options,
+    ctx: &Context,
     _conf_opts: &ConfigOptions,
     print_opts: &PrintOptions,
 ) -> anyhow::Result<()> {
-    let node_config = exo_opts.read_configuration();
+    let node_config = ctx.options.read_configuration();
 
     if !print_opts.cell {
         cmd_print_node_config(node_config, print_opts);

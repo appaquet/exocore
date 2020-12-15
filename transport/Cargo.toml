@@ -22,7 +22,7 @@ exocore-core = { path = "../core" }
 log = "0.4"
 thiserror = "1.0"
 anyhow = "1.0"
-futures = { version = "0.3", features = ["compat"] }
+futures = "0.3"
 pin-project = "1.0"
 byteorder = "1.3"
 libp2p = { version = "0.30", optional = true, default-features = false, features = [ "dns", "mplex", "noise", "websocket", "yamux" ] }
@@ -34,4 +34,8 @@ wasm-bindgen = "0.2"
 
 [dev-dependencies]
 exocore-core = { path = "../core", features = ["tests-utils"] }
+<<<<<<< HEAD
 tokio = "0.3"
+=======
+tokio = { version = "0.2", default-features = false, features = ["macros"] } 
+>>>>>>> origin/master
