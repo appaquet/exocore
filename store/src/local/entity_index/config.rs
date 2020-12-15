@@ -45,15 +45,9 @@ impl From<ProtoEntityIndexConfig> for EntityIndexConfig {
         EntityIndexConfig {
             chain_index_min_depth: proto.chain_index_min_depth,
             chain_index_depth_leeway: proto.chain_index_depth_leeway,
-            pending_index_config: proto
-                .pending_index_config
-                .map(|m| m.into())
-                .unwrap_or_default(),
-            chain_index_config: proto
-                .chain_index_config
-                .map(|m| m.into())
-                .unwrap_or_default(),
-            chain_index_in_memory: proto.chain_index_in_memory,
+            pending_index_config: proto.pending_index.map(|m| m.into()).unwrap_or_default(),
+            chain_index_config: proto.chain_index.map(|m| m.into()).unwrap_or_default(),
+            ..EntityIndexConfig::default()
         }
     }
 }

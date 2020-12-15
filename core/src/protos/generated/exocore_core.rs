@@ -78,13 +78,9 @@ pub struct EntityIndexConfig {
     #[prost(uint64, tag = "2")]
     pub chain_index_depth_leeway: u64,
     #[prost(message, optional, tag = "3")]
-    #[serde(default)]
-    pub pending_index_config: ::std::option::Option<MutationIndexConfig>,
+    pub pending_index: ::std::option::Option<MutationIndexConfig>,
     #[prost(message, optional, tag = "4")]
-    #[serde(default)]
-    pub chain_index_config: ::std::option::Option<MutationIndexConfig>,
-    #[prost(bool, tag = "5")]
-    pub chain_index_in_memory: bool,
+    pub chain_index: ::std::option::Option<MutationIndexConfig>,
 }
 //// Trait index configuration
 #[derive(Clone, PartialEq, ::prost::Message, Serialize, Deserialize)]

@@ -22,7 +22,7 @@ use futures::{Future, FutureExt};
 
 pub async fn cmd_daemon(ctx: &Context) -> anyhow::Result<()> {
     let config = ctx.options.read_configuration();
-    let (either_cells, local_node) = Cell::from_local_node_config(&config)?;
+    let (either_cells, local_node) = Cell::from_local_node_config(config.clone())?;
 
     let clock = Clock::new();
 
@@ -90,11 +90,12 @@ pub async fn cmd_daemon(ctx: &Context) -> anyhow::Result<()> {
                 };
 
                 let entities_index_config: EntityIndexConfig = config
-                    .clone()
                     .store
-                    .and_then(|s| s.index)
-                    .unwrap_or_default()
-                    .into();
+                    .as_ref()
+                    .and_then(|s| s.index.as_ref())
+                    .map(|e| EntityIndexConfig::from(e.clone()))
+                    .unwrap_or_default();
+
                 let entities_index = EntityIndex::open_or_create(
                     full_cell.clone(),
                     &entities_index_config,

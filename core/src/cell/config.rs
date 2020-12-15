@@ -628,21 +628,20 @@ mod tests {
                 index: Some(EntityIndexConfig {
                     chain_index_min_depth: 3,
                     chain_index_depth_leeway: 10,
-                    pending_index_config: Some(MutationIndexConfig {
+                    pending_index: Some(MutationIndexConfig {
                         indexer_num_threads: 2,
                         indexer_heap_size_bytes: 30_000_000,
                         iterator_page_size: 50,
                         iterator_max_pages: 20,
                         entity_mutations_cache_size: 2000,
                     }),
-                    chain_index_config: Some(MutationIndexConfig {
+                    chain_index: Some(MutationIndexConfig {
                         indexer_num_threads: 2,
                         indexer_heap_size_bytes: 30_000_000,
                         iterator_page_size: 50,
                         iterator_max_pages: 20,
                         entity_mutations_cache_size: 2000,
                     }),
-                    chain_index_in_memory: false,
                 }),
             }),
         };
@@ -676,7 +675,7 @@ mod tests {
         let config_path = root_test_fixtures_path("examples/node.yaml");
         let config = LocalNodeConfig::from_yaml_file(config_path)?;
 
-        let (cells, node) = Cell::from_local_node_config(&config)?;
+        let (cells, node) = Cell::from_local_node_config(config)?;
         assert_eq!(2, cells.len());
         assert_eq!(2, node.p2p_addresses().len());
 
@@ -787,7 +786,7 @@ mod tests {
         }
 
         // should be able to load cell inlined
-        assert!(Cell::from_local_node_config(&inlined_config).is_ok());
+        assert!(Cell::from_local_node_config(inlined_config).is_ok());
 
         Ok(())
     }
@@ -886,8 +885,7 @@ store:
   index:
     chain_index_min_depth: 2
     chain_index_depth_leeway: 6
-    chain_index_in_memory: true
-    pending_index_config:
+    pending_index:
       indexer_num_threads: 3
       indexer_heap_size_bytes: 50000000
       iterator_page_size: 100
@@ -900,11 +898,10 @@ store:
             let index_entity = config.clone().store.unwrap().index.unwrap();
             assert_eq!(2, index_entity.chain_index_min_depth);
             assert_eq!(6, index_entity.chain_index_depth_leeway);
-            assert_eq!(true, index_entity.chain_index_in_memory);
 
             let default_conf = MutationIndexConfig::default();
 
-            let pending_mutation = index_entity.pending_index_config.unwrap();
+            let pending_mutation = index_entity.pending_index.unwrap();
             assert_eq!(3, pending_mutation.indexer_num_threads);
             assert_eq!(50000000, pending_mutation.indexer_heap_size_bytes);
             assert_eq!(100, pending_mutation.iterator_page_size);
@@ -918,10 +915,10 @@ store:
                 pending_mutation.entity_mutations_cache_size
             );
 
-            assert_eq!(None, index_entity.chain_index_config);
+            assert_eq!(None, index_entity.chain_index);
         }
 
-        let (cells, node) = Cell::from_local_node_config(&config)?;
+        let (cells, node) = Cell::from_local_node_config(config)?;
         assert_eq!(1, cells.len());
         assert_eq!(2, node.p2p_addresses().len());
         assert_eq!(1, node.http_addresses().len());

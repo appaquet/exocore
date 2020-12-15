@@ -40,7 +40,7 @@ impl ExocoreClient {
         status_change_callback: Option<js_sys::Function>,
     ) -> Result<ExocoreClient, JsValue> {
         let (either_cells, local_node) =
-            Cell::from_local_node_config(&node.config).expect("Couldn't create cell");
+            Cell::from_local_node_config(node.config).expect("Couldn't create cell");
 
         let either_cell = either_cells
             .first()
