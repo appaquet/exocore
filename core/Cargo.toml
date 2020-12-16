@@ -62,7 +62,7 @@ wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio = { version = "0.2", features = ["rt-core", "blocking"], default-features = false }
+tokio = { version = "0.3", features = ["rt"], default-features = false }
 
 [build-dependencies]
 capnpc = { version = "0.13", git = "https://github.com/appaquet/capnproto-rust.git", branch = "atomic-read-limiter" }

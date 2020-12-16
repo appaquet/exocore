@@ -1,11 +1,11 @@
-use std::convert::TryInto;
-use std::time::Duration;
+use std::{convert::TryInto, time::Duration};
 
 use crate::payload::{
     CreatePayloadRequest, CreatePayloadResponse, Payload, Pin, ReplyPayloadRequest, ReplyToken,
 };
 pub use reqwest::Url;
 use reqwest::{IntoUrl, StatusCode};
+use tokio_compat_02::FutureExt;
 use wasm_timer::Instant;
 
 /// Discovery service client.
@@ -45,6 +45,7 @@ impl Client {
             .post(self.base_url.clone())
             .json(&create_request)
             .send()
+            .compat()
             .await?;
 
         if http_resp.status() != StatusCode::OK {
@@ -64,7 +65,12 @@ impl Client {
             .base_url
             .join(&format!("/{}", pin_u32))
             .expect("Couldn't create URL");
-        let http_resp = reqwest::Client::builder().build()?.get(url).send().await?;
+        let http_resp = reqwest::Client::builder()
+            .build()?
+            .get(url)
+            .send()
+            .compat()
+            .await?;
 
         match http_resp.status() {
             reqwest::StatusCode::OK => {}
@@ -134,6 +140,7 @@ impl Client {
             .put(url)
             .json(&reply_request)
             .send()
+            .compat()
             .await?;
 
         match http_resp.status() {
