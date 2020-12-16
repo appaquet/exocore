@@ -30,7 +30,7 @@ impl TestEntityIndex {
         let cluster = TestChainCluster::new_single_and_start().await?;
 
         let chain_handle = cluster.get_handle(0).clone();
-        let index = EntityIndex::open_or_create(cluster.cells[0].clone(), &config, chain_handle)?;
+        let index = EntityIndex::open_or_create(cluster.cells[0].clone(), config, chain_handle)?;
 
         Ok(TestEntityIndex {
             cluster,
@@ -53,7 +53,7 @@ impl TestEntityIndex {
 
         let index = EntityIndex::<DirectoryChainStore, MemoryPendingStore>::open_or_create(
             cluster.cells[0].clone(),
-            &config.clone(),
+            config,
             cluster.get_handle(0).clone(),
         )?;
 

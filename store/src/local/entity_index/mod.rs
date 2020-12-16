@@ -83,11 +83,11 @@ where
     /// Opens or create an entities index
     pub fn open_or_create(
         cell: FullCell,
-        config: &EntityIndexConfig,
+        config: EntityIndexConfig,
         chain_handle: EngineHandle<CS, PS>,
     ) -> Result<EntityIndex<CS, PS>, Error> {
         let pending_index = MutationIndex::create_in_memory(
-            &config.pending_index_config.clone(),
+            config.pending_index_config,
             cell.cell().schemas().clone(),
         )?;
 
@@ -104,7 +104,7 @@ where
         let chain_index =
             Self::create_chain_index(config, cell.cell().schemas(), &chain_index_dir)?;
         let mut index = EntityIndex {
-            config: *config,
+            config,
             pending_index,
             chain_index_dir,
             chain_index,
@@ -444,18 +444,18 @@ where
 
     /// Create the chain index based on configuration.
     fn create_chain_index(
-        config: &EntityIndexConfig,
+        config: EntityIndexConfig,
         schemas: &Arc<Registry>,
         chain_index_dir: &PathBuf,
     ) -> Result<MutationIndex, Error> {
         if !config.chain_index_in_memory {
             MutationIndex::open_or_create_mmap(
-                &config.chain_index_config.clone(),
+                config.chain_index_config,
                 schemas.clone(),
                 &chain_index_dir,
             )
         } else {
-            MutationIndex::create_in_memory(&config.chain_index_config.clone(), schemas.clone())
+            MutationIndex::create_in_memory(config.chain_index_config, schemas.clone())
         }
     }
 
@@ -464,7 +464,7 @@ where
     /// are not considered definitive yet.
     fn reindex_pending(&mut self) -> Result<(), Error> {
         self.pending_index = MutationIndex::create_in_memory(
-            &self.config.pending_index_config.clone(),
+            self.config.pending_index_config,
             self.full_cell.cell().schemas().clone(),
         )?;
 
@@ -525,7 +525,7 @@ where
 
         // create temporary in-memory to wipe directory
         self.chain_index = MutationIndex::create_in_memory(
-            &self.config.pending_index_config,
+            self.config.pending_index_config,
             self.full_cell.cell().schemas().clone(),
         )?;
 
@@ -535,7 +535,7 @@ where
 
         // re-create index, and force re-index of chain
         self.chain_index = Self::create_chain_index(
-            &self.config,
+            self.config,
             self.full_cell.cell().schemas(),
             &self.chain_index_dir,
         )?;

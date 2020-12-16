@@ -98,7 +98,7 @@ pub async fn cmd_daemon(ctx: &Context) -> anyhow::Result<()> {
 
                 let entities_index = EntityIndex::open_or_create(
                     full_cell.clone(),
-                    &entities_index_config,
+                    entities_index_config,
                     store_engine_handle.clone(),
                 )?;
 

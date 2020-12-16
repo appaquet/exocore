@@ -71,7 +71,7 @@ enum Storage {
 impl MutationIndex {
     /// Creates or opens a disk persisted index.
     pub fn open_or_create_mmap(
-        config: &MutationIndexConfig,
+        config: MutationIndexConfig,
         schemas: Arc<Registry>,
         directory: &Path,
     ) -> Result<MutationIndex, Error> {
@@ -94,7 +94,7 @@ impl MutationIndex {
         };
 
         Ok(MutationIndex {
-            config: *config,
+            config,
             index,
             index_reader,
             index_writer: Mutex::new(index_writer),
@@ -107,7 +107,7 @@ impl MutationIndex {
 
     /// Creates or opens a in-memory index.
     pub fn create_in_memory(
-        config: &MutationIndexConfig,
+        config: MutationIndexConfig,
         schemas: Arc<Registry>,
     ) -> Result<MutationIndex, Error> {
         let (tantivy_schema, fields) = schema::build_tantivy_schema(config, schemas.as_ref());
@@ -127,7 +127,7 @@ impl MutationIndex {
         };
 
         Ok(MutationIndex {
-            config: *config,
+            config,
             index,
             index_reader,
             index_writer: Mutex::new(index_writer),
