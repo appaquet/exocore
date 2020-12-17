@@ -174,6 +174,7 @@ pub enum Error {
     InvalidPin,
 }
 
+// See: https://github.com/LucioFranco/tokio-compat-02/blob/main/examples/hyper_server.rs
 #[cfg(not(target_arch = "wasm32"))]
 fn compat<F, O>(fut: F) -> impl Future<Output = O>
 where
