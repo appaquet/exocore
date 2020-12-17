@@ -3,9 +3,9 @@ use std::{convert::TryInto, time::Duration};
 use crate::payload::{
     CreatePayloadRequest, CreatePayloadResponse, Payload, Pin, ReplyPayloadRequest, ReplyToken,
 };
+use futures::Future;
 pub use reqwest::Url;
 use reqwest::{IntoUrl, StatusCode};
-use tokio_compat_02::FutureExt;
 use wasm_timer::Instant;
 
 /// Discovery service client.
@@ -40,13 +40,14 @@ impl Client {
             expect_reply,
         };
 
-        let http_resp = reqwest::Client::builder()
-            .build()?
-            .post(self.base_url.clone())
-            .json(&create_request)
-            .send()
-            .compat()
-            .await?;
+        let http_resp = compat(
+            reqwest::Client::builder()
+                .build()?
+                .post(self.base_url.clone())
+                .json(&create_request)
+                .send(),
+        )
+        .await?;
 
         if http_resp.status() != StatusCode::OK {
             return Err(Error::ServerError(http_resp.status()));
@@ -65,12 +66,7 @@ impl Client {
             .base_url
             .join(&format!("/{}", pin_u32))
             .expect("Couldn't create URL");
-        let http_resp = reqwest::Client::builder()
-            .build()?
-            .get(url)
-            .send()
-            .compat()
-            .await?;
+        let http_resp = compat(reqwest::Client::builder().build()?.get(url).send()).await?;
 
         match http_resp.status() {
             reqwest::StatusCode::OK => {}
@@ -135,13 +131,14 @@ impl Client {
             reply_token,
         };
 
-        let http_resp = reqwest::Client::builder()
-            .build()?
-            .put(url)
-            .json(&reply_request)
-            .send()
-            .compat()
-            .await?;
+        let http_resp = compat(
+            reqwest::Client::builder()
+                .build()?
+                .put(url)
+                .json(&reply_request)
+                .send(),
+        )
+        .await?;
 
         match http_resp.status() {
             reqwest::StatusCode::OK => {}
@@ -175,4 +172,21 @@ pub enum Error {
 
     #[error("Received an invalid pin")]
     InvalidPin,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn compat<F, O>(fut: F) -> impl Future<Output = O>
+where
+    F: Future<Output = O>,
+{
+    use tokio_compat_02::FutureExt;
+    fut.compat()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn compat<F, O>(fut: F) -> impl Future<Output = O>
+where
+    F: Future<Output = O>,
+{
+    fut
 }
