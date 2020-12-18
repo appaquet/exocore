@@ -130,7 +130,7 @@ impl Libp2pTransport {
             libp2p::swarm::SwarmBuilder::new(
                 transport,
                 behaviour,
-                self.local_node.peer_id().clone(),
+                *self.local_node.peer_id(),
             )
             .executor(Box::new(CoreExecutor))
             .build()
@@ -185,7 +185,7 @@ impl Libp2pTransport {
                         if msg.to.len() == 1 {
                             let to_node = msg.to.first().unwrap();
                             swarm.send_message(
-                                to_node.peer_id().clone(),
+                                *to_node.peer_id(),
                                 msg.expiration,
                                 connection,
                                 frame_data,
@@ -193,7 +193,7 @@ impl Libp2pTransport {
                         } else {
                             for to_node in msg.to {
                                 swarm.send_message(
-                                    to_node.peer_id().clone(),
+                                    *to_node.peer_id(),
                                     msg.expiration,
                                     connection,
                                     frame_data.clone(),
@@ -310,7 +310,7 @@ impl Libp2pTransport {
         };
 
         for handle in inner.service_handles.values_mut() {
-            if let Ok(node) = Self::get_node_by_peer(&handle.cell, peer_id.clone()) {
+            if let Ok(node) = Self::get_node_by_peer(&handle.cell, peer_id) {
                 handle
                     .in_sender
                     .try_send(InEvent::NodeStatus(node.id().clone(), status))
