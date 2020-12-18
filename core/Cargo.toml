@@ -40,7 +40,6 @@ libp2p = { version = "0.30", features = ["noise"], default-features = false }
 chrono = "0.4"
 wasm-timer = "0.2"
 futures = { version = "0.3", features = ["async-await"] }
-tokio = { version = "0.3", features = ["rt"], default-features = false }
 protobuf = "2"
 prost = "0.6"
 prost-types = "0.6"

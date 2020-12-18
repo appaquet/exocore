@@ -37,4 +37,4 @@ lru = { version = "0.6", optional = true }
 tempfile = "3.1"
 exocore-chain = { path = "../chain", features = ["tests-utils"] }
 exocore-core = { path = "../core", features = ["tests-utils"] }
-tokio = "0.3"
+tokio = { version = "0.3", features = ["macros"], default-features = false }
