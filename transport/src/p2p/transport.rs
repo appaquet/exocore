@@ -108,7 +108,7 @@ impl Libp2pTransport {
                 ))
                 .map(|(peer, muxer), _| (peer, libp2p::core::muxing::StreamMuxerBox::new(muxer)))
                 .boxed();
-            Swarm::new(transport, behaviour, self.local_node.peer_id())
+            Swarm::new(transport, behaviour, *self.local_node.peer_id())
         };
 
         #[cfg(feature = "p2p-full")]
