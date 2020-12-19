@@ -108,7 +108,7 @@ impl Libp2pTransport {
                 ))
                 .map(|(peer, muxer), _| (peer, libp2p::core::muxing::StreamMuxerBox::new(muxer)))
                 .boxed();
-            Swarm::new(transport, behaviour, self.local_node.peer_id().clone())
+            Swarm::new(transport, behaviour, self.local_node.peer_id())
         };
 
         #[cfg(feature = "p2p-full")]
@@ -127,13 +127,9 @@ impl Libp2pTransport {
                 }
             }
 
-            libp2p::swarm::SwarmBuilder::new(
-                transport,
-                behaviour,
-                *self.local_node.peer_id(),
-            )
-            .executor(Box::new(CoreExecutor))
-            .build()
+            libp2p::swarm::SwarmBuilder::new(transport, behaviour, *self.local_node.peer_id())
+                .executor(Box::new(CoreExecutor))
+                .build()
         };
 
         let listen_addresses = self.config.listen_addresses(&self.local_node)?;
