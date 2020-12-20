@@ -29,10 +29,11 @@ impl Discovery {
 
     pub fn join_cell(
         &self,
-        local_node: LocalNode,
+        local_node: &LocalNode,
         pin_callback: js_sys::Function,
     ) -> js_sys::Promise {
         let client = self.client.clone();
+        let local_node = local_node.clone();
 
         let fut = async move {
             let local_node_yml = local_node.to_yaml()?;
