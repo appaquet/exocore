@@ -7,12 +7,17 @@ use exocore_core::{
     protos::core::{node_cell_config, CellConfig, NodeCellConfig},
 };
 use exocore_discovery::{Client, DEFAULT_DISCO_SERVER};
+use futures::{channel::oneshot, future::Shared, FutureExt};
 use std::{rc::Rc, time::Duration};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 pub struct Discovery {
     client: Rc<Client>,
+
+    // used to cancel ongoing join when dropped
+    _drop_sender: oneshot::Sender<()>,
+    drop_receiver: Shared<oneshot::Receiver<()>>,
 }
 
 #[wasm_bindgen]
@@ -22,8 +27,12 @@ impl Discovery {
         let service_url = service_url.as_deref().unwrap_or(DEFAULT_DISCO_SERVER);
         let client = Client::new(service_url).expect("couldn't create discovery client");
 
+        let (drop_sender, drop_receiver) = oneshot::channel();
+
         Discovery {
             client: Rc::new(client),
+            _drop_sender: drop_sender,
+            drop_receiver: drop_receiver.shared(),
         }
     }
 
@@ -35,7 +44,7 @@ impl Discovery {
         let client = self.client.clone();
         let local_node = local_node.clone();
 
-        let fut = async move {
+        let join_fut = async move {
             let local_node_yml = local_node.to_yaml()?;
             let create_resp = client
                 .create(local_node_yml.as_bytes(), true)
@@ -71,6 +80,19 @@ impl Discovery {
             Ok(local_node.into())
         };
 
-        wasm_bindgen_futures::future_to_promise(fut)
+        // wait for discovery to complete OR the struct being dropped
+        let drop_receiver = self.drop_receiver.clone();
+        let select_fut = async move {
+            futures::select! {
+                join_res = join_fut.fuse() => {
+                    join_res
+                },
+                _ = drop_receiver.fuse() => {
+                    Err("discovery dropped".into())
+                },
+            }
+        };
+
+        wasm_bindgen_futures::future_to_promise(select_fut)
     }
 }
