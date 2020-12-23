@@ -43,7 +43,7 @@ futures = { version = "0.3", features = ["async-await"] }
 protobuf = "2"
 prost = "0.6"
 prost-types = "0.6"
-bytes = "0.6"
+bytes = "1.0"
 uuid = { version = "0.8", features = ["v4", "wasm-bindgen"] }
 petname = "1.0"
 rand = "0.8"
