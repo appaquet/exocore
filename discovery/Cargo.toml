@@ -28,7 +28,7 @@ thiserror = "1.0"
 wasm-timer = "0.2"
 
 # For server
-hyper = { version = "0.13", optional = true }
+hyper = { version = "0.14", optional = true }
 tokio = { version = "0.3", default-features = false, features = ["macros", "time"], optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
