@@ -42,7 +42,7 @@ wasm-timer = "0.2"
 futures = { version = "0.3", features = ["async-await"] }
 protobuf = "2"
 prost = "0.6"
-prost-types = "0.6"
+prost-types = "0.7"
 bytes = "0.6"
 uuid = { version = "0.8", features = ["v4", "wasm-bindgen"] }
 petname = "1.0"
