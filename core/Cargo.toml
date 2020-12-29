@@ -15,6 +15,7 @@ runtime = [
     "tokio/io-util",
     "tokio/io-std",
     "tokio/net",
+    "tokio/stream",
     "tokio/rt",
     "tokio/rt-multi-thread",
     "tokio/sync",
