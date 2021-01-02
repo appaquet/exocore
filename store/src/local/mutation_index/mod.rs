@@ -1,30 +1,35 @@
-use crate::error::Error;
-use crate::ordering::OrderingValueWrapper;
+use crate::{error::Error, ordering::OrderingValueWrapper};
 
 use exocore_chain::block::BlockOffset;
-use exocore_core::protos::generated::exocore_store::{
-    entity_query::Predicate, ordering, ordering_value, trait_field_predicate, trait_query,
-    EntityQuery, IdsPredicate, MatchPredicate, OperationsPredicate, Ordering, OrderingValue,
-    Paging, ReferencePredicate, TraitFieldPredicate, TraitFieldReferencePredicate, TraitPredicate,
+use exocore_core::protos::{
+    generated::exocore_store::{
+        entity_query::Predicate, ordering, ordering_value, trait_field_predicate, trait_query,
+        EntityQuery, IdsPredicate, MatchPredicate, OperationsPredicate, Ordering, OrderingValue,
+        Paging, ReferencePredicate, TraitFieldPredicate, TraitFieldReferencePredicate,
+        TraitPredicate,
+    },
+    prost::{Any, ProstTimestampExt},
+    reflect,
+    reflect::{FieldValue, ReflectMessage},
+    registry::Registry,
+    store::AllPredicate,
 };
-use exocore_core::protos::prost::{Any, ProstTimestampExt};
-use exocore_core::protos::reflect;
-use exocore_core::protos::reflect::{FieldValue, ReflectMessage};
-use exocore_core::protos::{registry::Registry, store::AllPredicate};
 
-use std::ops::Deref;
-use std::path::Path;
-use std::result::Result;
-use std::sync::Arc;
-use std::sync::{atomic, atomic::AtomicUsize, Mutex};
-use std::{borrow::Borrow, time::Instant};
+use std::{
+    borrow::Borrow,
+    ops::Deref,
+    path::Path,
+    result::Result,
+    sync::{atomic, atomic::AtomicUsize, Arc, Mutex},
+    time::Instant,
+};
 
 use chrono::{TimeZone, Utc};
-use tantivy::collector::{Collector, TopDocs};
-use tantivy::directory::MmapDirectory;
-use tantivy::query::{AllQuery, BooleanQuery, Occur, PhraseQuery, Query, QueryParser, TermQuery};
-use tantivy::schema::{Field, IndexRecordOption};
 use tantivy::{
+    collector::{Collector, TopDocs},
+    directory::MmapDirectory,
+    query::{AllQuery, BooleanQuery, Occur, PhraseQuery, Query, QueryParser, TermQuery},
+    schema::{Field, IndexRecordOption},
     DocAddress, Document, Index as TantivyIndex, IndexReader, IndexWriter, ReloadPolicy, Searcher,
     SegmentReader, Term,
 };
@@ -202,6 +207,18 @@ impl MutationIndex {
                 }
                 IndexOperation::DeleteOperation(operation_id) => {
                     trace!("Deleting op from index {}", operation_id);
+                    index_writer
+                        .delete_term(Term::from_field_u64(self.fields.operation_id, operation_id));
+                }
+                IndexOperation::DeleteEntityOperation(entity_id, operation_id) => {
+                    trace!(
+                        "Deleting entity {} op from index {}",
+                        entity_id,
+                        operation_id
+                    );
+
+                    self.entity_cache.remove(&entity_id);
+
                     index_writer
                         .delete_term(Term::from_field_u64(self.fields.operation_id, operation_id));
                 }

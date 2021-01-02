@@ -39,13 +39,27 @@ impl Default for MutationIndexConfig {
 
 impl From<ProtoMutationIndexConfig> for MutationIndexConfig {
     fn from(proto: ProtoMutationIndexConfig) -> Self {
-        MutationIndexConfig {
+        let mut config = MutationIndexConfig {
             indexer_num_threads: Some(proto.indexer_num_threads as usize).filter(|&n| n == 0),
-            indexer_heap_size_bytes: proto.indexer_heap_size_bytes as usize,
-            iterator_page_size: proto.iterator_page_size,
-            iterator_max_pages: proto.iterator_max_pages as usize,
-            entity_mutations_cache_size: proto.entity_mutations_cache_size as usize,
             ..MutationIndexConfig::default()
+        };
+
+        if proto.indexer_heap_size_bytes > 0 {
+            config.indexer_heap_size_bytes = proto.indexer_heap_size_bytes as usize;
         }
+
+        if proto.iterator_page_size > 0 {
+            config.iterator_page_size = proto.iterator_page_size;
+        }
+
+        if proto.iterator_max_pages > 0 {
+            config.iterator_max_pages = proto.iterator_max_pages as usize;
+        }
+
+        if proto.entity_mutations_cache_size > 0 {
+            config.entity_mutations_cache_size = proto.entity_mutations_cache_size as usize;
+        }
+
+        config
     }
 }

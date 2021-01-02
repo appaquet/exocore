@@ -8,6 +8,7 @@ use std::{
     time::Instant,
 };
 
+use gc::GarbageCollector;
 use itertools::Itertools;
 use prost::Message;
 
@@ -47,6 +48,8 @@ pub use config::*;
 mod aggregator;
 pub(crate) use aggregator::*;
 
+mod gc;
+
 #[cfg(test)]
 mod test_index;
 #[cfg(test)]
@@ -73,6 +76,7 @@ where
     chain_index_last_block: Option<BlockOffset>,
     full_cell: FullCell,
     chain_handle: EngineHandle<CS, PS>,
+    gc: GarbageCollector,
 }
 
 impl<CS, PS> EntityIndex<CS, PS>
@@ -111,6 +115,7 @@ where
             chain_index_last_block: None,
             full_cell: cell,
             chain_handle,
+            gc: GarbageCollector::new(config.garbage_collector),
         };
 
         let chain_last_block = index.chain_handle.get_chain_last_block_info()?;
@@ -131,7 +136,7 @@ where
         self.handle_chain_engine_events(std::iter::once(event))
     }
 
-    /// Handle events coming from the chain layer. These events allow keeping
+    /// Handles events coming from the chain layer. These events allow keeping
     /// the index consistent with the chain layer, up to the consistency
     /// guarantees that the layer offers. Returns operations that have been
     /// involved and the number of index operations applied.
@@ -230,7 +235,7 @@ where
         Ok((affected_operations, index_operations_count))
     }
 
-    /// Execute a search query on the indices, and returning all entities
+    /// Executes a search query on the indices, and returning all entities
     /// matching the query.
     pub fn search<Q: Borrow<EntityQuery>>(&self, query: Q) -> Result<EntityResults, Error> {
         let begin_instant = Instant::now();
@@ -322,6 +327,10 @@ where
                     // we are here if the entity has been deleted (ex: explicitly or no traits remaining)
                     // or if the mutation metadata that was returned by the mutation index is not active anymore,
                     // which means that it got overridden by a subsequent operation.
+                    // 
+                    // We let the garbage collector know that this happens which may trigger a collection later.
+                    self.gc.maybe_flag_for_collection(&entity_id, &entity_mutations);
+
                     return None;
                 }
 
@@ -409,7 +418,7 @@ where
             None
         };
 
-        // if query had a previous result hash and that new results have the same hash
+        // if query specifies a `result_hash` and that new results have the same hash,
         // we don't fetch results' data
         let results_hash = hasher.finish();
         let skipped_hash = results_hash == query.result_hash;
@@ -442,7 +451,13 @@ where
         })
     }
 
-    /// Create the chain index based on configuration.
+    /// Calls the garbage collector to run a pass on entities that got flagged to be collector.
+    pub fn run_garbage_collector(&self) -> Result<(), Error> {
+        self.gc.run(self);
+        Ok(())
+    }
+
+    /// Creates the chain index based on configuration.
     fn create_chain_index(
         config: EntityIndexConfig,
         schemas: &Arc<Registry>,
@@ -546,7 +561,7 @@ where
         Ok(())
     }
 
-    /// Check if we need to index any new block in the chain.
+    /// Checks if we need to index any new block in the chain.
     /// Blocks don't get indexed as soon as they appear in the chain so that we
     /// don't need to revert them from the chain index since their wouldn't
     /// be "easy" way to revert them from the chain index (Tantivy don't
@@ -642,7 +657,7 @@ where
         Ok(index_operations_count)
     }
 
-    /// Get last block that got indexed in the chain index
+    /// Gets last block that got indexed in the chain index
     fn last_chain_indexed_block(&self) -> Result<Option<(BlockOffset, BlockHeight)>, Error> {
         let mut last_indexed_offset = self.chain_index_last_block;
 
@@ -655,7 +670,7 @@ where
             .and_then(|opt| opt))
     }
 
-    /// Handle new pending store operations events from the chain layer by
+    /// Handles new pending store operations events from the chain layer by
     /// indexing them into the pending index.
     ///
     /// Returns number of operations applied on the mutations index.
@@ -686,7 +701,7 @@ where
         self.pending_index.apply_operations(mutations.into_iter())
     }
 
-    /// Fetch an entity and all its traits from indices and the chain layer.
+    /// Fetches an entity and all its traits from indices and the chain layer.
     /// Traits returned follow mutations in order of operation id.
     #[cfg(test)]
     fn fetch_entity(&self, entity_id: &str) -> Result<Entity, Error> {
@@ -703,9 +718,12 @@ where
         })
     }
 
-    /// Fetch indexed mutations metadata from pending and chain indices for this
-    /// entity id, and merge them.
-    fn fetch_entity_mutations_metadata(&self, entity_id: &str) -> Result<EntityAggregator, Error> {
+    /// Fetches indexed mutations metadata from pending and chain indices for
+    /// this entity id, and merge them.
+    pub(super) fn fetch_entity_mutations_metadata(
+        &self,
+        entity_id: &str,
+    ) -> Result<EntityAggregator, Error> {
         let pending_results = self.pending_index.fetch_entity_mutations(entity_id)?;
         let chain_results = self.chain_index.fetch_entity_mutations(entity_id)?;
         let mutations_metadata = pending_results
@@ -717,7 +735,7 @@ where
         EntityAggregator::new(mutations_metadata)
     }
 
-    /// Populate traits in the EntityResult by fetching each entity's traits
+    /// Populates traits in the EntityResult by fetching each entity's traits
     /// from the chain layer.
     fn populate_results_traits(
         &self,
@@ -732,7 +750,7 @@ where
         }
     }
 
-    /// Fetch traits data from chain layer.
+    /// Fetches traits data from chain layer.
     fn fetch_entity_traits(
         &self,
         entity_mutations: &EntityAggregator,
@@ -770,16 +788,15 @@ where
                 };
 
                 let mut trt = match mutation.mutation? {
-                    Mutation::PutTrait(trait_put) => trait_put.r#trait,
-                    Mutation::CompactTrait(trait_cmpt) => trait_cmpt.r#trait,
+                    Mutation::PutTrait(put_mut) => put_mut.r#trait,
                     Mutation::DeleteTrait(_)
                     | Mutation::DeleteEntity(_)
-                    | Mutation::UpdateTrait(_)
+                    | Mutation::DeleteOperations(_)
                     | Mutation::Test(_) => return None,
                 }?;
 
                 if let Some(projection) = &agg.projection {
-                    let res = project_trait(
+                    let res = project_trait_fields(
                         self.full_cell.cell().schemas().as_ref(),
                         &mut trt,
                         projection.as_ref(),
@@ -804,7 +821,7 @@ where
             .collect()
     }
 
-    /// Fetch an operation from the chain layer by the given operation id and
+    /// Fetches an operation from the chain layer by the given operation id and
     /// optional block offset.
     fn fetch_chain_mutation_operation(
         &self,
