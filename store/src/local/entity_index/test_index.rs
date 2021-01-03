@@ -24,7 +24,7 @@ pub struct TestEntityIndex {
 
 impl TestEntityIndex {
     pub async fn new() -> Result<TestEntityIndex, anyhow::Error> {
-        Self::new_with_config(Self::create_test_config()).await
+        Self::new_with_config(Self::test_config()).await
     }
 
     pub async fn new_with_config(
@@ -73,7 +73,7 @@ impl TestEntityIndex {
         })
     }
 
-    pub fn create_test_config() -> EntityIndexConfig {
+    pub fn test_config() -> EntityIndexConfig {
         EntityIndexConfig {
             chain_index_in_memory: true,
             chain_index_depth_leeway: 0, // for tests, we want to index as soon as possible

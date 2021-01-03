@@ -142,7 +142,7 @@ impl IndexOperation {
             }
             Mutation::DeleteTrait(trt_del) => smallvec![IndexOperation::PutTraitTombstone(
                 PutTraitTombstoneMutation {
-                    block_offset: None,
+                    block_offset: Some(block_offset),
                     operation_id: operation.operation_id,
                     entity_id: entity_mutation.entity_id,
                     trait_id: trt_del.trait_id,
@@ -150,7 +150,7 @@ impl IndexOperation {
             )],
             Mutation::DeleteEntity(_) => smallvec![IndexOperation::PutEntityTombstone(
                 PutEntityTombstoneMutation {
-                    block_offset: None,
+                    block_offset: Some(block_offset),
                     operation_id: operation.operation_id,
                     entity_id: entity_mutation.entity_id,
                 }

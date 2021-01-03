@@ -20,7 +20,7 @@ use super::*;
 async fn index_full_pending_to_chain() -> anyhow::Result<()> {
     let config = EntityIndexConfig {
         chain_index_min_depth: 1, // index when block is at depth 1 or more
-        ..TestEntityIndex::create_test_config()
+        ..TestEntityIndex::test_config()
     };
     let mut test_index = TestEntityIndex::new_with_config(config).await?;
     test_index.handle_engine_events()?;
@@ -73,7 +73,7 @@ async fn test_chain_index_block_depth_leeway() -> anyhow::Result<()> {
     let config = EntityIndexConfig {
         chain_index_min_depth: 1,    // index up to the depth 1 (last block in chain)
         chain_index_depth_leeway: 5, // only index once we reach depth of 5 in chain
-        ..TestEntityIndex::create_test_config()
+        ..TestEntityIndex::test_config()
     };
     let mut test_index = TestEntityIndex::new_with_config(config).await?;
     test_index.handle_engine_events()?;
@@ -116,7 +116,7 @@ async fn reopen_chain_index() -> anyhow::Result<()> {
     let config = EntityIndexConfig {
         chain_index_min_depth: 0, // index as soon as new block appear
         chain_index_in_memory: false,
-        ..TestEntityIndex::create_test_config()
+        ..TestEntityIndex::test_config()
     };
 
     // index a few traits & make sure it's in the chain index
@@ -142,7 +142,7 @@ async fn reopen_chain_and_pending_transition() -> anyhow::Result<()> {
     let config = EntityIndexConfig {
         chain_index_min_depth: 2,
         chain_index_in_memory: false,
-        ..TestEntityIndex::create_test_config()
+        ..TestEntityIndex::test_config()
     };
 
     let mut test_index = TestEntityIndex::new_with_config(config).await?;
@@ -204,7 +204,7 @@ async fn reindex_pending_on_discontinuity() -> anyhow::Result<()> {
 async fn chain_divergence() -> anyhow::Result<()> {
     let config = EntityIndexConfig {
         chain_index_min_depth: 0, // index as soon as new block appear
-        ..TestEntityIndex::create_test_config()
+        ..TestEntityIndex::test_config()
     };
     let mut test_index = TestEntityIndex::new_with_config(config).await?;
 
@@ -253,7 +253,7 @@ async fn chain_divergence() -> anyhow::Result<()> {
 async fn delete_entity_trait() -> anyhow::Result<()> {
     let config = EntityIndexConfig {
         chain_index_min_depth: 1, // index in chain as soon as another block is after
-        ..TestEntityIndex::create_test_config()
+        ..TestEntityIndex::test_config()
     };
     let mut test_index = TestEntityIndex::new_with_config(config).await?;
 
@@ -286,7 +286,7 @@ async fn delete_entity_trait() -> anyhow::Result<()> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn delete_all_entity_traits() -> anyhow::Result<()> {
-    let config = TestEntityIndex::create_test_config();
+    let config = TestEntityIndex::test_config();
     let mut test_index = TestEntityIndex::new_with_config(config).await?;
 
     let op1 = test_index.put_test_trait("entity1", "trait1", "name1")?;
@@ -332,7 +332,7 @@ async fn delete_all_entity_traits() -> anyhow::Result<()> {
 async fn delete_entity() -> anyhow::Result<()> {
     let config = EntityIndexConfig {
         chain_index_min_depth: 1, // index in chain as soon as another block is after
-        ..TestEntityIndex::create_test_config()
+        ..TestEntityIndex::test_config()
     };
     let mut test_index = TestEntityIndex::new_with_config(config).await?;
 
@@ -379,9 +379,8 @@ async fn delete_entity() -> anyhow::Result<()> {
 #[tokio::test(flavor = "multi_thread")]
 async fn operations_deletion() -> anyhow::Result<()> {
     let config = EntityIndexConfig {
-        chain_index_in_memory: false,
         chain_index_min_depth: 0, // index in chain as soon as a block is committed
-        ..TestEntityIndex::create_test_config()
+        ..TestEntityIndex::test_config()
     };
     let mut test_index = TestEntityIndex::new_with_config(config).await?;
 
@@ -435,7 +434,7 @@ async fn operations_deletion() -> anyhow::Result<()> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn query_paging() -> anyhow::Result<()> {
-    let config = TestEntityIndex::create_test_config();
+    let config = TestEntityIndex::test_config();
     let mut test_index = TestEntityIndex::new_with_config(config).await?;
 
     // add traits in 3 batch so that we have pending & chain items
@@ -525,7 +524,7 @@ async fn query_paging() -> anyhow::Result<()> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn query_multiple_mutations_paging() -> anyhow::Result<()> {
-    let config = TestEntityIndex::create_test_config();
+    let config = TestEntityIndex::test_config();
     let mut test_index = TestEntityIndex::new_with_config(config).await?;
 
     // add traits in 2 batch so that we have pending & chain items
@@ -572,7 +571,7 @@ async fn query_multiple_mutations_paging() -> anyhow::Result<()> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn query_ordering() -> anyhow::Result<()> {
-    let config = TestEntityIndex::create_test_config();
+    let config = TestEntityIndex::test_config();
     let mut test_index = TestEntityIndex::new_with_config(config).await?;
 
     let ops_id = test_index.put_test_traits(0..10)?;
@@ -618,7 +617,7 @@ async fn query_ordering() -> anyhow::Result<()> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn skip_results_hash() -> anyhow::Result<()> {
-    let config = TestEntityIndex::create_test_config();
+    let config = TestEntityIndex::test_config();
     let mut test_index = TestEntityIndex::new_with_config(config).await?;
 
     let op1 = test_index.put_test_trait("entity1", "trait1", "name")?;
@@ -639,7 +638,7 @@ async fn skip_results_hash() -> anyhow::Result<()> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn query_projection() -> anyhow::Result<()> {
-    let config = TestEntityIndex::create_test_config();
+    let config = TestEntityIndex::test_config();
     let mut test_index = TestEntityIndex::new_with_config(config).await?;
 
     let op1 = test_index.put_test_trait("entity1", "trait1", "name 1")?;

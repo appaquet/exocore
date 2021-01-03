@@ -5,7 +5,8 @@ use std::{
 };
 
 use exocore_chain::{block::BlockOffset, operation::OperationId};
-use exocore_core::{protos::store::MutationRequest, time::Clock};
+use exocore_core::protos::store::EntityMutation;
+use exocore_core::time::Clock;
 
 use crate::{
     entity::{EntityId, EntityIdRef, TraitId},
@@ -17,45 +18,6 @@ use crate::{
 use super::{sort_mutations_commit_time, EntityAggregator};
 
 const DAY_SECS: u64 = 86_400;
-
-/// Configuration of the entity compactor.
-#[derive(Debug, Clone, Copy)]
-pub struct GarbageCollectorConfig {
-    /// How often the garbage collection process will run. Since garbage collection
-    /// doesn't happen on the whole index, but only on entities that got flagged
-    /// during search, it is better to run more often than less. The `queue_size`
-    /// can be tweaked to control rate of collection.
-    pub run_interval: Duration,
-
-    /// After how long do we collect a fully deleted entity.
-    pub deleted_entity_collection: Duration,
-
-    /// After how long do we collect a fully deleted trait.
-    pub deleted_trait_collection: Duration,
-
-    /// Maximum versions we keep for a trait.
-    pub trait_versions_max: usize,
-
-    /// If higher than `trait_versions_max`, a compaction of trait versions
-    /// will only happen if the number of versions reaches this value.
-    pub trait_versions_leeway: usize,
-
-    /// Size of queue of entities to be compacted.
-    pub queue_size: usize,
-}
-
-impl Default for GarbageCollectorConfig {
-    fn default() -> Self {
-        GarbageCollectorConfig {
-            run_interval: Duration::from_secs(30),
-            deleted_entity_collection: Duration::from_secs(30 * DAY_SECS),
-            deleted_trait_collection: Duration::from_secs(30 * DAY_SECS),
-            trait_versions_max: 5,
-            trait_versions_leeway: 7,
-            queue_size: 10,
-        }
-    }
-}
 
 /// The entity garbage collector generates operation deletion mutations on
 /// entities that need to be cleaned up from the mutation index.
@@ -163,7 +125,7 @@ impl GarbageCollector {
     }
 
     /// Garbage collect the entities currently in queue.
-    pub fn run<F>(&self, entity_fetcher: F) -> Vec<MutationRequest>
+    pub fn run<F>(&self, entity_fetcher: F) -> Vec<EntityMutation>
     where
         F: Fn(EntityIdRef) -> Result<EntityMutationResults, Error>,
     {
@@ -230,8 +192,40 @@ impl GarbageCollector {
     }
 }
 
+/// Configuration of the entity garbage collector.
+#[derive(Debug, Clone, Copy)]
+pub struct GarbageCollectorConfig {
+    /// After how long do we collect a fully deleted entity.
+    pub deleted_entity_collection: Duration,
+
+    /// After how long do we collect a fully deleted trait.
+    pub deleted_trait_collection: Duration,
+
+    /// Maximum versions we keep for a trait.
+    pub trait_versions_max: usize,
+
+    /// If higher than `trait_versions_max`, a compaction of trait versions
+    /// will only happen if the number of versions reaches this value.
+    pub trait_versions_leeway: usize,
+
+    /// Size of queue of entities to be collected.
+    pub queue_size: usize,
+}
+
+impl Default for GarbageCollectorConfig {
+    fn default() -> Self {
+        GarbageCollectorConfig {
+            deleted_entity_collection: Duration::from_secs(30 * DAY_SECS),
+            deleted_trait_collection: Duration::from_secs(30 * DAY_SECS),
+            trait_versions_max: 5,
+            trait_versions_leeway: 7,
+            queue_size: 10,
+        }
+    }
+}
+
 /// Creates a deletion mutation for all operations of the entity.
-fn collect_delete_entity<I>(entity_id: &str, mutations: I) -> Option<MutationRequest>
+fn collect_delete_entity<I>(entity_id: &str, mutations: I) -> Option<EntityMutation>
 where
     I: Iterator<Item = MutationMetadata>,
 {
@@ -241,18 +235,19 @@ where
     }
 
     debug!(
-        "Creating delete operation to garbage collect deleted entity {}",
-        entity_id
+        "Creating delete operation to garbage collect deleted entity {} with operations {:?}",
+        entity_id, operation_ids,
     );
-    Some(
-        MutationBuilder::new()
-            .delete_operations(entity_id, operation_ids)
-            .build(),
-    )
+    MutationBuilder::new()
+        .delete_operations(entity_id, operation_ids)
+        .build()
+        .mutations
+        .into_iter()
+        .next()
 }
 
 /// Creates a deletion mutation for all operations of a trait of an entity.
-fn collect_delete_trait<I>(entity_id: &str, trait_id: &str, mutations: I) -> Option<MutationRequest>
+fn collect_delete_trait<I>(entity_id: &str, trait_id: &str, mutations: I) -> Option<EntityMutation>
 where
     I: Iterator<Item = MutationMetadata>,
 {
@@ -265,14 +260,15 @@ where
     }
 
     debug!(
-        "Creating delete operation to garbage collect deleted trait {} of entity {}",
-        trait_id, entity_id
+        "Creating delete operation to garbage collect deleted trait {} of entity {} with operations {:?}",
+        trait_id, entity_id, operation_ids,
     );
-    Some(
-        MutationBuilder::new()
-            .delete_operations(entity_id, operation_ids)
-            .build(),
-    )
+    MutationBuilder::new()
+        .delete_operations(entity_id, operation_ids)
+        .build()
+        .mutations
+        .into_iter()
+        .next()
 }
 
 /// Creates a deletion mutation for the N oldest operations of a trait so that
@@ -282,7 +278,7 @@ fn collect_trait_versions<I>(
     trait_id: &str,
     max_versions: usize,
     mutations: I,
-) -> Option<MutationRequest>
+) -> Option<EntityMutation>
 where
     I: Iterator<Item = MutationMetadata>,
 {
@@ -298,14 +294,15 @@ where
     let operation_ids = trait_operations.into_iter().take(to_delete_count).collect();
 
     debug!(
-        "Creating delete operation to garbage collect {} operations of trait {} of entity {}",
-        to_delete_count, trait_id, entity_id
+        "Creating delete operation to garbage collect operations {:?} of trait {} of entity {}",
+        operation_ids, trait_id, entity_id
     );
-    Some(
-        MutationBuilder::new()
-            .delete_operations(entity_id, operation_ids)
-            .build(),
-    )
+    MutationBuilder::new()
+        .delete_operations(entity_id, operation_ids)
+        .build()
+        .mutations
+        .into_iter()
+        .next()
 }
 
 fn filter_trait_mutations<'i, I>(
@@ -451,10 +448,7 @@ mod tests {
                 })
             });
             assert_eq!(deletions.len(), 1);
-            assert_eq!(
-                extract_deleted_operations(deletions),
-                vec![vec![put_op, del_op]]
-            );
+            assert_eq!(extract_ops(deletions), vec![put_op, del_op]);
         }
     }
 
@@ -519,10 +513,7 @@ mod tests {
                 })
             });
             assert_eq!(deletions.len(), 1);
-            assert_eq!(
-                extract_deleted_operations(deletions),
-                vec![vec![put1_op, del_op]]
-            );
+            assert_eq!(extract_ops(deletions), vec![put1_op, del_op]);
         }
     }
 
@@ -583,10 +574,7 @@ mod tests {
             })
         });
         assert_eq!(deletions.len(), 1);
-        assert_eq!(
-            extract_deleted_operations(deletions),
-            vec![vec![put1_op, put2_op]]
-        );
+        assert_eq!(extract_ops(deletions), vec![put1_op, put2_op]);
     }
 
     fn assert_queue_len(gc: &GarbageCollector, len: usize) {
@@ -594,18 +582,11 @@ mod tests {
         assert_eq!(inner.queue.len(), len);
     }
 
-    fn extract_deleted_operations(muts: Vec<MutationRequest>) -> Vec<Vec<OperationId>> {
+    fn extract_ops(muts: Vec<EntityMutation>) -> Vec<OperationId> {
         muts.into_iter()
-            .map(|m| {
-                m.mutations
-                    .into_iter()
-                    .flat_map(|m| match m.mutation.unwrap() {
-                        entity_mutation::Mutation::DeleteOperations(del_mut) => {
-                            del_mut.operation_ids
-                        }
-                        _ => vec![],
-                    })
-                    .collect()
+            .flat_map(|m| match m.mutation.unwrap() {
+                entity_mutation::Mutation::DeleteOperations(del_mut) => del_mut.operation_ids,
+                _ => vec![],
             })
             .collect()
     }

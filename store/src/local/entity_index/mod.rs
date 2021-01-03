@@ -50,9 +50,10 @@ mod aggregator;
 pub(crate) use aggregator::*;
 
 mod gc;
+pub use gc::GarbageCollectorConfig;
 
 #[cfg(test)]
-mod test_index;
+pub(crate) mod test_index;
 #[cfg(test)]
 mod tests;
 
@@ -454,10 +455,10 @@ where
     }
 
     /// Calls the garbage collector to run a pass on entities that got flagged to be collector.
-    pub fn run_garbage_collector(&self) -> Result<(), Error> {
-        self.gc
-            .run(|entity_id| self.chain_index.fetch_entity_mutations(entity_id));
-        Ok(())
+    pub fn run_garbage_collector(&self) -> Result<Vec<EntityMutation>, Error> {
+        Ok(self
+            .gc
+            .run(|entity_id| self.chain_index.fetch_entity_mutations(entity_id)))
     }
 
     /// Creates the chain index based on configuration.
