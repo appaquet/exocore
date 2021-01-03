@@ -8,6 +8,7 @@ use std::{
     time::Instant,
 };
 
+use exocore_core::time::Clock;
 use gc::GarbageCollector;
 use itertools::Itertools;
 use prost::Message;
@@ -89,6 +90,7 @@ where
         cell: FullCell,
         config: EntityIndexConfig,
         chain_handle: EngineHandle<CS, PS>,
+        clock: Clock,
     ) -> Result<EntityIndex<CS, PS>, Error> {
         let pending_index = MutationIndex::create_in_memory(
             config.pending_index_config,
@@ -115,7 +117,7 @@ where
             chain_index_last_block: None,
             full_cell: cell,
             chain_handle,
-            gc: GarbageCollector::new(config.garbage_collector),
+            gc: GarbageCollector::new(config.garbage_collector, clock),
         };
 
         let chain_last_block = index.chain_handle.get_chain_last_block_info()?;
@@ -453,7 +455,8 @@ where
 
     /// Calls the garbage collector to run a pass on entities that got flagged to be collector.
     pub fn run_garbage_collector(&self) -> Result<(), Error> {
-        self.gc.run(self);
+        self.gc
+            .run(|entity_id| self.chain_index.fetch_entity_mutations(entity_id));
         Ok(())
     }
 

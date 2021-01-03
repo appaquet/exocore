@@ -100,6 +100,7 @@ pub async fn cmd_daemon(ctx: &Context) -> anyhow::Result<()> {
                     full_cell.clone(),
                     entities_index_config,
                     store_engine_handle.clone(),
+                    clock.clone(),
                 )?;
 
                 // create a combined p2p + http transport for entities store so that it can

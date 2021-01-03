@@ -4,17 +4,17 @@ use std::{
     time::Duration,
 };
 
-use chrono::prelude::*;
-use exocore_chain::{block::BlockOffset, chain, operation::OperationId, pending};
-use exocore_core::protos::store::MutationRequest;
+use exocore_chain::{block::BlockOffset, operation::OperationId};
+use exocore_core::{protos::store::MutationRequest, time::Clock};
 
 use crate::{
-    entity::{EntityId, TraitId},
-    local::mutation_index::MutationMetadata,
+    entity::{EntityId, EntityIdRef, TraitId},
+    error::Error,
+    local::mutation_index::{EntityMutationResults, MutationMetadata},
     mutation::MutationBuilder,
 };
 
-use super::{sort_mutations_commit_time, EntityAggregator, EntityIndex};
+use super::{sort_mutations_commit_time, EntityAggregator};
 
 const DAY_SECS: u64 = 86_400;
 
@@ -85,11 +85,12 @@ pub struct GarbageCollector {
     config: GarbageCollectorConfig,
     max_entity_deleted_duration: chrono::Duration,
     max_trait_deleted_duration: chrono::Duration,
+    clock: Clock,
     inner: Arc<RwLock<Inner>>,
 }
 
 impl GarbageCollector {
-    pub fn new(config: GarbageCollectorConfig) -> Self {
+    pub fn new(config: GarbageCollectorConfig, clock: Clock) -> Self {
         let max_entity_deleted_duration =
             chrono::Duration::from_std(config.deleted_entity_collection)
                 .expect("Couldn't convert `deleted_entity_collection` to chrono::Duration");
@@ -107,6 +108,7 @@ impl GarbageCollector {
             config,
             max_entity_deleted_duration,
             max_trait_deleted_duration,
+            clock,
             inner,
         }
     }
@@ -121,11 +123,11 @@ impl GarbageCollector {
             return;
         };
 
-        let now = Utc::now();
+        let now = self.clock.now_chrono();
 
         if let Some(deletion_date) = &aggregator.deletion_date {
             let elapsed = now.signed_duration_since(*deletion_date);
-            if elapsed > self.max_entity_deleted_duration {
+            if elapsed >= self.max_entity_deleted_duration {
                 let mut writer = self.inner.write().expect("Fail to acquire inner lock");
                 writer.maybe_enqueue(Operation::DeleteEntity(
                     last_block_offset,
@@ -138,7 +140,7 @@ impl GarbageCollector {
         for (trait_id, trait_aggr) in &aggregator.traits {
             if let Some(deletion_date) = &trait_aggr.deletion_date {
                 let elapsed = now.signed_duration_since(*deletion_date);
-                if elapsed > self.max_trait_deleted_duration {
+                if elapsed >= self.max_trait_deleted_duration {
                     let mut writer = self.inner.write().expect("Fail to acquire inner lock");
                     writer.maybe_enqueue(Operation::DeleteTrait(
                         last_block_offset,
@@ -149,7 +151,7 @@ impl GarbageCollector {
                 }
             }
 
-            if trait_aggr.mutation_count > self.config.trait_versions_max {
+            if trait_aggr.mutation_count > self.config.trait_versions_leeway {
                 let mut writer = self.inner.write().expect("Fail to acquire inner lock");
                 writer.maybe_enqueue(Operation::CompactTrait(
                     last_block_offset,
@@ -161,10 +163,9 @@ impl GarbageCollector {
     }
 
     /// Garbage collect the entities currently in queue.
-    pub fn run<CS, PS>(&self, index: &EntityIndex<CS, PS>) -> Vec<MutationRequest>
+    pub fn run<F>(&self, entity_fetcher: F) -> Vec<MutationRequest>
     where
-        CS: chain::ChainStore,
-        PS: pending::PendingStore,
+        F: Fn(EntityIdRef) -> Result<EntityMutationResults, Error>,
     {
         let ops = {
             let mut inner = self.inner.write().expect("Fail to acquire inner lock");
@@ -188,39 +189,36 @@ impl GarbageCollector {
 
             // get all mutations for entity until block offset where we deemed the entity to
             // be collectable
-            let mutations =
-                if let Ok(mut_res) = index.chain_index.fetch_entity_mutations(&entity_id) {
-                    let mutations = mut_res
+            let mutations = if let Ok(mut_res) = entity_fetcher(&entity_id) {
+                let mutations =
+                    mut_res
                         .mutations
                         .into_iter()
-                        .filter(|mutation| match mutation.block_offset {
-                            Some(offset) if offset < until_block_offset => true,
-                            _ => false,
-                        });
+                        .filter(|mutation| matches!(mutation.block_offset, Some(offset) if offset <= until_block_offset));
 
-                    sort_mutations_commit_time(mutations)
-                } else {
-                    error!("Couldn't fetch mutations for entity {}", entity_id);
-                    continue;
-                };
+                sort_mutations_commit_time(mutations)
+            } else {
+                error!("Couldn't fetch mutations for entity {}", entity_id);
+                continue;
+            };
 
-            match op {
+            let opt_deletion = match op {
                 Operation::DeleteEntity(_, entity_id) => {
-                    deletions.push(collect_delete_entity(&entity_id, mutations));
+                    collect_delete_entity(&entity_id, mutations)
                 }
                 Operation::DeleteTrait(_, entity_id, trait_id) => {
-                    deletions.push(collect_delete_trait(&entity_id, &trait_id, mutations));
+                    collect_delete_trait(&entity_id, &trait_id, mutations)
                 }
-                Operation::CompactTrait(_, entity_id, trait_id) => {
-                    if let Some(deletion) = collect_trait_versions(
-                        &entity_id,
-                        &trait_id,
-                        self.config.trait_versions_max,
-                        mutations,
-                    ) {
-                        deletions.push(deletion);
-                    }
-                }
+                Operation::CompactTrait(_, entity_id, trait_id) => collect_trait_versions(
+                    &entity_id,
+                    &trait_id,
+                    self.config.trait_versions_max,
+                    mutations,
+                ),
+            };
+
+            if let Some(deletion) = opt_deletion {
+                deletions.push(deletion);
             }
         }
         debug!(
@@ -233,38 +231,48 @@ impl GarbageCollector {
 }
 
 /// Creates a deletion mutation for all operations of the entity.
-fn collect_delete_entity<I>(entity_id: &str, mutations: I) -> MutationRequest
+fn collect_delete_entity<I>(entity_id: &str, mutations: I) -> Option<MutationRequest>
 where
     I: Iterator<Item = MutationMetadata>,
 {
-    let operation_ids = mutations.map(|mutation| mutation.operation_id).collect();
+    let operation_ids: Vec<OperationId> = mutations.map(|mutation| mutation.operation_id).collect();
+    if operation_ids.is_empty() {
+        return None;
+    }
 
     debug!(
         "Creating delete operation to garbage collect deleted entity {}",
         entity_id
     );
-    MutationBuilder::new()
-        .delete_operations(entity_id, operation_ids)
-        .build()
+    Some(
+        MutationBuilder::new()
+            .delete_operations(entity_id, operation_ids)
+            .build(),
+    )
 }
 
 /// Creates a deletion mutation for all operations of a trait of an entity.
-fn collect_delete_trait<I>(entity_id: &str, trait_id: &str, mutations: I) -> MutationRequest
+fn collect_delete_trait<I>(entity_id: &str, trait_id: &str, mutations: I) -> Option<MutationRequest>
 where
     I: Iterator<Item = MutationMetadata>,
 {
     let trait_mutations = filter_trait_mutations(mutations, trait_id);
-    let operation_ids = trait_mutations
+    let operation_ids: Vec<OperationId> = trait_mutations
         .map(|mutation| mutation.operation_id)
         .collect();
+    if operation_ids.is_empty() {
+        return None;
+    }
 
     debug!(
         "Creating delete operation to garbage collect deleted trait {} of entity {}",
         trait_id, entity_id
     );
-    MutationBuilder::new()
-        .delete_operations(entity_id, operation_ids)
-        .build()
+    Some(
+        MutationBuilder::new()
+            .delete_operations(entity_id, operation_ids)
+            .build(),
+    )
 }
 
 /// Creates a deletion mutation for the N oldest operations of a trait so that
@@ -282,16 +290,12 @@ where
         .map(|mutation| mutation.operation_id)
         .collect();
 
-    if trait_operations.len() <= max_versions {
+    if trait_operations.is_empty() || trait_operations.len() <= max_versions {
         return None;
     }
 
     let to_delete_count = trait_operations.len() - max_versions;
-    let operation_ids = trait_operations
-        .into_iter()
-        .rev()
-        .take(to_delete_count)
-        .collect();
+    let operation_ids = trait_operations.into_iter().take(to_delete_count).collect();
 
     debug!(
         "Creating delete operation to garbage collect {} operations of trait {} of entity {}",
@@ -318,7 +322,7 @@ where
             true
         }
         crate::local::mutation_index::MutationType::TraitTombstone(tomb_trait_id)
-            if tomb_trait_id == &trait_id =>
+            if tomb_trait_id == trait_id =>
         {
             true
         }
@@ -371,20 +375,264 @@ impl Operation {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::time::Instant;
+
+    use exocore_core::{
+        cell::LocalNode,
+        protos::store::{entity_mutation, OrderingValue},
+    };
+
+    use crate::{
+        local::mutation_index::{MutationType, PutTraitMetadata},
+        ordering::OrderingValueWrapper,
+    };
+
+    use super::{
+        super::aggregator::tests::{mock_delete_entity, mock_delete_trait, mock_put_trait},
+        *,
+    };
 
     #[test]
     fn collect_old_deleted_entity() {
-        // TODO:
+        let node = LocalNode::generate();
+        let now = Instant::now() - Duration::from_secs(60);
+        let clock = Clock::new_fixed_mocked(now);
+
+        let config = GarbageCollectorConfig {
+            deleted_entity_collection: Duration::from_secs(1),
+            ..Default::default()
+        };
+        let gc = GarbageCollector::new(config, clock.clone());
+
+        let put_op: u64 = clock.consistent_time(node.node()).into();
+        let del_op: u64 = put_op + 1;
+        let mutations = vec![
+            mock_put_trait("trt1", "typ", Some(9), put_op, None, None),
+            mock_delete_entity(Some(10), del_op),
+        ];
+        let aggregator = EntityAggregator::new(mutations.into_iter()).unwrap();
+
+        {
+            // entity cannot be collected since deletion date is not 1 sec later
+            gc.maybe_flag_for_collection("et1", &aggregator);
+            assert_queue_len(&gc, 0);
+        }
+
+        // move time a second later
+        clock.add_fixed_instant_duration(Duration::from_secs(2));
+
+        {
+            gc.maybe_flag_for_collection("et1", &aggregator);
+            assert_queue_len(&gc, 1);
+
+            // operation considered not in chain, shouldn't get deleted
+            let deletions = gc.run(|_entity_id| {
+                Ok(EntityMutationResults {
+                    mutations: vec![
+                        mock_metadata(None, put_op, "trt1"),
+                        mock_metadata(None, del_op, "trt1"),
+                    ],
+                })
+            });
+            assert_eq!(deletions.len(), 0);
+        }
+
+        {
+            gc.maybe_flag_for_collection("et1", &aggregator);
+            assert_queue_len(&gc, 1);
+
+            // operation considered now in chain, should get deleted
+            let deletions = gc.run(|_entity_id| {
+                Ok(EntityMutationResults {
+                    mutations: vec![
+                        mock_metadata(Some(9), put_op, "trt1"),
+                        mock_metadata(Some(10), del_op, "trt1"),
+                    ],
+                })
+            });
+            assert_eq!(deletions.len(), 1);
+            assert_eq!(
+                extract_deleted_operations(deletions),
+                vec![vec![put_op, del_op]]
+            );
+        }
     }
 
     #[test]
     fn collect_old_deleted_trait() {
-        // TODO:
+        let node = LocalNode::generate();
+        let now = Instant::now() - Duration::from_secs(60);
+        let clock = Clock::new_fixed_mocked(now);
+
+        let config = GarbageCollectorConfig {
+            deleted_trait_collection: Duration::from_secs(1),
+            ..Default::default()
+        };
+        let gc = GarbageCollector::new(config, clock.clone());
+
+        let put1_op: u64 = clock.consistent_time(node.node()).into();
+        let put2_op: u64 = put1_op + 1;
+        let del_op: u64 = put2_op + 1;
+        let mutations = vec![
+            mock_put_trait("trt1", "typ", Some(9), put1_op, None, None),
+            mock_put_trait("trt2", "typ", Some(9), put2_op, None, None),
+            mock_delete_trait("trt1", Some(10), del_op),
+        ];
+        let aggregator = EntityAggregator::new(mutations.into_iter()).unwrap();
+
+        {
+            // entity cannot be collected since deletion date is not 1 sec later
+            gc.maybe_flag_for_collection("et1", &aggregator);
+            assert_queue_len(&gc, 0);
+        }
+
+        // move time a second later
+        clock.add_fixed_instant_duration(Duration::from_secs(2));
+
+        {
+            gc.maybe_flag_for_collection("et1", &aggregator);
+            assert_queue_len(&gc, 1);
+
+            // operation considered not in chain, shouldn't get deleted
+            let deletions = gc.run(|_entity_id| {
+                Ok(EntityMutationResults {
+                    mutations: vec![
+                        mock_metadata(None, put1_op, "trt1"),
+                        mock_metadata(None, del_op, "trt1"),
+                    ],
+                })
+            });
+            assert_eq!(deletions.len(), 0);
+        }
+
+        {
+            gc.maybe_flag_for_collection("et1", &aggregator);
+            assert_queue_len(&gc, 1);
+
+            // operation considered now in chain, should get deleted
+            let deletions = gc.run(|_entity_id| {
+                Ok(EntityMutationResults {
+                    mutations: vec![
+                        mock_metadata(Some(9), put1_op, "trt1"),
+                        mock_metadata(Some(10), del_op, "trt1"),
+                    ],
+                })
+            });
+            assert_eq!(deletions.len(), 1);
+            assert_eq!(
+                extract_deleted_operations(deletions),
+                vec![vec![put1_op, del_op]]
+            );
+        }
     }
 
     #[test]
     fn collect_old_trait_versions() {
-        // TODO:
+        let node = LocalNode::generate();
+        let now = Instant::now() - Duration::from_secs(60);
+        let clock = Clock::new_fixed_mocked(now);
+
+        let put1_op: u64 = clock.consistent_time(node.node()).into();
+        let put2_op: u64 = put1_op + 1;
+        let put3_op: u64 = put2_op + 1;
+        let put4_op: u64 = put3_op + 1;
+        let put5_op: u64 = put4_op + 1;
+        let mutations = vec![
+            mock_put_trait("trt1", "typ", Some(2), put1_op, None, None),
+            mock_put_trait("trt1", "typ", Some(3), put2_op, None, None),
+            mock_put_trait("trt1", "typ", Some(4), put3_op, None, None),
+            mock_put_trait("trt1", "typ", Some(5), put4_op, None, None),
+            mock_put_trait("trt1", "typ", Some(6), put5_op, None, None),
+        ];
+        let aggregator = EntityAggregator::new(mutations.into_iter()).unwrap();
+
+        // not enough versions to be collected
+        let gc = GarbageCollector::new(
+            GarbageCollectorConfig {
+                trait_versions_max: 3,
+                trait_versions_leeway: 6,
+                ..Default::default()
+            },
+            clock.clone(),
+        );
+        gc.maybe_flag_for_collection("et1", &aggregator);
+        assert_queue_len(&gc, 0);
+
+        // should now have enough versions to be collected
+        let gc = GarbageCollector::new(
+            GarbageCollectorConfig {
+                trait_versions_max: 3,
+                trait_versions_leeway: 4,
+                ..Default::default()
+            },
+            clock,
+        );
+        gc.maybe_flag_for_collection("et1", &aggregator);
+        assert_queue_len(&gc, 1);
+
+        // two first trait should get deleted
+        let deletions = gc.run(|_entity_id| {
+            Ok(EntityMutationResults {
+                mutations: vec![
+                    mock_metadata(Some(2), put1_op, "trt1"),
+                    mock_metadata(Some(3), put2_op, "trt1"),
+                    mock_metadata(Some(4), put3_op, "trt1"),
+                    mock_metadata(Some(5), put4_op, "trt1"),
+                    mock_metadata(Some(6), put5_op, "trt1"),
+                ],
+            })
+        });
+        assert_eq!(deletions.len(), 1);
+        assert_eq!(
+            extract_deleted_operations(deletions),
+            vec![vec![put1_op, put2_op]]
+        );
+    }
+
+    fn assert_queue_len(gc: &GarbageCollector, len: usize) {
+        let inner = gc.inner.read().unwrap();
+        assert_eq!(inner.queue.len(), len);
+    }
+
+    fn extract_deleted_operations(muts: Vec<MutationRequest>) -> Vec<Vec<OperationId>> {
+        muts.into_iter()
+            .map(|m| {
+                m.mutations
+                    .into_iter()
+                    .flat_map(|m| match m.mutation.unwrap() {
+                        entity_mutation::Mutation::DeleteOperations(del_mut) => {
+                            del_mut.operation_ids
+                        }
+                        _ => vec![],
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn mock_metadata<T: Into<TraitId>>(
+        block_offset: Option<BlockOffset>,
+        operation_id: OperationId,
+        trait_id: T,
+    ) -> MutationMetadata {
+        MutationMetadata {
+            operation_id,
+            block_offset,
+            entity_id: String::new(),
+            mutation_type: MutationType::TraitPut(PutTraitMetadata {
+                trait_id: trait_id.into(),
+                trait_type: None,
+                creation_date: None,
+                modification_date: None,
+            }),
+            sort_value: OrderingValueWrapper {
+                value: OrderingValue {
+                    operation_id: 0,
+                    value: None,
+                },
+                reverse: false,
+                ignore: false,
+            },
+        }
     }
 }

@@ -83,7 +83,7 @@ impl MutationBuilder {
         self.request.mutations.push(EntityMutation {
             entity_id: entity_id.into(),
             mutation: Some(Mutation::DeleteOperations(DeleteOperationsMutation {
-                operation_ids: operation_ids,
+                operation_ids,
             })),
         });
 

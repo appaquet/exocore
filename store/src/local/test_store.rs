@@ -2,23 +2,25 @@ use std::sync::Arc;
 
 use tempfile::TempDir;
 
-use exocore_chain::tests_utils::TestChainCluster;
-use exocore_chain::{DirectoryChainStore, MemoryPendingStore};
+use exocore_chain::{tests_utils::TestChainCluster, DirectoryChainStore, MemoryPendingStore};
 
-use crate::local::mutation_index::MutationIndexConfig;
-use crate::local::store::StoreHandle;
-use crate::local::EntityIndexConfig;
-use crate::mutation::{MutationBuilder, MutationRequestLike};
+use crate::{
+    local::{mutation_index::MutationIndexConfig, store::StoreHandle, EntityIndexConfig},
+    mutation::{MutationBuilder, MutationRequestLike},
+};
 
 use super::*;
 
 use chrono::Utc;
-use exocore_core::protos::generated::exocore_store::{
-    EntityQuery, EntityResults, MutationResult, Trait,
+use exocore_core::protos::{
+    generated::{
+        exocore_store::{EntityQuery, EntityResults, MutationResult, Trait},
+        exocore_test::TestMessage,
+    },
+    prost::{ProstAnyPackMessageExt, ProstDateTimeExt},
+    registry::Registry,
+    store::TraitDetails,
 };
-use exocore_core::protos::generated::exocore_test::TestMessage;
-use exocore_core::protos::prost::{ProstAnyPackMessageExt, ProstDateTimeExt};
-use exocore_core::protos::{registry::Registry, store::TraitDetails};
 
 /// Utility to test store
 pub struct TestStore {
@@ -52,6 +54,7 @@ impl TestStore {
             cluster.cells[0].clone(),
             index_config,
             cluster.get_handle(0).clone(),
+            cluster.clocks[0].clone(),
         )?;
 
         let store = Store::new(

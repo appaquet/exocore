@@ -368,7 +368,7 @@ fn update_if_older(current: &mut Option<DateTime<Utc>>, new: Option<DateTime<Utc
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::ordering::OrderingValueWrapper;
     use exocore_chain::block::BlockOffset;
@@ -842,7 +842,7 @@ mod tests {
         Ok(())
     }
 
-    fn mock_put_trait<I: Into<String>, T: Into<String>>(
+    pub fn mock_put_trait<I: Into<String>, T: Into<String>>(
         trait_id: I,
         trait_type: T,
         block_offset: Option<BlockOffset>,
@@ -873,7 +873,7 @@ mod tests {
         }
     }
 
-    fn mock_delete_trait<T: Into<String>>(
+    pub fn mock_delete_trait<T: Into<String>>(
         trait_id: T,
         block_offset: Option<BlockOffset>,
         operation_id: OperationId,
@@ -891,7 +891,7 @@ mod tests {
         }
     }
 
-    fn mock_delete_entity(
+    pub fn mock_delete_entity(
         block_offset: Option<BlockOffset>,
         operation_id: OperationId,
     ) -> MutationMetadata {
