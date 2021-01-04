@@ -28,25 +28,25 @@ pub struct EntityAggregator {
     /// traits aggregator
     pub traits: HashMap<TraitId, TraitAggregator>,
 
-    // ids of operations that are still active (ex: were not overridden by another mutation)
+    /// ids of operations that are still active (ex: were not overridden by another mutation)
     pub active_operations: HashSet<OperationId>,
 
-    // hash of the operations of the entity
+    /// hash of the operations of the entity
     pub hash: ResultHash,
 
-    // date of the creation of entity, based on put trait creation date OR first operation
+    /// date of the creation of entity, based on put trait creation date OR first operation
     pub creation_date: Option<DateTime<Utc>>,
 
-    // date of the modification of entity, based on put trait modification date OR last operation
+    /// date of the modification of entity, based on put trait modification date OR last operation
     pub modification_date: Option<DateTime<Utc>>,
 
-    // date of the deletion of the entity if all traits are deleted once all mutations are applied
+    /// date of the deletion of the entity if all traits are deleted once all mutations are applied
     pub deletion_date: Option<DateTime<Utc>>,
 
-    // last operation that have affected the entity
+    /// last operation that have affected the entity
     pub last_operation_id: OperationId,
 
-    // offset of the last block in which last committed operation is
+    /// offset of the last block in which last committed operation is
     pub last_block_offset: Option<BlockOffset>,
 }
 

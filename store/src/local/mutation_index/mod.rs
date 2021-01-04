@@ -207,15 +207,15 @@ impl MutationIndex {
                     index_writer.add_document(doc);
                 }
                 IndexOperation::DeleteOperation(operation_id) => {
-                    trace!("Deleting op from index {}", operation_id);
+                    trace!("Deleting operation {} from index", operation_id);
                     index_writer
                         .delete_term(Term::from_field_u64(self.fields.operation_id, operation_id));
                 }
                 IndexOperation::DeleteEntityOperation(entity_id, operation_id) => {
                     trace!(
-                        "Deleting entity {} op from index {}",
-                        entity_id,
-                        operation_id
+                        "Deleting operation {} from entity {} from index",
+                        operation_id,
+                        entity_id
                     );
 
                     self.entity_cache.remove(&entity_id);

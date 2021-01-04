@@ -1,5 +1,5 @@
+use std::collections::HashSet;
 use std::{
-    collections::VecDeque,
     sync::{Arc, RwLock},
     time::Duration,
 };
@@ -39,6 +39,12 @@ const DAY_SECS: u64 = 86_400;
 /// to eventually creating the issue where we hit the maximum number of pages
 /// and don't return valid entities.
 ///
+/// At interval, the entity store calls the entity index to do a garbage collection
+/// run. This run only happen if there has been sufficient number of indexed blocks
+/// from chain so that we don't re-collect entities for which we have mutations that
+/// have already been deleted in the chain index, but not indexed yet because they
+/// are in the pending store.
+///
 /// There is 3 kind of garbage collections:
 /// * Deleted entity: effectively deletes all traits of an entity.
 /// * Deleted trait: effectively deletes all versions of a trait of an entity.
@@ -63,7 +69,8 @@ impl GarbageCollector {
 
         let inner = Arc::new(RwLock::new(Inner {
             config,
-            queue: VecDeque::with_capacity(config.queue_size),
+            operations: Vec::with_capacity(config.queue_size),
+            entity_ids: HashSet::new(),
         }));
 
         GarbageCollector {
@@ -90,8 +97,9 @@ impl GarbageCollector {
         if let Some(deletion_date) = &aggregator.deletion_date {
             let elapsed = now.signed_duration_since(*deletion_date);
             if elapsed >= self.max_entity_deleted_duration {
-                let mut writer = self.inner.write().expect("Fail to acquire inner lock");
-                writer.maybe_enqueue(Operation::DeleteEntity(
+                trace!("Collecting entity {} since got deleted since", entity_id);
+                let mut inner = self.inner.write().expect("Fail to acquire inner lock");
+                inner.maybe_enqueue(Operation::DeleteEntity(
                     last_block_offset,
                     entity_id.to_string(),
                 ));
@@ -103,8 +111,13 @@ impl GarbageCollector {
             if let Some(deletion_date) = &trait_aggr.deletion_date {
                 let elapsed = now.signed_duration_since(*deletion_date);
                 if elapsed >= self.max_trait_deleted_duration {
-                    let mut writer = self.inner.write().expect("Fail to acquire inner lock");
-                    writer.maybe_enqueue(Operation::DeleteTrait(
+                    trace!(
+                        "Collecting entity {} trait {} since got deleted",
+                        entity_id,
+                        trait_id
+                    );
+                    let mut inner = self.inner.write().expect("Fail to acquire inner lock");
+                    inner.maybe_enqueue(Operation::DeleteTrait(
                         last_block_offset,
                         entity_id.to_string(),
                         trait_id.clone(),
@@ -114,8 +127,14 @@ impl GarbageCollector {
             }
 
             if trait_aggr.mutation_count > self.config.trait_versions_leeway {
-                let mut writer = self.inner.write().expect("Fail to acquire inner lock");
-                writer.maybe_enqueue(Operation::CompactTrait(
+                let mut inner = self.inner.write().expect("Fail to acquire inner lock");
+                trace!(
+                    "Collecting entity {} trait {} since too many versions {}",
+                    entity_id,
+                    trait_id,
+                    trait_aggr.mutation_count,
+                );
+                inner.maybe_enqueue(Operation::CompactTrait(
                     last_block_offset,
                     entity_id.to_string(),
                     trait_id.clone(),
@@ -129,11 +148,15 @@ impl GarbageCollector {
     where
         F: Fn(EntityIdRef) -> Result<EntityMutationResults, Error>,
     {
-        let ops = {
+        let (ops, entity_count) = {
             let mut inner = self.inner.write().expect("Fail to acquire inner lock");
-            let mut queue = VecDeque::new();
-            std::mem::swap(&mut queue, &mut inner.queue);
-            queue
+            let entity_count = inner.entity_ids.len();
+
+            inner.entity_ids.clear();
+            let mut queue = Vec::with_capacity(self.config.queue_size);
+            std::mem::swap(&mut queue, &mut inner.operations);
+
+            (queue, entity_count)
         };
 
         if ops.is_empty() {
@@ -183,9 +206,10 @@ impl GarbageCollector {
                 deletions.push(deletion);
             }
         }
-        debug!(
-            "Garbage collection generated {} deletion operations",
-            deletions.len()
+        info!(
+            "Garbage collection generated {} deletion operations for {} entities",
+            deletions.len(),
+            entity_count,
         );
 
         deletions
@@ -215,11 +239,11 @@ pub struct GarbageCollectorConfig {
 impl Default for GarbageCollectorConfig {
     fn default() -> Self {
         GarbageCollectorConfig {
-            deleted_entity_collection: Duration::from_secs(30 * DAY_SECS),
-            deleted_trait_collection: Duration::from_secs(30 * DAY_SECS),
+            deleted_entity_collection: Duration::from_secs(14 * DAY_SECS),
+            deleted_trait_collection: Duration::from_secs(14 * DAY_SECS),
             trait_versions_max: 5,
             trait_versions_leeway: 7,
-            queue_size: 10,
+            queue_size: 2000,
         }
     }
 }
@@ -329,12 +353,13 @@ where
 
 struct Inner {
     config: GarbageCollectorConfig,
-    queue: VecDeque<Operation>,
+    operations: Vec<Operation>,
+    entity_ids: HashSet<EntityId>,
 }
 
 impl Inner {
     fn is_full(&self) -> bool {
-        self.queue.len() > self.config.queue_size
+        self.operations.len() > self.config.queue_size
     }
 
     fn maybe_enqueue(&mut self, op: Operation) {
@@ -342,7 +367,12 @@ impl Inner {
             return;
         }
 
-        self.queue.push_back(op);
+        if self.entity_ids.contains(op.entity_id()) {
+            return;
+        }
+
+        self.entity_ids.insert(op.entity_id().to_string());
+        self.operations.push(op);
     }
 }
 
@@ -353,14 +383,16 @@ enum Operation {
 }
 
 impl Operation {
-    fn entity_id(&self) -> EntityId {
+    #[inline]
+    fn entity_id(&self) -> EntityIdRef {
         match self {
-            Operation::DeleteEntity(_, entity_id) => entity_id.to_string(),
-            Operation::DeleteTrait(_, entity_id, _) => entity_id.to_string(),
-            Operation::CompactTrait(_, entity_id, _) => entity_id.to_string(),
+            Operation::DeleteEntity(_, entity_id) => entity_id,
+            Operation::DeleteTrait(_, entity_id, _) => entity_id,
+            Operation::CompactTrait(_, entity_id, _) => entity_id,
         }
     }
 
+    #[inline]
     fn until_block_offset(&self) -> BlockOffset {
         match self {
             Operation::DeleteEntity(offset, _) => *offset,
@@ -579,7 +611,7 @@ mod tests {
 
     fn assert_queue_len(gc: &GarbageCollector, len: usize) {
         let inner = gc.inner.read().unwrap();
-        assert_eq!(inner.queue.len(), len);
+        assert_eq!(inner.operations.len(), len);
     }
 
     fn extract_ops(muts: Vec<EntityMutation>) -> Vec<OperationId> {
