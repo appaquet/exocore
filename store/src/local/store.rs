@@ -86,7 +86,7 @@ where
     pub async fn run(self) -> Result<(), Error> {
         let config = self.config;
 
-        // incoming queries execution
+        // Incoming queries execution
         let incoming_queries_receiver = self.incoming_queries_receiver;
         let weak_inner1 = Arc::downgrade(&self.inner);
         let weak_inner2 = Arc::downgrade(&self.inner);
@@ -132,7 +132,7 @@ where
             Ok::<(), Error>(())
         };
 
-        // schedule chain engine events stream
+        // Schedules chain engine events stream
         let mut events_stream = {
             let mut inner = self.inner.write()?;
             let events = inner.chain_handle.take_events_stream()?;
@@ -162,7 +162,7 @@ where
             Ok(())
         };
 
-        // checks if watched queries have their results changed
+        // Checks if watched queries have their results changed
         let weak_inner = Arc::downgrade(&self.inner);
         let watched_queries_checker = async move {
             while watch_check_receiver.next().await.is_some() {
@@ -200,9 +200,10 @@ where
             Ok::<(), Error>(())
         };
 
-        // runs a garbage collection pass on entity index, which will only get executed if entities
-        // to be collected got flagged in a search query.
-        // see [GarbageCollector](super::entity_index::gc::GarbageCollector)
+        // Runs a garbage collection pass on entity index, which will only get executed
+        // if entities to be collected got flagged in a previous search query and added
+        // to the garbage collector queue.
+        // See [GarbageCollector](super::entity_index::gc::GarbageCollector)
         let mut gc_interval = interval(config.garbage_collect_interval);
         let weak_inner = Arc::downgrade(&self.inner);
         let garbage_collector = async move {
@@ -258,16 +259,18 @@ pub struct StoreConfig {
     /// Size of the result channel of each watched query.
     pub handle_watch_query_channel_size: usize,
 
-    /// Maximum number of events from chain engine to batch together if more are available.
+    /// Maximum number of events from chain engine to batch together if more are
+    /// available.
     pub chain_events_batch_size: usize,
 
     /// Timeout for mutations that were awaiting for entities to be returned.
     pub mutation_tracker_timeout: Duration,
 
-    /// How often the garbage collection process will run. Since garbage collection
-    /// doesn't happen on the whole index, but only on entities that got flagged
-    /// during search, it is better to run more often than less. The `queue_size`
-    /// can be tweaked to control rate of collection.
+    /// How often the garbage collection process will run. Since garbage
+    /// collection doesn't happen on the whole index, but only on entities
+    /// that got flagged during search, it is better to run more often than
+    /// less. `GarbageCollectorConfig::queue_size` can be tweaked to control
+    /// rate of collection.
     pub garbage_collect_interval: Duration,
 }
 
@@ -818,7 +821,8 @@ pub mod tests {
         }
 
         {
-            // entity should be deleted, but can still be returned if we request deleted ones
+            // entity should be deleted, but can still be returned if we request deleted
+            // ones
             let query = QueryBuilder::all().build();
             let res = test_store.query(query).await?;
             assert_eq!(res.entities.len(), 0);

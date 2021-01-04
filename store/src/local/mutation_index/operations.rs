@@ -26,7 +26,8 @@ pub enum IndexOperation {
     DeleteOperation(OperationId),
 
     /// Delete an indexed mutation for specified entity id by its operation id.
-    /// Independent from `DeleteOperation` so that we can indicate flush entity cache.
+    /// Independent from `DeleteOperation` so that we can indicate flush entity
+    /// cache.
     DeleteEntityOperation(EntityId, OperationId),
 }
 

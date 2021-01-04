@@ -31,19 +31,19 @@ const DAY_SECS: u64 = 86_400;
 /// can delete mutations by operation ids as it indexes them.
 ///
 /// When searching, if the mutation that got returned by the mutation index
-/// isn't valid anymore because it got overridden by another mutation, or
+/// isn't valid anymore because it got overridden by another mutation or
 /// because the last mutation was a deletion (tombstone on entity or trait), the
 /// search result is discarded (but could be returned by a later valid
-/// mutations). This eventually create a problem where a lot of mutations get
+/// mutations). This eventually creates a problem where a lot of mutations get
 /// returned by the mutation index to be then discarded by the entity index, up
 /// to eventually creating the issue where we hit the maximum number of pages
 /// and don't return valid entities.
 ///
-/// At interval, the entity store calls the entity index to do a garbage collection
-/// run. This run only happen if there has been sufficient number of indexed blocks
-/// from chain so that we don't re-collect entities for which we have mutations that
-/// have already been deleted in the chain index, but not indexed yet because they
-/// are in the pending store.
+/// At interval, the entity store calls the entity index to do a garbage
+/// collection run. This run only happen if there has been sufficient number of
+/// indexed blocks from chain so that we don't re-collect entities for which we
+/// have mutations that have already been deleted in the chain index, but not
+/// indexed yet because they are in the pending store.
 ///
 /// There is 3 kind of garbage collections:
 /// * Deleted entity: effectively deletes all traits of an entity.
@@ -82,8 +82,8 @@ impl GarbageCollector {
         }
     }
 
-    /// Checks if an entity for which we collected its mutation metadata from the index should be added
-    /// to the garbage collection queue.
+    /// Checks if an entity for which we collected its mutation metadata from
+    /// the index should be added to the garbage collection queue.
     pub fn maybe_flag_for_collection(&self, entity_id: &str, aggregator: &EntityAggregator) {
         let last_block_offset = if let Some(offset) = aggregator.last_block_offset {
             offset
@@ -112,7 +112,7 @@ impl GarbageCollector {
                 let elapsed = now.signed_duration_since(*deletion_date);
                 if elapsed >= self.max_trait_deleted_duration {
                     trace!(
-                        "Collecting entity {} trait {} since got deleted",
+                        "Collecting entity {} trait {} since it got deleted",
                         entity_id,
                         trait_id
                     );
@@ -129,7 +129,7 @@ impl GarbageCollector {
             if trait_aggr.mutation_count > self.config.trait_versions_leeway {
                 let mut inner = self.inner.write().expect("Fail to acquire inner lock");
                 trace!(
-                    "Collecting entity {} trait {} since too many versions {}",
+                    "Collecting entity {} trait {} since it has too many versions ({})",
                     entity_id,
                     trait_id,
                     trait_aggr.mutation_count,
@@ -148,7 +148,7 @@ impl GarbageCollector {
     where
         F: Fn(EntityIdRef) -> Result<EntityMutationResults, Error>,
     {
-        let (ops, entity_count) = {
+        let (operations, entity_count) = {
             let mut inner = self.inner.write().expect("Fail to acquire inner lock");
             let entity_count = inner.entity_ids.len();
 
@@ -159,16 +159,17 @@ impl GarbageCollector {
             (queue, entity_count)
         };
 
-        if ops.is_empty() {
+        if operations.is_empty() {
             return Vec::new();
         }
 
         debug!(
-            "Starting garbage collection with {} operations...",
-            ops.len()
+            "Starting a garbage collection pass with {} operations for {} entities...",
+            operations.len(),
+            entity_count,
         );
         let mut deletions = Vec::new();
-        for op in ops {
+        for op in operations {
             let until_block_offset = op.until_block_offset();
             let entity_id = op.entity_id();
 
@@ -225,14 +226,13 @@ pub struct GarbageCollectorConfig {
     /// After how long do we collect a fully deleted trait.
     pub deleted_trait_collection: Duration,
 
-    /// Maximum versions we keep for a trait.
+    /// Maximum versions to keep for a trait when it is compacted.
     pub trait_versions_max: usize,
 
-    /// If higher than `trait_versions_max`, a compaction of trait versions
-    /// will only happen if the number of versions reaches this value.
+    /// After how many versions for a trait a compaction is triggered.
     pub trait_versions_leeway: usize,
 
-    /// Size of queue of entities to be collected.
+    /// Size of the queue of entities to be collected.
     pub queue_size: usize,
 }
 
@@ -243,7 +243,7 @@ impl Default for GarbageCollectorConfig {
             deleted_trait_collection: Duration::from_secs(14 * DAY_SECS),
             trait_versions_max: 5,
             trait_versions_leeway: 7,
-            queue_size: 2000,
+            queue_size: 100,
         }
     }
 }
@@ -329,6 +329,7 @@ where
         .next()
 }
 
+/// Filters mutations to only return those that are for a specified trait.
 fn filter_trait_mutations<'i, I>(
     mutations: I,
     trait_id: &'i str,
