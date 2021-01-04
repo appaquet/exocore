@@ -97,8 +97,6 @@ pub async fn cmd_daemon(ctx: &Context) -> anyhow::Result<()> {
                     .map(|e| e.into())
                     .unwrap_or_default();
 
-                info!("ENTITIES INDEX CONFIG: {:?}", entities_index_config);
-
                 let entities_index = EntityIndex::open_or_create(
                     full_cell.clone(),
                     entities_index_config,
