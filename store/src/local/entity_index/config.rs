@@ -54,12 +54,16 @@ impl From<ProtoEntityIndexConfig> for EntityIndexConfig {
             ..EntityIndexConfig::default()
         };
 
-        if proto.chain_index_min_depth > 0 {
-            config.chain_index_min_depth = proto.chain_index_min_depth;
+        if let Some(v) = proto.chain_index_min_depth {
+            config.chain_index_min_depth = v;
         }
 
-        if proto.chain_index_depth_leeway > 0 {
-            config.chain_index_depth_leeway = proto.chain_index_depth_leeway;
+        if let Some(v) = proto.chain_index_depth_leeway {
+            config.chain_index_depth_leeway = v;
+        }
+
+        if let Some(gc) = proto.garbage_collector {
+            config.garbage_collector = gc.into();
         }
 
         config

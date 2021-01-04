@@ -5,6 +5,7 @@ use std::{
     time::Duration,
 };
 
+use exocore_core::protos::core::NodeStoreConfig;
 use futures::channel::{mpsc, oneshot};
 use futures::prelude::*;
 
@@ -266,11 +267,12 @@ pub struct StoreConfig {
     /// Timeout for mutations that were awaiting for entities to be returned.
     pub mutation_tracker_timeout: Duration,
 
-    /// How often the garbage collection process will run. Since garbage
-    /// collection doesn't happen on the whole index, but only on entities
-    /// that got flagged during search, it is better to run more often than
-    /// less. `GarbageCollectorConfig::queue_size` can be tweaked to control
-    /// rate of collection.
+    /// How often the garbage collection process will run.
+    ///
+    /// Since garbage collection doesn't happen on the whole index, but only on
+    /// entities that got flagged during search, it is better to run more
+    /// often than less. `GarbageCollectorConfig::queue_size` can be tweaked
+    /// to control rate of collection.
     pub garbage_collect_interval: Duration,
 }
 
@@ -284,6 +286,26 @@ impl Default for StoreConfig {
             mutation_tracker_timeout: Duration::from_secs(5),
             garbage_collect_interval: Duration::from_secs(33),
         }
+    }
+}
+
+impl From<NodeStoreConfig> for StoreConfig {
+    fn from(proto: NodeStoreConfig) -> Self {
+        let mut config = StoreConfig::default();
+
+        if let Some(v) = proto.query_parallelism {
+            config.query_parallelism = v as usize;
+        }
+
+        if let Some(index) = &proto.index {
+            if let Some(gc) = &index.garbage_collector {
+                if let Some(v) = gc.run_interval_secs {
+                    config.garbage_collect_interval = Duration::from_secs(v as u64);
+                }
+            }
+        }
+
+        config
     }
 }
 
@@ -813,7 +835,10 @@ pub mod tests {
                 test_store.create_put_contact_mutation("entity1", "trt1", "Hello entity1");
             test_store.mutate(mutation).await?;
 
-            let delete = MutationBuilder::new().delete_entity("entity1").build();
+            let delete = MutationBuilder::new()
+                .delete_entity("entity1")
+                .return_entities()
+                .build();
             let resp = test_store.mutate(delete).await?;
             test_store
                 .cluster

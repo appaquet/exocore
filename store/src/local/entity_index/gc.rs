@@ -5,6 +5,7 @@ use std::{
 };
 
 use exocore_chain::{block::BlockOffset, operation::OperationId};
+use exocore_core::protos::core::EntityGarbageCollectorConfig;
 use exocore_core::protos::store::EntityMutation;
 use exocore_core::time::Clock;
 
@@ -245,6 +246,18 @@ impl Default for GarbageCollectorConfig {
             trait_versions_leeway: 7,
             queue_size: 100,
         }
+    }
+}
+
+impl From<EntityGarbageCollectorConfig> for GarbageCollectorConfig {
+    fn from(proto: EntityGarbageCollectorConfig) -> Self {
+        let mut config = GarbageCollectorConfig::default();
+
+        if let Some(v) = proto.queue_size {
+            config.queue_size = v as usize;
+        }
+
+        config
     }
 }
 
