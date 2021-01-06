@@ -250,7 +250,7 @@ pub fn from_any_url_and_data(
     let full_name = any_url_to_full_name(url);
 
     let descriptor = registry.get_message_descriptor(&full_name)?;
-    let message = protobuf::parse_from_bytes::<Empty>(data)?;
+    let message = Empty::parse_from_bytes(data)?;
 
     Ok(DynamicMessage {
         message,

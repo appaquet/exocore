@@ -46,7 +46,7 @@ impl Registry {
         fd_set_bytes: R,
     ) -> Result<(), Error> {
         let mut bytes = fd_set_bytes;
-        let fd_set = protobuf::parse_from_reader(&mut bytes)
+        let fd_set = FileDescriptorSet::parse_from_reader(&mut bytes)
             .map_err(|err| Error::StepanProtobuf(Arc::new(err)))?;
 
         self.register_file_descriptor_set(&fd_set);
