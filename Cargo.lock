@@ -1130,7 +1130,7 @@ dependencies = [
  "futures",
  "hyper",
  "log",
- "rand 0.7.3",
+ "rand 0.8.1",
  "reqwest",
  "serde",
  "serde_derive",
