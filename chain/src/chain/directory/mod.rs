@@ -419,6 +419,13 @@ impl ChainStore for DirectoryChainStore {
     }
 }
 
+impl Drop for DirectoryChainStore {
+    fn drop(&mut self) {
+        println!("Dropping DirectoryChainStore !");
+        std::fs::remove_file(self.directory.join(LOCK_FILE)).expect("Failed to cleanup lock file.");
+    }
+}
+
 /// Metadata information of the chain directory store persisted to disk.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct DirectoryChainMetadata {
