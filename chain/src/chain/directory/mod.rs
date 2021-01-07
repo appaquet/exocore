@@ -22,6 +22,7 @@ use operations_index::OperationsIndex;
 use super::Segments;
 
 const METADATA_FILE: &str = "metadata.json";
+const LOCK_FILE: &str = "store.lock";
 
 /// Directory based chain persistence. The chain is split in segments with
 /// configurable maximum size. This maximum size allows using mmap on 32bit
@@ -42,15 +43,30 @@ impl DirectoryChainStore {
         config: DirectoryChainStoreConfig,
         directory_path: &Path,
     ) -> Result<DirectoryChainStore, Error> {
-        let paths = std::fs::read_dir(directory_path).map_err(|err| {
-            Error::new_io(
-                err,
-                format!(
-                    "Error listing directory {}",
-                    directory_path.to_string_lossy(),
-                ),
-            )
-        })?;
+        let lock_file: PathBuf = directory_path.join(LOCK_FILE);
+
+        if lock_file.exists() {
+            return Err(Error::UnexpectedState(
+                "One node is already locked on the directory.".to_string(),
+            ));
+        }
+
+        let paths = std::fs::read_dir(directory_path)
+            .map_err(|err| {
+                Error::new_io(
+                    err,
+                    format!(
+                        "Error listing directory {}",
+                        directory_path.to_string_lossy(),
+                    ),
+                )
+            })
+            .and_then(|read_dir| {
+                // TODO : Write Node_ID into lockfile to differentiate owner
+                std::fs::write(lock_file, "LOCK")
+                    .map_err(|err| Error::new_io(err, "Error creating lock file"))
+                    .map(|_| read_dir)
+            })?;
 
         if paths.count() == 0 {
             Self::create(config, directory_path)
