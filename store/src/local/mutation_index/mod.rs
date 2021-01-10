@@ -855,7 +855,7 @@ impl MutationIndex {
         searcher: S,
         query: &dyn tantivy::query::Query,
         top_collector: &C,
-    ) -> Result<Vec<MutationMetadata>, Error>
+    ) -> Result<Vec<Arc<MutationMetadata>>, Error>
     where
         S: Deref<Target = Searcher>,
         C: Collector<Fruit = Vec<(OrderingValueWrapper, DocAddress)>>,
@@ -885,13 +885,13 @@ impl MutationIndex {
                         schema::get_doc_opt_string_value(&doc, self.fields.trait_type)
                 }
 
-                let result = MutationMetadata {
+                let result = Arc::new(MutationMetadata {
                     block_offset,
                     operation_id,
                     entity_id,
                     mutation_type,
                     sort_value,
-                };
+                });
                 results.push(result);
             }
         }

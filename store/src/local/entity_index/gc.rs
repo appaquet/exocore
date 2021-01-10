@@ -263,7 +263,7 @@ impl From<EntityGarbageCollectorConfig> for GarbageCollectorConfig {
 /// Creates a deletion mutation for all operations of the entity.
 fn collect_delete_entity<I>(entity_id: &str, mutations: I) -> Option<EntityMutation>
 where
-    I: Iterator<Item = MutationMetadata>,
+    I: Iterator<Item = Arc<MutationMetadata>>,
 {
     let operation_ids: Vec<OperationId> = mutations.map(|mutation| mutation.operation_id).collect();
     if operation_ids.is_empty() {
@@ -285,7 +285,7 @@ where
 /// Creates a deletion mutation for all operations of a trait of an entity.
 fn collect_delete_trait<I>(entity_id: &str, trait_id: &str, mutations: I) -> Option<EntityMutation>
 where
-    I: Iterator<Item = MutationMetadata>,
+    I: Iterator<Item = Arc<MutationMetadata>>,
 {
     let trait_mutations = filter_trait_mutations(mutations, trait_id);
     let operation_ids: Vec<OperationId> = trait_mutations
@@ -316,7 +316,7 @@ fn collect_trait_versions<I>(
     mutations: I,
 ) -> Option<EntityMutation>
 where
-    I: Iterator<Item = MutationMetadata>,
+    I: Iterator<Item = Arc<MutationMetadata>>,
 {
     let trait_operations: Vec<OperationId> = filter_trait_mutations(mutations, trait_id)
         .map(|mutation| mutation.operation_id)
@@ -345,9 +345,9 @@ where
 fn filter_trait_mutations<'i, I>(
     mutations: I,
     trait_id: &'i str,
-) -> impl Iterator<Item = MutationMetadata> + 'i
+) -> impl Iterator<Item = Arc<MutationMetadata>> + 'i
 where
-    I: Iterator<Item = MutationMetadata> + 'i,
+    I: Iterator<Item = Arc<MutationMetadata>> + 'i,
 {
     mutations.filter(move |mutation| match &mutation.mutation_type {
         crate::local::mutation_index::MutationType::TraitPut(put_mut)
@@ -639,8 +639,8 @@ mod tests {
         block_offset: Option<BlockOffset>,
         operation_id: OperationId,
         trait_id: T,
-    ) -> MutationMetadata {
-        MutationMetadata {
+    ) -> Arc<MutationMetadata> {
+        Arc::new(MutationMetadata {
             operation_id,
             block_offset,
             entity_id: String::new(),
@@ -658,6 +658,6 @@ mod tests {
                 reverse: false,
                 ignore: false,
             },
-        }
+        })
     }
 }

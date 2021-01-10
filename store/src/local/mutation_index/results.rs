@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use exocore_chain::block::BlockOffset;
@@ -16,13 +17,13 @@ pub struct MutationResultsIterator<'i, Q: Borrow<EntityQuery>> {
     pub index: &'i MutationIndex,
     pub query: Q,
     pub total_results: usize,
-    pub current_results: std::vec::IntoIter<MutationMetadata>,
+    pub current_results: std::vec::IntoIter<Arc<MutationMetadata>>,
     pub next_page: Option<Paging>,
     pub max_pages: usize,
 }
 
 impl<'i, Q: Borrow<EntityQuery>> Iterator for MutationResultsIterator<'i, Q> {
-    type Item = MutationMetadata;
+    type Item = Arc<MutationMetadata>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let next_result = self.current_results.next();
@@ -55,7 +56,7 @@ impl<'i, Q: Borrow<EntityQuery>> Iterator for MutationResultsIterator<'i, Q> {
 
 /// Collection of `MutationMetadata`
 pub struct MutationResults {
-    pub mutations: Vec<MutationMetadata>,
+    pub mutations: Vec<Arc<MutationMetadata>>,
     pub total: usize,
     pub remaining: usize,
     pub next_page: Option<Paging>,
@@ -63,7 +64,7 @@ pub struct MutationResults {
 
 #[derive(Clone)]
 pub struct EntityMutationResults {
-    pub mutations: Vec<MutationMetadata>,
+    pub mutations: Vec<Arc<MutationMetadata>>,
 }
 
 /// Indexed trait / entity mutation metadata returned as a result of a query.

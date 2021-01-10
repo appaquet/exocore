@@ -897,7 +897,7 @@ where
 /// Wrapper for entity result with matched mutation from store layer along
 /// aggregated traits.
 pub struct EntityResult {
-    pub matched_mutation: MutationMetadata,
+    pub matched_mutation: Arc<MutationMetadata>,
     pub ordering_value: OrderingValueWrapper,
     pub proto: EntityResultProto,
     pub mutations: Rc<EntityAggregator>,

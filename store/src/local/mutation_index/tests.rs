@@ -1160,7 +1160,7 @@ fn test_config() -> MutationIndexConfig {
 fn find_put_trait<'r>(
     results: &'r MutationResults,
     trait_id: &str,
-) -> Option<&'r MutationMetadata> {
+) -> Option<&'r Arc<MutationMetadata>> {
     results.mutations.iter().find(|t| matches!(&t.mutation_type, MutationType::TraitPut(put_trait) if put_trait.trait_id == trait_id))
 }
 

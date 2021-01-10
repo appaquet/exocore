@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::{
     collections::{HashMap, HashSet},
     hash::Hasher,
@@ -59,7 +60,7 @@ pub struct EntityAggregator {
 impl EntityAggregator {
     pub fn new<I>(mutations_metadata: I) -> Result<EntityAggregator, Error>
     where
-        I: Iterator<Item = MutationMetadata>,
+        I: Iterator<Item = Arc<MutationMetadata>>,
     {
         let ordered_mutations_metadata = sort_mutations_commit_time(mutations_metadata);
 
@@ -203,7 +204,7 @@ impl EntityAggregator {
 /// remaining, and can then be fetched from the chain.
 #[derive(Default)]
 pub struct TraitAggregator {
-    pub put_mutations: Vec<MutationMetadata>,
+    pub put_mutations: Vec<Arc<MutationMetadata>>,
     pub last_operation_id: Option<OperationId>,
     pub creation_date: Option<DateTime<Utc>>,
     pub modification_date: Option<DateTime<Utc>>,
@@ -228,7 +229,7 @@ impl TraitAggregator {
         traits.values().all(|t| t.deletion_date.is_some())
     }
 
-    fn push_put_mutation(&mut self, mutation: MutationMetadata) {
+    fn push_put_mutation(&mut self, mutation: Arc<MutationMetadata>) {
         let op_id = mutation.operation_id;
         let op_time = ConsistentTimestamp::from(op_id).to_datetime();
 
@@ -352,9 +353,9 @@ pub fn project_trait_fields(
 
 /// Sorts mutations in order they got committed (block offset/pending, then
 /// operation id)
-pub fn sort_mutations_commit_time<M: Iterator<Item = MutationMetadata>>(
+pub fn sort_mutations_commit_time<M: Iterator<Item = Arc<MutationMetadata>>>(
     mutations: M,
-) -> impl Iterator<Item = MutationMetadata> {
+) -> impl Iterator<Item = Arc<MutationMetadata>> {
     mutations.sorted_by_key(|result| {
         let block_offset = result.block_offset.unwrap_or(std::u64::MAX);
         (block_offset, result.operation_id)
@@ -496,7 +497,7 @@ pub(crate) mod tests {
     fn trait_dates() {
         let t1 = "t1".to_string();
 
-        let merge_mutations = |mutations: Vec<MutationMetadata>| -> TraitAggregator {
+        let merge_mutations = |mutations: Vec<Arc<MutationMetadata>>| -> TraitAggregator {
             let mut em = EntityAggregator::new(mutations.into_iter()).unwrap();
             em.traits.remove(&t1).unwrap()
         };
@@ -856,13 +857,13 @@ pub(crate) mod tests {
         operation_id: OperationId,
         created_time_op_id: Option<OperationId>,
         modification_time_op_id: Option<OperationId>,
-    ) -> MutationMetadata {
+    ) -> Arc<MutationMetadata> {
         let creation_date =
             created_time_op_id.map(|op_id| ConsistentTimestamp::from(op_id).to_datetime());
         let modification_date =
             modification_time_op_id.map(|op_id| ConsistentTimestamp::from(op_id).to_datetime());
 
-        MutationMetadata {
+        Arc::new(MutationMetadata {
             operation_id,
             block_offset,
             entity_id: String::new(),
@@ -877,15 +878,15 @@ pub(crate) mod tests {
                 ignore: true,
                 reverse: true,
             },
-        }
+        })
     }
 
     pub fn mock_delete_trait<T: Into<String>>(
         trait_id: T,
         block_offset: Option<BlockOffset>,
         operation_id: OperationId,
-    ) -> MutationMetadata {
-        MutationMetadata {
+    ) -> Arc<MutationMetadata> {
+        Arc::new(MutationMetadata {
             operation_id,
             block_offset,
             entity_id: String::new(),
@@ -895,14 +896,14 @@ pub(crate) mod tests {
                 ignore: true,
                 reverse: true,
             },
-        }
+        })
     }
 
     pub fn mock_delete_entity(
         block_offset: Option<BlockOffset>,
         operation_id: OperationId,
-    ) -> MutationMetadata {
-        MutationMetadata {
+    ) -> Arc<MutationMetadata> {
+        Arc::new(MutationMetadata {
             operation_id,
             block_offset,
             entity_id: String::new(),
@@ -912,6 +913,6 @@ pub(crate) mod tests {
                 ignore: true,
                 reverse: true,
             },
-        }
+        })
     }
 }
