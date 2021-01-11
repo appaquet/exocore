@@ -925,6 +925,7 @@ cells:
       apps:
         - inline:
              name: some application
+             version: 0.0.1
              public_key: peHZC1CM51uAugeMNxbXkVukFzCwMJY52m1xDCfLmm1pc1
 
 store:
@@ -1080,7 +1081,7 @@ store:
     fn cell_config_add_app() -> anyhow::Result<()> {
         let mut config = CellConfig {
             ..Default::default()
-        }; 
+        };
 
         config.add_application(CellApplicationConfig {
             location: Some(cell_application_config::Location::Inline(Manifest {
