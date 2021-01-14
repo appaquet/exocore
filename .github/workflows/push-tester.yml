@@ -113,14 +113,6 @@ jobs:
 
       - uses: Swatinem/rust-cache@v1
 
-      - uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cache/.wasm-pack
-          key: ${{ runner.os }}-wasm-pack
-          restore-keys: |
-            ${{ runner.os }}-wasm-pack
-
       - name: Build client
         run: |
           cd $GITHUB_WORKSPACE
@@ -149,7 +141,7 @@ jobs:
         run: |
           brew install swift-protobuf
           rustup target add aarch64-apple-ios x86_64-apple-ios # actions-rs don't support multiple targets: https://github.com/actions-rs/toolchain/issues/16
-          cargo install cargo-lipo
+          cargo install cargo-lipo --debug # make build faster, no need for speed from it
 
       - name: Build client & pod
         run: |
