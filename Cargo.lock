@@ -1038,7 +1038,7 @@ dependencies = [
 
 [[package]]
 name = "exo"
-version = "0.1.2"
+version = "0.1.2-pre0"
 dependencies = [
  "anyhow",
  "bytes 1.0.1",
@@ -1065,7 +1065,7 @@ dependencies = [
 
 [[package]]
 name = "exocore"
-version = "0.1.2"
+version = "0.1.2-pre0"
 dependencies = [
  "exocore-chain",
  "exocore-core",
@@ -1076,7 +1076,7 @@ dependencies = [
 
 [[package]]
 name = "exocore-chain"
-version = "0.1.2"
+version = "0.1.2-pre0"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -1095,7 +1095,7 @@ dependencies = [
 
 [[package]]
 name = "exocore-client-android"
-version = "0.1.2"
+version = "0.1.2-pre0"
 dependencies = [
  "anyhow",
  "exocore-core",
@@ -1106,7 +1106,7 @@ dependencies = [
 
 [[package]]
 name = "exocore-client-c"
-version = "0.1.2"
+version = "0.1.2-pre0"
 dependencies = [
  "exocore-core",
  "exocore-discovery",
@@ -1122,7 +1122,7 @@ dependencies = [
 
 [[package]]
 name = "exocore-client-web"
-version = "0.1.2"
+version = "0.1.2-pre0"
 dependencies = [
  "anyhow",
  "console_error_panic_hook",
@@ -1144,7 +1144,7 @@ dependencies = [
 
 [[package]]
 name = "exocore-core"
-version = "0.1.2"
+version = "0.1.2-pre0"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -1184,7 +1184,7 @@ dependencies = [
 
 [[package]]
 name = "exocore-discovery"
-version = "0.1.2"
+version = "0.1.2-pre0"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -1204,7 +1204,7 @@ dependencies = [
 
 [[package]]
 name = "exocore-store"
-version = "0.1.2"
+version = "0.1.2-pre0"
 dependencies = [
  "anyhow",
  "bytes 1.0.1",
@@ -1227,7 +1227,7 @@ dependencies = [
 
 [[package]]
 name = "exocore-transport"
-version = "0.1.2"
+version = "0.1.2-pre0"
 dependencies = [
  "anyhow",
  "byteorder",
