@@ -114,7 +114,7 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
 
             let nodes = self.cell.nodes();
             if next_block.has_my_signature
-                && nodes.is_quorum(valid_signatures.count(), Some(CellNodeRole::Chain))
+                && nodes.has_quorum(valid_signatures.count(), Some(CellNodeRole::Chain))
             {
                 debug!(
                     "{}: Block has enough signatures, we should commit",
@@ -485,7 +485,18 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
             "{}: Writing new block to chain: {:?}",
             self.cell, next_block
         );
-        chain_store.write_block(&block)?;
+        match chain_store.write_block(&block) {
+            Ok(_) => {}
+            Err(chain::Error::InvalidNextBlock {
+                attempt_offset,
+                next_offset,
+            }) => {
+                warn!("{}: Tried to write new block to offset {}, but chain next offset was {}. We're out of sync.", self.cell, attempt_offset, next_offset);
+                return Err(EngineError::OutOfSync);
+            }
+            Err(err) => return Err(err.into()),
+        }
+
         for operation_id in block_operations.operations_id() {
             pending_store.update_operation_commit_status(
                 operation_id,

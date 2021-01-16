@@ -47,7 +47,7 @@ fn should_propose_block_on_new_operations() -> anyhow::Result<()> {
 }
 
 #[test]
-fn should_not_propose_block_if_not_data() -> anyhow::Result<()> {
+fn should_not_propose_block_if_no_data() -> anyhow::Result<()> {
     let mut cluster = EngineTestCluster::new(1);
     cluster.remove_node_role(0, CellNodeRole::Chain);
 
@@ -126,6 +126,15 @@ fn commit_block_at_interval() -> anyhow::Result<()> {
     cluster.tick_commit_manager(0)?;
     let block = cluster.chains[0].get_last_block()?.unwrap();
     assert_ne!(first_block_offset, block.offset());
+
+    Ok(())
+}
+
+#[test]
+fn should_detect_chain_out_of_sync_on_invalid_accepted_commit()  -> anyhow::Result<()> {
+
+    // TODO:
+
 
     Ok(())
 }
@@ -396,7 +405,7 @@ fn test_is_node_commit_turn() -> anyhow::Result<()> {
 }
 
 #[test]
-fn cleanup_past_committed_operations() -> anyhow::Result<()> {
+fn should_cleanup_past_committed_operations() -> anyhow::Result<()> {
     let mut cluster = EngineTestCluster::new(1);
     cluster.clocks[0].set_fixed_instant(Instant::now());
 
@@ -461,7 +470,7 @@ fn cleanup_past_committed_operations() -> anyhow::Result<()> {
 }
 
 #[test]
-fn dont_cleanup_operations_from_commit_refused_blocks() -> anyhow::Result<()> {
+fn should_not_cleanup_operations_from_commit_refused_blocks() -> anyhow::Result<()> {
     let mut cluster = EngineTestCluster::new(1);
     cluster.chain_generate_dummy(0, 10, 1234);
     cluster.tick_chain_synchronizer(0)?;
@@ -533,7 +542,7 @@ fn dont_cleanup_operations_from_commit_refused_blocks() -> anyhow::Result<()> {
 }
 
 #[test]
-fn cleanup_dangling_operations() -> anyhow::Result<()> {
+fn should_cleanup_dangling_operations() -> anyhow::Result<()> {
     let mut cluster = EngineTestCluster::new(1);
     cluster.clocks[0].set_fixed_instant(Instant::now());
 
