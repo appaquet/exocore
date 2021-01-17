@@ -192,6 +192,8 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
             }
         }
 
+        // TODO: Should check previous block hash
+
         // validate hash of operations of block
         let block_operations = Self::get_block_operations(block, pending_store)?.map(|op| op.frame);
         let operations_hash = BlockOperations::hash_operations(block_operations)?;
@@ -454,6 +456,22 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
             ));
         }
 
+        // validate previous block hash
+        if block_header_reader.get_height() > 0 {
+            let prev_block_offset = block_header_reader.get_previous_offset();
+            let previous_block = chain_store.get_block(prev_block_offset).map_err(|err| {
+                error!("Tried to commit new block at offset {}, but got error getting previous block in chain at offset {}: {}", block_offset, prev_block_offset, err);
+                EngineError::OutOfSync
+            })?;
+
+            let prev_header = previous_block.header();
+            let prev_hash = prev_header.inner().inner().multihash_bytes();
+            if prev_hash != block_header_reader.get_previous_hash()? {
+                error!("Tried to commit new block with previous hash not matching");
+                return Err(EngineError::OutOfSync);
+            }
+        }
+
         // build signatures frame
         let signatures = next_block
             .signatures
@@ -559,7 +577,7 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
                 let block_offset = block_header_reader.get_offset();
                 let block_height = block_header_reader.get_height();
 
-                let height_diff = last_stored_block_height - block_height;
+                let height_diff = last_stored_block_height.saturating_sub(block_height);
                 if height_diff >= self.config.operations_cleanup_after_block_depth {
                     debug!(
                         "Block {:?} can be cleaned up (last_stored_block_height={})",

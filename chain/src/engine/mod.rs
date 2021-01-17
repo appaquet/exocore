@@ -27,7 +27,7 @@ use crate::operation;
 use crate::operation::NewOperation;
 use crate::pending;
 
-mod chain_sync;
+pub(super) mod chain_sync;
 mod commit_manager;
 mod config;
 mod error;

@@ -696,8 +696,7 @@ impl BlockSignatures {
 
         // create capnp frame
         let mut signatures_frame_builder = self.to_frame_builder();
-        let mut signatures_builder: block_signatures::Builder =
-            signatures_frame_builder.get_builder();
+        let mut signatures_builder = signatures_frame_builder.get_builder();
         signatures_builder.set_operations_size(header_reader.get_operations_size());
         let signatures_frame_data = signatures_frame_builder.as_bytes();
         let signatures_frame_data_len = signatures_frame_data.len();

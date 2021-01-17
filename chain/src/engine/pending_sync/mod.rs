@@ -503,7 +503,7 @@ impl NodeSyncInfo {
 }
 
 /// Converts bounds from sync_request range to SyncBounds
-fn extract_sync_bounds(
+pub(super) fn extract_sync_bounds(
     sync_range_reader: &pending_sync_range::Reader,
 ) -> Result<SyncBounds, EngineError> {
     let (from, from_included, to, to_included) = (

@@ -17,7 +17,7 @@ fn should_propose_block_on_new_operations() -> anyhow::Result<()> {
     assert_eq!(0, cluster.pending_stores[0].operations_count());
 
     // append new operation
-    append_new_operation(&mut cluster, b"hello world")?;
+    push_entry_operation(&mut cluster, 0, b"hello world");
 
     // this should create a block proposal (2nd op in pending store)
     cluster.tick_commit_manager(0)?;
@@ -57,7 +57,7 @@ fn should_not_propose_block_if_no_data() -> anyhow::Result<()> {
     cluster.tick_commit_manager(0)?;
 
     // append new operation
-    append_new_operation(&mut cluster, b"hello world")?;
+    push_entry_operation(&mut cluster, 0, b"hello world");
 
     // this should have create a block proposal if node could commit
     // but there should still be only 1 operation
@@ -76,11 +76,11 @@ fn only_one_node_at_time_should_commit() -> anyhow::Result<()> {
     cluster.tick_chain_synchronizer(1)?;
 
     // add operation & try to commit on each node
-    append_new_operation(&mut cluster, b"hello world")?;
+    push_entry_operation(&mut cluster, 0, b"hello world");
     cluster.tick_commit_manager(0)?;
     cluster.tick_commit_manager(0)?;
 
-    append_new_operation(&mut cluster, b"hello world")?;
+    push_entry_operation(&mut cluster, 0, b"hello world");
     cluster.tick_commit_manager(1)?;
     cluster.tick_commit_manager(1)?;
 
@@ -105,7 +105,7 @@ fn commit_block_at_interval() -> anyhow::Result<()> {
 
     // first block should be committed right away since there is no previous
     cluster.clocks[0].add_fixed_instant_duration(Duration::from_millis(10));
-    append_new_operation(&mut cluster, b"hello world")?;
+    push_entry_operation(&mut cluster, 0, b"hello world");
     cluster.tick_commit_manager(0)?;
     cluster.tick_commit_manager(0)?;
     let block = cluster.chains[0].get_last_block()?.unwrap();
@@ -114,7 +114,7 @@ fn commit_block_at_interval() -> anyhow::Result<()> {
 
     // second block should wait for time
     cluster.clocks[0].add_fixed_instant_duration(Duration::from_millis(10));
-    append_new_operation(&mut cluster, b"hello world")?;
+    push_entry_operation(&mut cluster, 0, b"hello world");
     cluster.tick_commit_manager(0)?;
     cluster.tick_commit_manager(0)?;
     let block = cluster.chains[0].get_last_block()?.unwrap();
@@ -131,11 +131,69 @@ fn commit_block_at_interval() -> anyhow::Result<()> {
 }
 
 #[test]
-fn should_detect_chain_out_of_sync_on_invalid_accepted_commit()  -> anyhow::Result<()> {
+fn should_detect_chain_out_of_sync_on_invalid_accepted_commit() -> anyhow::Result<()> {
+    let mut cluster = EngineTestCluster::new(3);
+    cluster.set_clock_fixed_instant(Instant::now());
 
-    // TODO:
+    // create cluster where node 0 and 1 creates blocks in their chain, but node 2 is excluded
+    cluster.chain_generate_dummy_from_offset(0, 0, 0, 2, 1337);
+    cluster.sync_chain_node_to_node(1, 0)?;
+    cluster.sync_chain_node_to_node(0, 1)?;
+    cluster.sync_chain_node_to_node(1, 0)?;
+    cluster.sync_chain_node_to_node(0, 1)?;
 
+    // create an operation and new block proposal on node 0 and 1
+    let (entry_op_id, op) = create_data_operation(&mut cluster, 0, b"hello world");
+    cluster.pending_stores[0].put_operation(op.clone())?;
+    cluster.pending_stores[1].put_operation(op)?;
+    let (block_op_id, op) = create_block_proposal(&mut cluster, 0, vec![entry_op_id]);
+    cluster.pending_stores[0].put_operation(op.clone())?;
+    cluster.pending_stores[1].put_operation(op)?;
 
+    // tick commit manager & sync between node 0 and 1. should write the new block.
+    cluster.clocks[0].add_fixed_instant_duration(Duration::from_millis(10));
+    cluster.tick_commit_manager(0)?;
+    cluster.sync_pending_node_to_node(0, 1)?;
+    cluster.tick_commit_manager(1)?;
+    cluster.sync_pending_node_to_node(1, 0)?;
+    cluster.tick_commit_manager(0)?;
+    assert!(cluster.chains[0]
+        .get_block_by_operation_id(block_op_id)
+        .unwrap()
+        .is_some());
+    assert!(cluster.chains[1]
+        .get_block_by_operation_id(block_op_id)
+        .unwrap()
+        .is_some());
+
+    // bring back node 2 with a different chain and synchronize its pending with ops from other nodes
+    // ticking commit manager should fail since it would try to add a block that isn't valid in its own chain
+    cluster.chain_generate_dummy_from_offset(2, 0, 0, 2, 1234);
+    cluster.sync_pending_node_to_node(2, 1)?;
+    match cluster.tick_commit_manager(2) {
+        Err(EngineError::OutOfSync) => {}
+        Ok(_) => {
+            panic!("Expected an out of sync error, got success");
+        }
+        Err(err) => {
+            panic!("Expected an out of sync error, got error: {}", err);
+        }
+    };
+
+    Ok(())
+}
+
+#[test]
+fn should_accept_just_added_node() -> anyhow::Result<()> {
+    // TODO: test that adding node doesn't cause issue. got a invalid signature size problem in one test
+
+    Ok(())
+}
+
+#[test]
+fn should_accept_lagging_commit() -> anyhow::Result<()> {
+    // TODO: test that if there is a few block proposal in front of us that are valid, we should still accept & commit them in order
+    
     Ok(())
 }
 
@@ -149,7 +207,7 @@ fn commit_block_after_maximum_operations() -> anyhow::Result<()> {
 
     // first block should be committed right away since there is not previous
     cluster.clocks[0].add_fixed_instant_duration(Duration::from_millis(10));
-    append_new_operation(&mut cluster, b"hello world")?;
+    push_entry_operation(&mut cluster, 0, b"hello world");
     cluster.tick_commit_manager(0)?;
     cluster.tick_commit_manager(0)?;
     let block = cluster.chains[0].get_last_block()?.unwrap();
@@ -158,7 +216,7 @@ fn commit_block_after_maximum_operations() -> anyhow::Result<()> {
 
     // should not commit new operations because didn't exceed interval & not enough
     cluster.clocks[0].add_fixed_instant_duration(Duration::from_millis(10));
-    append_new_operation(&mut cluster, b"hello world")?;
+    push_entry_operation(&mut cluster, 0, b"hello world");
     cluster.tick_commit_manager(0)?;
     cluster.tick_commit_manager(0)?;
     let block = cluster.chains[0].get_last_block()?.unwrap();
@@ -170,7 +228,7 @@ fn commit_block_after_maximum_operations() -> anyhow::Result<()> {
         .config
         .commit_maximum_pending_store_count;
     for _i in 0..=max_ops {
-        append_new_operation(&mut cluster, b"hello world")?;
+        push_entry_operation(&mut cluster, 0, b"hello world");
     }
 
     // it should commits
@@ -192,7 +250,7 @@ fn update_pending_status_for_committed_operations() -> anyhow::Result<()> {
 
     // first block should be committed right away since there is not previous
     cluster.clocks[0].add_fixed_instant_duration(Duration::from_millis(10));
-    let op_id = append_new_operation(&mut cluster, b"hello world")?;
+    let op_id = push_entry_operation(&mut cluster, 0, b"hello world");
     assert_eq!(
         cluster.pending_stores[0]
             .get_operation(op_id)?
@@ -223,10 +281,10 @@ fn should_sign_valid_proposed_block() -> anyhow::Result<()> {
 
     // append an operation
     let op_data = b"hello world";
-    let op_id = append_new_operation(&mut cluster, op_data)?;
+    let op_id = push_entry_operation(&mut cluster, 0, op_data);
 
     // add a block proposal for this operation
-    let block_id = append_block_proposal_from_operations(&mut cluster, vec![op_id])?;
+    let block_id = push_block_proposal_for_ops(&mut cluster, 0, vec![op_id]);
 
     // ticking should sign the block
     cluster.tick_commit_manager(0)?;
@@ -249,9 +307,9 @@ fn should_order_next_best_blocks() -> anyhow::Result<()> {
     cluster.tick_chain_synchronizer(0)?;
 
     // add 2 proposal
-    let op_id = append_new_operation(&mut cluster, b"hello world")?;
-    let block_id_signed = append_block_proposal_from_operations(&mut cluster, vec![op_id])?;
-    let _block_id_unsigned = append_block_proposal_from_operations(&mut cluster, vec![op_id])?;
+    let op_id = push_entry_operation(&mut cluster, 0, b"hello world");
+    let block_id_signed = push_block_proposal_for_ops(&mut cluster, 0, vec![op_id]);
+    let _block_id_unsigned = push_block_proposal_for_ops(&mut cluster, 0, vec![op_id]);
 
     // get blocks and fake signature on 1
     let mut blocks = get_pending_blocks(&cluster)?;
@@ -278,14 +336,14 @@ fn should_refuse_invalid_proposed_block() -> anyhow::Result<()> {
 
     // append an operation
     let op_data = b"hello world";
-    let op_id = append_new_operation(&mut cluster, op_data)?;
+    let op_id = push_entry_operation(&mut cluster, 0, op_data);
 
     // should sign this block
-    let block_id_good = append_block_proposal_from_operations(&mut cluster, vec![op_id])?;
+    let block_id_good = push_block_proposal_for_ops(&mut cluster, 0, vec![op_id]);
     cluster.tick_commit_manager(0)?;
 
     // should refuse this block as another one is already signed
-    let block_id_bad = append_block_proposal_from_operations(&mut cluster, vec![op_id])?;
+    let block_id_bad = push_block_proposal_for_ops(&mut cluster, 0, vec![op_id]);
     cluster.tick_commit_manager(0)?;
 
     let blocks = get_pending_blocks(&cluster)?;
@@ -316,8 +374,8 @@ fn proposal_should_expire_after_timeout() -> anyhow::Result<()> {
     // create block with 1 operation
     cluster.clocks[0].set_fixed_instant(Instant::now());
     let op_data = b"hello world";
-    let op_id = append_new_operation(&mut cluster, op_data)?;
-    let block_id = append_block_proposal_from_operations(&mut cluster, vec![op_id])?;
+    let op_id = push_entry_operation(&mut cluster, 0, op_data);
+    let block_id = push_block_proposal_for_ops(&mut cluster, 0, vec![op_id]);
 
     // not expired
     let now = cluster.consistent_timestamp(0);
@@ -426,7 +484,7 @@ fn should_cleanup_past_committed_operations() -> anyhow::Result<()> {
         // advance clock so that we make sure it commits
         cluster.clocks[0].add_fixed_instant_duration(config.commit_maximum_interval);
 
-        let op_id = append_new_operation(&mut cluster, b"hello world")?;
+        let op_id = push_entry_operation(&mut cluster, 0, b"hello world");
         operations_id.push(op_id);
 
         // should create proposal, sign it and commit it
@@ -484,7 +542,7 @@ fn should_not_cleanup_operations_from_commit_refused_blocks() -> anyhow::Result<
     // generate operations that won't be in a block yet
     let mut operations_id = Vec::new();
     let operations = (0..10).map(|i| {
-        let op_id = append_new_operation(&mut cluster, b"hello world").unwrap();
+        let op_id = push_entry_operation(&mut cluster, 0, b"hello world");
         operations_id.push(op_id);
         cluster.pending_stores[0]
             .get_operation(operations_id[i])
@@ -556,7 +614,7 @@ fn should_cleanup_dangling_operations() -> anyhow::Result<()> {
         // advance clock so that we make sure it commits
         cluster.clocks[0].add_fixed_instant_duration(config.commit_maximum_interval);
 
-        let op_id = append_new_operation(&mut cluster, b"hello world")?;
+        let op_id = push_entry_operation(&mut cluster, 0, b"hello world");
         operations_id.push(op_id);
 
         // should create proposal, sign it and commit it
@@ -589,51 +647,72 @@ fn should_cleanup_dangling_operations() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn append_new_operation(
+fn push_entry_operation(
     cluster: &mut EngineTestCluster,
+    node_idx: usize,
     data: &[u8],
-) -> Result<OperationId, EngineError> {
-    let op_id = cluster.consistent_timestamp(0).into();
-
-    for node in cluster.nodes.iter() {
-        let idx = cluster.get_node_index(node.id());
-        let op_builder = OperationBuilder::new_entry(op_id, node.id(), data);
-        let operation = op_builder.sign_and_build(&node)?;
-        cluster.pending_stores[idx].put_operation(operation)?;
-    }
-
-    Ok(op_id)
+) -> OperationId {
+    let (op_id, op) = create_data_operation(cluster, node_idx, data);
+    cluster.pending_stores[node_idx].put_operation(op).unwrap();
+    op_id
 }
 
-fn append_block_proposal_from_operations(
+fn create_data_operation(
     cluster: &mut EngineTestCluster,
-    op_ids: Vec<OperationId>,
-) -> Result<OperationId, EngineError> {
-    let node = &cluster.nodes[0];
+    node_idx: usize,
+    data: &[u8],
+) -> (OperationId, NewOperation) {
+    let node = &cluster.nodes[node_idx];
+    let op_id = cluster.consistent_timestamp(node_idx).into();
+    let op_builder = OperationBuilder::new_entry(op_id, node.id(), data);
+    let op = op_builder.sign_and_build(&node).unwrap();
 
-    let previous_block = cluster.chains[0].get_last_block()?.unwrap();
+    (op_id, op)
+}
+
+fn push_block_proposal_for_ops(
+    cluster: &mut EngineTestCluster,
+    node_idx: usize,
+    op_ids: Vec<OperationId>,
+) -> OperationId {
+    let (block_operation_id, operation) = create_block_proposal(cluster, node_idx, op_ids);
+
+    cluster.pending_stores[node_idx]
+        .put_operation(operation)
+        .unwrap();
+
+    block_operation_id
+}
+
+fn create_block_proposal(
+    cluster: &mut EngineTestCluster,
+    node_idx: usize,
+    op_ids: Vec<OperationId>,
+) -> (OperationId, NewOperation) {
+    let node = &cluster.nodes[node_idx];
+
+    let previous_block = cluster.chains[node_idx].get_last_block().unwrap().unwrap();
     let block_operations = op_ids.iter().map(|op_id| {
-        cluster.pending_stores[0]
+        cluster.pending_stores[node_idx]
             .get_operation(*op_id)
             .unwrap()
             .unwrap()
             .frame
     });
-    let block_operations = BlockOperations::from_operations(block_operations)?;
-    let block_operation_id = cluster.clocks[0].consistent_time(&node).into();
+    let block_operations = BlockOperations::from_operations(block_operations).unwrap();
+    let block_operation_id = cluster.clocks[node_idx].consistent_time(&node).into();
     let block = BlockOwned::new_with_prev_block(
-        &cluster.cells[0].cell(),
+        &cluster.cells[node_idx].cell(),
         &previous_block,
         block_operation_id,
         block_operations,
-    )?;
+    )
+    .unwrap();
     let block_proposal_frame_builder =
-        OperationBuilder::new_block_proposal(block_operation_id, node.id(), &block)?;
-    let operation = block_proposal_frame_builder.sign_and_build(node)?;
+        OperationBuilder::new_block_proposal(block_operation_id, node.id(), &block).unwrap();
+    let operation = block_proposal_frame_builder.sign_and_build(node).unwrap();
 
-    cluster.pending_stores[0].put_operation(operation)?;
-
-    Ok(block_operation_id)
+    (block_operation_id, operation)
 }
 
 fn get_pending_blocks(cluster: &EngineTestCluster) -> Result<PendingBlocks, EngineError> {

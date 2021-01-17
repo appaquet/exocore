@@ -319,8 +319,8 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
             .map_or(false, |leader| leader == node_id)
     }
 
-    /// Resets chain synchronization state to unknown state. 
-    /// 
+    /// Resets chain synchronization state to unknown state.
+    ///
     /// This will force resynchronization with other nodes. This may be
     /// called if other components of the engine determine that our chain
     /// may have diverged (ex: commit manager trying to write invalid block).
