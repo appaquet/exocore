@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use exocore_core::cell::{CellNodeRole, FullCell};
 use exocore_core::cell::{LocalNode, Node, NodeId};
@@ -525,6 +525,12 @@ impl EngineTestCluster {
     pub fn set_clock_fixed_instant(&self, instant: Instant) {
         for clock in &self.clocks {
             clock.set_fixed_instant(instant);
+        }
+    }
+
+    pub fn add_fixed_instant_duration(&self, dur: Duration) {
+        for clock in &self.clocks {
+            clock.add_fixed_instant_duration(dur);
         }
     }
 

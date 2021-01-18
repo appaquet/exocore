@@ -141,8 +141,6 @@ impl PendingBlocks {
                     }
                 }
                 None => {
-                    // TODO: If block has quorum, but was not found in chain, it means we're out of sync
-
                     let expected_next_offset = last_stored_block.next_offset();
                     if has_refusal_quorum || has_my_refusal {
                         BlockStatus::NextRefused
@@ -151,10 +149,8 @@ impl PendingBlocks {
                     } else if proposal.offset < expected_next_offset {
                         // means it was a proposed block for a diverged chain
                         BlockStatus::PastRefused
-                    } else if proposal.offset == expected_next_offset {
+                    } else if proposal.offset >= expected_next_offset {
                         BlockStatus::NextPotential
-                    } else if proposal.offset > expected_next_offset {
-                        BlockStatus::FuturePotential
                     } else {
                         BlockStatus::NextRefused
                     }
@@ -328,7 +324,6 @@ pub enum BlockStatus {
     NextExpired,
     NextPotential,
     NextRefused,
-    FuturePotential,
 }
 
 /// Block proposal wrapper

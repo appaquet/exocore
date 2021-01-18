@@ -723,7 +723,7 @@ impl BlockSignatures {
         // header
         if signatures_frame.whole_data_size() != expected_signatures_size {
             return Err(Error::Integrity(format!(
-                "Block local signatures isn't the same size as expected (got={} expected={})",
+                "Block local signatures isn't the same size as expected (this={} expected={})",
                 signatures_frame.whole_data_size(),
                 header_reader.get_signatures_size()
             )));
