@@ -154,7 +154,8 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
             Err(EngineError::OutOfSync) => Err(EngineError::OutOfSync),
             Err(err) if err.is_fatal() => Err(err),
             Err(err) => {
-                // we ignore any non-fatal error since it may just mean that block is invalid for some reason
+                // we ignore any non-fatal error since it may just mean that block is invalid
+                // for some reason
                 warn!(
                     "Couldn't sign or refuse block {} because of an error: {}",
                     block_id, err,

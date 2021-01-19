@@ -135,7 +135,8 @@ fn should_detect_chain_out_of_sync_on_invalid_accepted_commit() -> anyhow::Resul
     let mut cluster = EngineTestCluster::new(3);
     cluster.set_clock_fixed_instant(Instant::now());
 
-    // create cluster where node 0 and 1 creates blocks in their chain, but node 2 is excluded
+    // create cluster where node 0 and 1 creates blocks in their chain, but node 2
+    // is excluded
     cluster.remove_node_role(2, CellNodeRole::Chain);
     cluster.chain_generate_dummy_from_offset(0, 0, 0, 2, 1337);
     cluster.chain_generate_dummy_from_offset(1, 0, 0, 2, 1337);
@@ -166,8 +167,9 @@ fn should_detect_chain_out_of_sync_on_invalid_accepted_commit() -> anyhow::Resul
         .unwrap()
         .is_some());
 
-    // bring back node 2 with a different chain and synchronize its pending with ops from other nodes
-    // ticking commit manager should fail since it would try to add a block that isn't valid in its own chain
+    // bring back node 2 with a different chain and synchronize its pending with ops
+    // from other nodes ticking commit manager should fail since it would try to
+    // add a block that isn't valid in its own chain
     cluster.add_node_role(2, CellNodeRole::Chain);
     cluster.chain_generate_dummy_from_offset(2, 0, 0, 2, 1234);
     cluster.sync_pending_node_to_node(2, 1)?;
@@ -189,12 +191,12 @@ fn should_accept_lagging_commit() -> anyhow::Result<()> {
     let mut cluster = EngineTestCluster::new(3);
     cluster.set_clock_fixed_instant(Instant::now());
 
-    // create cluster with 3 nodes, but only node 0 and 1 has chain role
+    // create cluster with 3 nodes
     cluster.chain_generate_dummy_from_offset(0, 0, 0, 2, 1337);
     cluster.chain_generate_dummy_from_offset(1, 0, 0, 2, 1337);
     cluster.chain_generate_dummy_from_offset(2, 0, 0, 2, 1337);
 
-    // node 0 creates 3 blocks
+    // commit 3 blocks on node 0 and 1
     for _i in 0..3 {
         cluster.add_fixed_instant_duration(Duration::from_millis(10));
 
@@ -228,7 +230,7 @@ fn should_accept_lagging_commit() -> anyhow::Result<()> {
     let block = cluster.chains[1].get_last_block()?.unwrap();
     assert_eq!(block.get_height()?, 4);
 
-    // bring back node 2 with chain role, should commit the blocks to its chain
+    // bring back node 2 to speed, should commit the blocks to its chain
     cluster.sync_pending_node_to_node(2, 0)?;
     cluster.tick_commit_manager(2)?;
     cluster.tick_commit_manager(2)?;

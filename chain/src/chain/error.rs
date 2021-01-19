@@ -11,9 +11,7 @@ pub enum Error {
     #[error("The store has an integrity problem: {0}")]
     Integrity(String),
 
-    #[error(
-        "Tried to write a block at offset {offset}, but next offset was {expected_offset}"
-    )]
+    #[error("Tried to write a block at offset {offset}, but next offset was {expected_offset}")]
     InvalidNextBlock {
         offset: BlockOffset,
         expected_offset: BlockOffset,

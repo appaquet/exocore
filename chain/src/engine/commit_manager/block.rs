@@ -130,10 +130,12 @@ impl PendingBlocks {
             let status = match chain_store.get_block(proposal.offset).ok() {
                 Some(block) => {
                     if block.get_proposed_operation_id()? == *group_id {
-                        // we found the block and it has the same operation id, so it's valid past block
+                        // we found the block and it has the same operation id, so it's valid past
+                        // block
                         BlockStatus::PastCommitted
                     } else if has_sigs_quorum {
-                        // we found a different block at the offset, and it had quorum. it means we diverged
+                        // we found a different block at the offset, and it had quorum. it means we
+                        // diverged
                         BlockStatus::PastDiverged
                     } else {
                         // another proposal for the same block offset was made, but not accepted

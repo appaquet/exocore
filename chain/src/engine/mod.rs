@@ -405,8 +405,8 @@ where
             }
         }
 
-        // check if chain is still synchronized after commit manager since it may have detected that
-        // we are out of sync
+        // check if chain is still synchronized after commit manager since it may have
+        // detected that we are out of sync
         if self.chain_is_synchronized() {
             self.pending_synchronizer
                 .tick(&mut sync_context, &self.pending_store)?;
