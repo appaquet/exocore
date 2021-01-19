@@ -12,11 +12,11 @@ pub enum Error {
     Integrity(String),
 
     #[error(
-        "Tried to write a block at offset {attempt_offset}, but next offset was {next_offset}"
+        "Tried to write a block at offset {offset}, but next offset was {expected_offset}"
     )]
     InvalidNextBlock {
-        attempt_offset: BlockOffset,
-        next_offset: BlockOffset,
+        offset: BlockOffset,
+        expected_offset: BlockOffset,
     },
 
     #[error("Error in capnp serialization: {0}")]

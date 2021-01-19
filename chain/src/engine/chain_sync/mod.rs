@@ -323,7 +323,7 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
     ///
     /// This will force resynchronization with other nodes. This may be
     /// called if other components of the engine determine that our chain
-    /// may have diverged (ex: commit manager trying to write invalid block).
+    /// may have diverged (ex: commit manager trying to write an invalid block).
     pub fn reset_state(&mut self) {
         self.status = Status::Unknown;
         self.nodes_info.clear();

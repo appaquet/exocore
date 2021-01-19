@@ -525,8 +525,8 @@ impl<PS: pending::PendingStore, CS: chain::ChainStore> CommitManager<PS, CS> {
         match chain_store.write_block(&chain_block) {
             Ok(_) => {}
             Err(chain::Error::InvalidNextBlock {
-                attempt_offset,
-                next_offset,
+                offset: attempt_offset,
+                expected_offset: next_offset,
             }) => {
                 warn!("{}: Tried to write new block to offset {}, but chain next offset was {}. We're out of sync.", self.cell, attempt_offset, next_offset);
                 return Err(EngineError::OutOfSync);

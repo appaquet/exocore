@@ -141,8 +141,8 @@ impl DirectorySegment {
         let block_offset = block.offset();
         if next_block_offset != block_offset {
             return Err(Error::InvalidNextBlock {
-                attempt_offset: block_offset,
-                next_offset: next_block_offset,
+                offset: block_offset,
+                expected_offset: next_block_offset,
             });
         }
 
