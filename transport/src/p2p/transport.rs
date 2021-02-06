@@ -86,7 +86,6 @@ impl Libp2pTransport {
 
     /// Runs the transport to completion.
     pub async fn run(self) -> Result<(), Error> {
-        // let behaviour = ExocoreBehaviour::new();
         let behaviour = CombinedBehaviour {
             service_handles: Arc::clone(&self.service_handles),
             exocore: ExocoreBehaviour::default(),
@@ -168,6 +167,7 @@ impl Libp2pTransport {
         // Spawn the main Future which will take care of the swarm
         let inner = Arc::clone(&self.service_handles);
         let swarm_task = future::poll_fn(move |cx: &mut Context| -> Poll<()> {
+            // At interval, re-add all nodes to make sure that their newer addresses are added.
             if let Poll::Ready(_) = nodes_update_interval.poll_tick(cx) {
                 if let Ok(inner) = inner.read() {
                     for node in inner.all_peer_nodes().values() {
@@ -176,7 +176,7 @@ impl Libp2pTransport {
                 }
             }
 
-            // we drain all messages coming from handles that need to be sent
+            // Drain all messages coming from handles that need to be sent to other nodes
             while let Poll::Ready(Some(event)) = out_receiver.poll_next_unpin(cx) {
                 match event {
                     OutEvent::Message(msg) => {
@@ -212,7 +212,7 @@ impl Libp2pTransport {
                 }
             }
 
-            // we poll the behaviour for incoming messages to be dispatched to handles
+            // Poll the swarm to complete its job
             while let Poll::Ready(_event) = swarm.poll_next_unpin(cx) {}
 
             Poll::Pending
@@ -285,8 +285,8 @@ impl NetworkBehaviourEventProcess<PingEvent> for CombinedBehaviour {
     fn inject_event(&mut self, event: PingEvent) {
         match event.result {
             Ok(success) => {
-                // TODO: We should round-trip time when we do node selection
-                debug!("Successfully ping peer {}: {:?}", event.peer, success);
+                // TODO: We could save round-trip time to node. Could be use for node selection.
+                debug!("Successfully pinged peer {}: {:?}", event.peer, success);
             }
             Err(failure) => {
                 debug!("Failed to ping peer {}: {}", event.peer, failure);
@@ -406,6 +406,7 @@ fn add_node_address(
     Ok(())
 }
 
+/// Returns the node of a cell that has the given libp2p peer id.
 fn get_node_by_peer(cell: &Cell, peer_id: PeerId) -> Result<Node, Error> {
     let node_id = NodeId::from_peer_id(peer_id);
     let cell_nodes = cell.nodes();
