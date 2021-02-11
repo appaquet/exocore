@@ -1,15 +1,29 @@
-use std::ffi::CString;
-// use wasm_bindgen::prelude::*;
+pub(crate) mod app;
+pub(crate) mod binding;
+pub(crate) mod executor;
+pub(crate) mod store;
 
-#[link(wasm_import_module = "the-wasm-import-module")]
+use std::sync::Arc;
+
+pub use app::{App, AppError, __exocore_register_app};
+pub use executor::spawn;
+pub use exocore_apps_sdk_macro::exocore_app;
+pub use store::Store;
+
+#[link(wasm_import_module = "exocore")]
 extern "C" {
-    fn log(prefix: *const i8, len: usize);
+    // TODO: Should have another name to prevent clashes
+    fn log(bytes: *const u8, len: usize);
 }
 
-#[no_mangle]
-pub extern "C" fn print_hello() {
-    let str = CString::new("hello world").unwrap();
+// TODO: Logging
+pub(crate) fn send_log(s: &str) {
     unsafe {
-        log(str.as_ptr(), 11);
+        log(s.as_ptr(), s.len());
     }
+}
+
+#[derive(Clone)]
+pub struct Exocore {
+    pub store: Arc<Store>,
 }

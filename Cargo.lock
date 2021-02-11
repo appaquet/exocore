@@ -1158,6 +1158,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "exocore-apps-example"
+version = "0.1.3"
+dependencies = [
+ "exocore-apps-sdk",
+ "exocore-core",
+ "exocore-store",
+ "futures",
+ "log",
+]
+
+[[package]]
 name = "exocore-apps-runtime"
 version = "0.1.3"
 dependencies = [
@@ -1173,8 +1184,23 @@ name = "exocore-apps-sdk"
 version = "0.1.3"
 dependencies = [
  "anyhow",
+ "exocore-apps-sdk-macro",
  "exocore-core",
+ "futures",
  "log",
+ "quote",
+ "thiserror",
+]
+
+[[package]]
+name = "exocore-apps-sdk-macro"
+version = "0.1.3"
+dependencies = [
+ "anyhow",
+ "futures",
+ "log",
+ "quote",
+ "syn",
  "thiserror",
 ]
 

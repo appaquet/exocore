@@ -55,6 +55,8 @@ members = [
   "chain",
   "apps/runtime",
   "apps/sdk",
+  "apps/sdk/macro",
+  "apps/example",
   "discovery",
   "exo",
   "clients/web",
@@ -65,6 +67,6 @@ exclude = [
     "3rd"
 ]
 
-[profile.release]
-lto = "thin"
-codegen-units = 1
+# [profile.release]
+# lto = "thin"
+# codegen-units = 1
