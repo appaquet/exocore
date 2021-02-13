@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use exocore_core::cell::LocalNode;
 use exocore_core::framing::{CapnpFrameBuilder, FrameBuilder};
-use exocore_core::protos::generated::data_chain_capnp::{chain_operation, chain_operation_header};
+use exocore_protos::generated::data_chain_capnp::{chain_operation, chain_operation_header};
 
 use super::*;
 use crate::engine::testing::*;
@@ -500,9 +500,7 @@ fn build_sync_ranges_frames(
         .map(|range| {
             let mut range_frame_builder = CapnpFrameBuilder::<pending_sync_range::Owned>::new();
             let mut range_msg_builder = range_frame_builder.get_builder();
-            range
-                .write_into_sync_range_builder(&mut range_msg_builder)
-                .unwrap();
+            range.write_into_sync_range_builder(&mut range_msg_builder);
             range_frame_builder
         })
         .collect()

@@ -17,7 +17,8 @@ extern crate anyhow;
 use std::{path::PathBuf, str::FromStr};
 
 use clap::Clap;
-use exocore_core::{cell::LocalNodeConfigExt, protos::core::LocalNodeConfig};
+use exocore_core::cell::LocalNodeConfigExt;
+use exocore_protos::core::LocalNodeConfig;
 use log::LevelFilter;
 use term::*;
 use utils::expand_tild;
@@ -92,7 +93,7 @@ impl Context {
 
 #[derive(Clap)]
 pub enum Commands {
-    /// Nodes releated commands.
+    /// Nodes related commands.
     Node(node::NodeOptions),
 
     /// Cells related commands.
@@ -101,7 +102,7 @@ pub enum Commands {
     /// Applications related commands.
     App(app::AppOptions),
 
-    /// Keys releated commands.
+    /// Keys related commands.
     Keys(keys::KeysOptions),
 
     /// Node configuration related commands.
@@ -130,7 +131,10 @@ async fn main() -> anyhow::Result<()> {
         Commands::Node(node_opts) => node::handle_cmd(&ctx, node_opts),
         Commands::Cell(cell_opts) => cell::handle_cmd(&ctx, cell_opts).await,
         Commands::App(app_opts) => app::handle_cmd(&ctx, app_opts).await,
-        Commands::Keys(keys_opts) => keys::handle_cmd(&ctx, keys_opts),
+        Commands::Keys(keys_opts) => {
+            keys::handle_cmd(&ctx, keys_opts);
+            Ok(())
+        }
         Commands::Config(config_opts) => config::handle_cmd(&ctx, config_opts),
         Commands::Daemon => daemon::cmd_daemon(&ctx).await,
         Commands::Discovery(disco_opts) => disco::cmd_daemon(&ctx, disco_opts).await,

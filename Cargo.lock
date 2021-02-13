@@ -1132,6 +1132,7 @@ dependencies = [
  "exocore-chain",
  "exocore-core",
  "exocore-discovery",
+ "exocore-protos",
  "exocore-store",
  "exocore-transport",
  "futures",
@@ -1153,6 +1154,7 @@ dependencies = [
  "exocore-chain",
  "exocore-core",
  "exocore-discovery",
+ "exocore-protos",
  "exocore-store",
  "exocore-transport",
 ]
@@ -1211,6 +1213,7 @@ dependencies = [
  "anyhow",
  "byteorder",
  "exocore-core",
+ "exocore-protos",
  "exocore-transport",
  "extindex",
  "futures",
@@ -1240,13 +1243,13 @@ version = "0.1.3"
 dependencies = [
  "exocore-core",
  "exocore-discovery",
+ "exocore-protos",
  "exocore-store",
  "exocore-transport",
  "futures",
  "libc",
  "log",
  "log4rs",
- "prost",
  "serde_json",
 ]
 
@@ -1258,12 +1261,12 @@ dependencies = [
  "console_error_panic_hook",
  "exocore-core",
  "exocore-discovery",
+ "exocore-protos",
  "exocore-store",
  "exocore-transport",
  "futures",
  "js-sys",
  "log",
- "prost",
  "rand 0.7.3",
  "thiserror",
  "wasm-bindgen",
@@ -1277,14 +1280,12 @@ name = "exocore-core"
 version = "0.1.3"
 dependencies = [
  "anyhow",
- "base64 0.13.0",
  "bs58",
  "byteorder",
  "bytes 1.0.1",
- "capnp",
- "capnpc",
  "chrono",
  "criterion_bencher_compat",
+ "exocore-protos",
  "futures",
  "getrandom 0.2.2",
  "libp2p",
@@ -1293,10 +1294,6 @@ dependencies = [
  "multihash",
  "parking_lot",
  "petname",
- "prost",
- "prost-build",
- "prost-types",
- "protobuf",
  "rand 0.8.3",
  "serde",
  "serde_derive",
@@ -1333,6 +1330,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "exocore-protos"
+version = "0.1.3"
+dependencies = [
+ "anyhow",
+ "base64 0.13.0",
+ "capnp",
+ "capnpc",
+ "chrono",
+ "prost",
+ "prost-build",
+ "prost-types",
+ "protobuf",
+ "serde",
+ "serde_derive",
+ "thiserror",
+]
+
+[[package]]
 name = "exocore-store"
 version = "0.1.3"
 dependencies = [
@@ -1342,12 +1357,12 @@ dependencies = [
  "crc",
  "exocore-chain",
  "exocore-core",
+ "exocore-protos",
  "exocore-transport",
  "futures",
  "itertools 0.10.0",
  "log",
  "lru",
- "prost",
  "smallvec",
  "tantivy",
  "tempfile",
@@ -1362,6 +1377,7 @@ dependencies = [
  "anyhow",
  "byteorder",
  "exocore-core",
+ "exocore-protos",
  "futures",
  "hyper",
  "libp2p",
@@ -2014,9 +2030,9 @@ checksum = "f44db4199cdb049b494a92d105acbfa43c25b3925e33803923ba9580b7bc9e1a"
 
 [[package]]
 name = "libc"
-version = "0.2.85"
+version = "0.2.86"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ccac4b00700875e6a07c6cde370d44d32fa01c5a65cdd2fca6858c479d28bb3"
+checksum = "b7282d924be3275cec7f6756ff4121987bc6481325397dde6ba3e7802b1a8b1c"
 
 [[package]]
 name = "libp2p"
@@ -2380,9 +2396,9 @@ dependencies = [
 
 [[package]]
 name = "memmap2"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e73be3b7d04a0123e933fea1d50d126cc7196bbc0362c0ce426694f777194eee"
+checksum = "04e3e85b970d650e2ae6d70592474087051c11c54da7f7b4949725c5735fbcc6"
 dependencies = [
  "libc",
 ]
@@ -3436,9 +3452,9 @@ dependencies = [
 
 [[package]]
 name = "serde_yaml"
-version = "0.8.16"
+version = "0.8.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bdd2af560da3c1fdc02cb80965289254fc35dff869810061e2d8290ee48848ae"
+checksum = "15654ed4ab61726bf918a39cb8d98a2e2995b002387807fa6ba58fdf7f59bb23"
 dependencies = [
  "dtoa",
  "linked-hash-map",

@@ -8,13 +8,13 @@ use exocore_core::framing::{
     CapnpFrameBuilder, FrameBuilder, FrameReader, MultihashFrameBuilder, SizedFrameBuilder,
     TypedCapnpFrame,
 };
-use exocore_core::protos::core::LocalNodeConfig;
-use exocore_core::protos::generated::data_chain_capnp::block_header;
-use exocore_core::protos::generated::data_transport_capnp::{
-    chain_sync_request, chain_sync_response, pending_sync_request,
-};
 use exocore_core::sec::hash::Sha3_256;
 use exocore_core::time::{Clock, ConsistentTimestamp};
+use exocore_protos::core::LocalNodeConfig;
+use exocore_protos::generated::data_chain_capnp::block_header;
+use exocore_protos::generated::data_transport_capnp::{
+    chain_sync_request, chain_sync_response, pending_sync_request,
+};
 use tempfile::TempDir;
 
 use super::commit_manager::CommitManager;
@@ -667,8 +667,7 @@ pub fn print_pending_sync_request<F: FrameReader>(
     let ranges = reader.get_ranges().unwrap();
 
     for range in ranges.iter() {
-        let ((bound_from, bound_to), _from, _to) =
-            super::pending_sync::extract_sync_bounds(&range).unwrap();
+        let ((bound_from, bound_to), _from, _to) = super::pending_sync::extract_sync_bounds(&range);
         trace!("  Range {:?} to {:?}", bound_from, bound_to,);
         trace!("    Hash={:?}", range.get_operations_hash().unwrap());
         trace!("    Count={}", range.get_operations_count());

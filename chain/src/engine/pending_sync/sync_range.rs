@@ -2,12 +2,12 @@ use std::ops::Bound;
 
 use exocore_core::{
     framing::FrameReader,
-    protos::generated::data_transport_capnp::pending_sync_range,
     sec::hash::{Multihash, MultihashDigestExt, Sha3_256},
 };
+use exocore_protos::generated::data_transport_capnp::pending_sync_range;
 
 use super::{OperationDetailsLevel, PendingSyncConfig};
-use crate::{engine::EngineError, operation::OperationId, pending::StoredOperation};
+use crate::{operation::OperationId, pending::StoredOperation};
 
 /// Collection of SyncRangeBuilder, taking into account maximum operations we
 /// want per range.
@@ -151,7 +151,7 @@ impl SyncRangeBuilder {
     pub(crate) fn write_into_sync_range_builder(
         self,
         range_msg_builder: &mut pending_sync_range::Builder,
-    ) -> Result<(), EngineError> {
+    ) {
         match self.from_operation {
             Bound::Included(bound) => {
                 range_msg_builder.set_from_included(true);
@@ -216,7 +216,5 @@ impl SyncRangeBuilder {
             }
             _ => {}
         }
-
-        Ok(())
     }
 }

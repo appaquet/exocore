@@ -240,7 +240,7 @@ mod tests {
 
     use super::*;
     use crate::framing::{assert_builder_equals, CapnpFrameBuilder, TypedCapnpFrame};
-    use crate::protos::generated::data_chain_capnp::block_header;
+    use exocore_protos::generated::data_chain_capnp::block_header;
 
     #[test]
     fn can_build_and_read_sized_inner() -> anyhow::Result<()> {
@@ -287,14 +287,12 @@ mod tests {
     }
 
     #[test]
-    fn can_build_to_owned() -> anyhow::Result<()> {
+    fn can_build_to_owned() {
         let builder = SizedFrameBuilder::new(vec![1; 10]);
 
         let frame = builder.as_owned_frame();
         assert_eq!(vec![1; 10], frame.exposed_data());
         assert_eq!(10, frame.inner_size);
-
-        Ok(())
     }
 
     #[test]
@@ -380,7 +378,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_from_next_offset() -> anyhow::Result<()> {
+    fn invalid_from_next_offset() {
         let frame1 = SizedFrameBuilder::new(vec![1u8; 10]);
         let buffer = frame1.as_bytes();
 
@@ -395,7 +393,5 @@ mod tests {
 
         let result = SizedFrame::new_from_next_offset(&buffer[..], buffer.len());
         assert!(result.is_ok());
-
-        Ok(())
     }
 }

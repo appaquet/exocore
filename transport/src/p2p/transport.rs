@@ -4,8 +4,8 @@ use std::task::{Context, Poll};
 use exocore_core::cell::{Cell, CellId, CellNodes};
 use exocore_core::cell::{LocalNode, Node, NodeId};
 use exocore_core::framing::{FrameBuilder, TypedCapnpFrame};
-use exocore_core::protos::generated::common_capnp::envelope;
 use exocore_core::utils::handle_set::HandleSet;
+use exocore_protos::generated::common_capnp::envelope;
 use futures::channel::mpsc;
 use futures::prelude::*;
 use futures::{FutureExt, SinkExt, StreamExt};
@@ -168,7 +168,7 @@ impl Libp2pTransport {
         let inner = Arc::clone(&self.service_handles);
         let swarm_task = future::poll_fn(move |cx: &mut Context| -> Poll<()> {
             // At interval, re-add all nodes to make sure that their newer addresses are added.
-            if let Poll::Ready(_) = nodes_update_interval.poll_tick(cx) {
+            if nodes_update_interval.poll_tick(cx).is_ready() {
                 if let Ok(inner) = inner.read() {
                     for node in inner.all_peer_nodes().values() {
                         swarm.exocore.add_node_peer(node);
