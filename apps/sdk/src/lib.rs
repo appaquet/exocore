@@ -2,6 +2,7 @@ pub(crate) mod app;
 pub(crate) mod binding;
 pub(crate) mod executor;
 pub(crate) mod store;
+pub(crate) mod time;
 
 use std::sync::Arc;
 
@@ -14,12 +15,14 @@ pub use store::Store;
 extern "C" {
     // TODO: Should have another name to prevent clashes
     fn log(bytes: *const u8, len: usize);
+    fn blah(bytes: *const u8, len: usize);
 }
 
 // TODO: Logging
 pub(crate) fn send_log(s: &str) {
     unsafe {
         log(s.as_ptr(), s.len());
+        blah(s.as_ptr(), s.len());
     }
 }
 

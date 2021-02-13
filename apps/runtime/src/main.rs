@@ -11,7 +11,11 @@ fn main() -> Result<(), anyhow::Error> {
         Ok(())
     });
 
-    let instance = Instance::new(&store, &module, &[log.into()])?;
+    let blah = Func::wrap(&store, |caller: Caller<'_>, ptr: i32, len: i32| {
+        println!("WASM: {}", read_wasm_string(caller, ptr, len)?);
+        Ok(())
+    });
+    let instance = Instance::new(&store, &module, &[log.into(), blah.into()])?;
 
     let exocore_init = instance
         .get_func("__exocore_init")
