@@ -1164,7 +1164,6 @@ name = "exocore-apps-example"
 version = "0.1.3"
 dependencies = [
  "exocore-apps-sdk",
- "exocore-core",
  "exocore-store",
  "futures",
  "log",
@@ -1187,7 +1186,7 @@ version = "0.1.3"
 dependencies = [
  "anyhow",
  "exocore-apps-sdk-macro",
- "exocore-core",
+ "exocore-protos",
  "futures",
  "log",
  "quote",

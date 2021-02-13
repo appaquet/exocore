@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::unimplemented;
 
-use exocore_core::protos::store::{EntityQuery, EntityResults};
+use exocore_protos::generated::store::{EntityQuery, EntityResults};
 
 pub struct Store {
 
