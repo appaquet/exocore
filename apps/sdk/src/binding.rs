@@ -1,5 +1,11 @@
-use super::executor;
-use super::send_log;
+use crate::time;
+
+use super::{executor, send_log};
+
+/* Added by the macro
+#[no_mangle]
+pub extern "C" fn __exocore_app_init() {}
+*/
 
 #[no_mangle]
 pub extern "C" fn __exocore_init() {
@@ -8,8 +14,12 @@ pub extern "C" fn __exocore_init() {
 }
 
 #[no_mangle]
-pub extern "C" fn __exocore_tick() {
+pub extern "C" fn __exocore_tick() -> u64 {
+    time::poll_timers();
     executor::poll_executor();
+
+    // return time at which we want to be tick
+    time::next_timer_time().unwrap_or(0)
 }
 
 // TODO: Remove

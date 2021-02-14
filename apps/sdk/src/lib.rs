@@ -1,32 +1,41 @@
-pub(crate) mod app;
-pub(crate) mod binding;
+pub use app::{App, AppError, __exocore_app_register};
 pub(crate) mod executor;
-pub(crate) mod store;
-pub(crate) mod time;
-
-use std::sync::Arc;
-
-pub use app::{App, AppError, __exocore_register_app};
 pub use executor::spawn;
 pub use exocore_apps_sdk_macro::exocore_app;
+
+pub(crate) mod store;
 pub use store::Store;
+
+pub mod time;
+
+#[macro_use]
+extern crate lazy_static;
+use std::sync::Arc;
+
+pub(crate) mod app;
+pub(crate) mod binding;
 
 #[link(wasm_import_module = "exocore")]
 extern "C" {
-    // TODO: Should have another name to prevent clashes
-    fn log(bytes: *const u8, len: usize);
-    fn blah(bytes: *const u8, len: usize);
+    fn __exocore_host_log(bytes: *const u8, len: usize);
+    fn __exocore_host_now() -> u64;
 }
 
 // TODO: Logging
-pub(crate) fn send_log(s: &str) {
+pub fn send_log(s: &str) {
     unsafe {
-        log(s.as_ptr(), s.len());
-        blah(s.as_ptr(), s.len());
+        __exocore_host_log(s.as_ptr(), s.len());
     }
 }
 
-#[derive(Clone)]
 pub struct Exocore {
     pub store: Arc<Store>,
+}
+
+impl Exocore {
+    fn new() -> Exocore {
+        Exocore {
+            store: Arc::new(Store::new()),
+        }
+    }
 }

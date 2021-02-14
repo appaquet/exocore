@@ -36,3 +36,5 @@ cobertura*
 flamegraph*
 perf.*
 *.tar.gz
+*.tgz
+*.wasm

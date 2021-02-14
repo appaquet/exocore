@@ -3,11 +3,13 @@ use std::unimplemented;
 
 use exocore_protos::generated::store::{EntityQuery, EntityResults};
 
-pub struct Store {
-
-}
+pub struct Store {}
 
 impl Store {
+    pub(crate) fn new() -> Store {
+        Store {}
+    }
+
     pub async fn query(self: &Arc<Store>, query: EntityQuery) -> Result<EntityResults, StoreError> {
         // TODO: Add to pending requests map
         // TODO: Send to host
@@ -15,7 +17,6 @@ impl Store {
 
         unimplemented!()
     }
-
 
     pub(crate) fn check_timeouts(&self) {
         // TODO: check if any requests can be considered timed out

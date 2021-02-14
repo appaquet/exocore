@@ -11,9 +11,9 @@ pub fn exocore_app(_metadata: TokenStream, input: TokenStream) -> TokenStream {
         #input_struct
 
         #[no_mangle]
-        pub extern "C" fn __exocore_app_new() {
+        pub extern "C" fn __exocore_app_init() {
             let instance = <#struct_ident>::new();
-            exocore_apps_sdk::__exocore_register_app(Box::new(instance));
+            exocore_apps_sdk::__exocore_app_register(Box::new(instance));
         }
     })
 }

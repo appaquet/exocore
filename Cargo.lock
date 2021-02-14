@@ -1188,6 +1188,7 @@ dependencies = [
  "exocore-apps-sdk-macro",
  "exocore-protos",
  "futures",
+ "lazy_static",
  "log",
  "quote",
  "thiserror",
