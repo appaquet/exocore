@@ -1,6 +1,6 @@
 use crate::time;
 
-use super::{executor, send_log};
+use super::executor;
 
 /* Added by the macro
 #[no_mangle]
@@ -9,7 +9,7 @@ pub extern "C" fn __exocore_app_init() {}
 
 #[no_mangle]
 pub extern "C" fn __exocore_init() {
-    // TODO: init logging
+    crate::log::init().expect("Couldn't setup logging");
     executor::create_executor();
 }
 
@@ -20,16 +20,6 @@ pub extern "C" fn __exocore_tick() -> u64 {
 
     // return time at which we want to be tick
     time::next_timer_time().unwrap_or(0)
-}
-
-// TODO: Remove
-#[no_mangle]
-pub extern "C" fn send_resp(bytes: *const u8, len: usize) {
-    unsafe {
-        let bytes = std::slice::from_raw_parts(bytes, len);
-        let string = String::from_utf8_lossy(bytes);
-        send_log(string.as_ref());
-    }
 }
 
 #[no_mangle]

@@ -14,18 +14,12 @@ use std::sync::Arc;
 
 pub(crate) mod app;
 pub(crate) mod binding;
+pub(crate) mod log;
 
 #[link(wasm_import_module = "exocore")]
 extern "C" {
-    fn __exocore_host_log(bytes: *const u8, len: usize);
+    fn __exocore_host_log(level: u8, bytes: *const u8, len: usize);
     fn __exocore_host_now() -> u64;
-}
-
-// TODO: Logging
-pub fn send_log(s: &str) {
-    unsafe {
-        __exocore_host_log(s.as_ptr(), s.len());
-    }
 }
 
 pub struct Exocore {

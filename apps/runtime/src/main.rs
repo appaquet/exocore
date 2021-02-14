@@ -3,48 +3,17 @@ use std::time::Duration;
 use anyhow::anyhow;
 use wasmtime::*;
 
-fn main() -> Result<(), anyhow::Error> {
+fn main() -> anyhow::Result<()> {
     let engine = Engine::default();
     let store = Store::new(&engine);
 
     let mut linker = Linker::new(&store);
-    linker.func(
-        "exocore",
-        "__exocore_host_log",
-        |caller: Caller<'_>, ptr: i32, len: i32| {
-            println!("WASM: {}", read_wasm_string(caller, ptr, len)?);
-            Ok(())
-        },
-    )?;
-    linker.func(
-        "exocore",
-        "__exocore_host_now",
-        |_caller: Caller<'_>| -> u64 { unix_timestamp() },
-    )?;
+    setup_host_module(&mut linker)?;
 
     let module = Module::from_file(&engine, "hello.wasm")?;
     let instance = linker.instantiate(&module)?;
 
-    // Initialize environment
-    let exocore_init = instance
-        .get_func("__exocore_init")
-        .expect("`__exocore_init` was not an exported function. Did you include SDK?");
-    let exocore_init = exocore_init.get0::<()>()?;
-    exocore_init()?;
-
-    // Create application instance
-    let exocore_app_init = instance.get_func("__exocore_app_init").expect(
-        "`__exocore_app_init` was not an exported function. Did you implement #[exocore_app]?",
-    );
-    let exocore_app_init = exocore_app_init.get0::<()>()?;
-    exocore_app_init()?;
-
-    // Boot the application
-    let exocore_app_boot = instance.get_func("__exocore_app_boot").expect(
-        "`__exocore_app_boot` was not an exported function. Did you implement #[exocore_app]?",
-    );
-    let exocore_app_boot = exocore_app_boot.get0::<()>()?;
-    exocore_app_boot()?;
+    bootstrap_module(&instance)?;
 
     // We start ticking
     let exocore_tick = instance
@@ -77,6 +46,49 @@ fn main() -> Result<(), anyhow::Error> {
     // print_hello()?;
 
     // Ok(())
+}
+
+fn setup_host_module(linker: &mut Linker) -> anyhow::Result<()> {
+    linker.func(
+        "exocore",
+        "__exocore_host_log",
+        |caller: Caller<'_>, level: i32, ptr: i32, len: i32| {
+            println!("WASM: {} {}", level, read_wasm_string(caller, ptr, len)?);
+            Ok(())
+        },
+    )?;
+    linker.func(
+        "exocore",
+        "__exocore_host_now",
+        |_caller: Caller<'_>| -> u64 { unix_timestamp() },
+    )?;
+
+    Ok(())
+}
+
+fn bootstrap_module(instance: &Instance) -> anyhow::Result<()> {
+    // Initialize environment
+    let exocore_init = instance
+        .get_func("__exocore_init")
+        .expect("`__exocore_init` was not an exported function. Did you include SDK?");
+    let exocore_init = exocore_init.get0::<()>()?;
+    exocore_init()?;
+
+    // Create application instance
+    let exocore_app_init = instance.get_func("__exocore_app_init").expect(
+        "`__exocore_app_init` was not an exported function. Did you implement #[exocore_app]?",
+    );
+    let exocore_app_init = exocore_app_init.get0::<()>()?;
+    exocore_app_init()?;
+
+    // Boot the application
+    let exocore_app_boot = instance.get_func("__exocore_app_boot").expect(
+        "`__exocore_app_boot` was not an exported function. Did you implement #[exocore_app]?",
+    );
+    let exocore_app_boot = exocore_app_boot.get0::<()>()?;
+    exocore_app_boot()?;
+
+    Ok(())
 }
 
 /// Reads a string from a wasm pointer and len.

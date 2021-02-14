@@ -10,6 +10,7 @@ pub trait App: Send {
 
 static mut APP: Option<Mutex<Box<dyn App>>> = None;
 
+// Called by #[exocore_app] macro at application initialization.
 pub fn __exocore_app_register(app: Box<dyn App>) {
     unsafe {
         APP = Some(Mutex::new(app));
