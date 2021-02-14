@@ -5,7 +5,7 @@ use std::time::Duration;
 use futures::channel::oneshot;
 use futures::{Future, FutureExt};
 
-use crate::__exocore_host_now;
+use crate::binding::__exocore_host_now;
 
 lazy_static! {
     static ref TIMERS: Timers = Timers::new();

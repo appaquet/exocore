@@ -16,12 +16,6 @@ pub(crate) mod app;
 pub(crate) mod binding;
 pub(crate) mod log;
 
-#[link(wasm_import_module = "exocore")]
-extern "C" {
-    fn __exocore_host_log(level: u8, bytes: *const u8, len: usize);
-    fn __exocore_host_now() -> u64;
-}
-
 pub struct Exocore {
     pub store: Arc<Store>,
 }

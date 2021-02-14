@@ -2,6 +2,23 @@ use crate::time;
 
 use super::executor;
 
+#[cfg(target_arch = "wasm32")]
+#[link(wasm_import_module = "exocore")]
+extern "C" {
+    pub(crate) fn __exocore_host_log(level: u8, bytes: *const u8, len: usize);
+    pub(crate) fn __exocore_host_now() -> u64;
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) unsafe fn __exocore_host_log(_level: u8, _bytes: *const u8, _len: usize) {
+    panic!("Not implemented in outside of wasm environment");
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) unsafe fn __exocore_host_now() -> u64 {
+    panic!("Not implemented in outside of wasm environment");
+}
+
 /* Added by the macro
 #[no_mangle]
 pub extern "C" fn __exocore_app_init() {}

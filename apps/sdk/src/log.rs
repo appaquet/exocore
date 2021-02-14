@@ -1,7 +1,6 @@
 use log::{Level, Log, Metadata, Record, SetLoggerError};
 
-use crate::__exocore_host_log;
-
+use crate::binding::__exocore_host_log;
 
 static LOGGER: HostLogger = HostLogger {};
 
