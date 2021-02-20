@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use exocore_apps_sdk::time::{now, sleep};
 use exocore_apps_sdk::{exocore_app, spawn, App, AppError, Exocore};
+use exocore_store::query::QueryBuilder;
 
 #[exocore_app]
 pub struct MyApp {
@@ -29,10 +30,10 @@ impl App for MyApp {
             loop {
                 sleep(Duration::from_millis(500)).await;
                 info!("tick {}", now());
-            }
 
-            // let q = QueryBuilder::with_id("test").build();
-            // let _ = store.query(q).await;
+                let q = QueryBuilder::with_id("test").build();
+                let _ = store.query(q).await;
+            }
         });
 
         Ok(())

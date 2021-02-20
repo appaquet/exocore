@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package exocore.apps;
+
+// Message sent to application running in WASM from runtime.
+message InMessage {
+    InMessageType type = 1;
+
+    bytes data = 2;
+}
+
+enum InMessageType {
+    IN_MSG_INVALID = 0;
+}
+
+// Message sent from application running in WASM to runtime.
+message OutMessage {
+    OutMessageType type = 1;
+
+    bytes data = 2;
+}
+
+enum OutMessageType {
+    OUT_MSG_INVALID = 0;
+}

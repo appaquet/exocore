@@ -3,9 +3,7 @@ use std::error::Error;
 use std::sync::Mutex;
 
 pub trait App: Send {
-    // TODO: Manifest
-
-    fn start(&self, client: &Exocore) -> Result<(), AppError>; // TODO: Context
+    fn start(&self, client: &Exocore) -> Result<(), AppError>;
 }
 
 static mut APP: Option<Mutex<Box<dyn App>>> = None;
@@ -17,8 +15,7 @@ pub fn __exocore_app_register(app: Box<dyn App>) {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn __exocore_app_boot() {
+pub(crate) fn boot_app() {
     let app = unsafe { APP.as_ref().unwrap().lock().unwrap() };
     app.start(&Exocore::new()).unwrap();
 }

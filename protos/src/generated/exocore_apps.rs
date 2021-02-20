@@ -35,3 +35,29 @@ pub mod manifest_schema {
         Bytes(::prost::alloc::vec::Vec<u8>),
     }
 }
+/// Message sent to application running in WASM from runtime.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InMessage {
+    #[prost(enumeration = "InMessageType", tag = "1")]
+    pub r#type: i32,
+    #[prost(bytes = "vec", tag = "2")]
+    pub data: ::prost::alloc::vec::Vec<u8>,
+}
+/// Message sent from application running in WASM to runtime.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OutMessage {
+    #[prost(enumeration = "OutMessageType", tag = "1")]
+    pub r#type: i32,
+    #[prost(bytes = "vec", tag = "2")]
+    pub data: ::prost::alloc::vec::Vec<u8>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum InMessageType {
+    InMsgInvalid = 0,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum OutMessageType {
+    OutMsgInvalid = 0,
+}

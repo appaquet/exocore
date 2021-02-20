@@ -1175,6 +1175,7 @@ version = "0.1.3"
 dependencies = [
  "anyhow",
  "exocore-core",
+ "exocore-protos",
  "log",
  "thiserror",
  "wasmtime",
