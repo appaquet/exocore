@@ -59,7 +59,6 @@ impl AppRuntime {
 
     pub fn send_message(&self, message: InMessage) {
         // TODO: Send to inner
-
     }
 }
 

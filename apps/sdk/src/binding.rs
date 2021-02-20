@@ -20,10 +20,13 @@ pub(crate) unsafe fn __exocore_host_now() -> u64 {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) unsafe fn __exocore_host_out_message(msg_type: u32, bytes: *const u8, len: usize) -> u32 {
+pub(crate) unsafe fn __exocore_host_out_message(
+    msg_type: u32,
+    bytes: *const u8,
+    len: usize,
+) -> u32 {
     panic!("Not implemented in outside of wasm environment");
 }
-
 
 /* Added by the macro
 #[no_mangle]
