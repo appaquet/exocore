@@ -46,20 +46,23 @@ impl<E: Environment> AppRuntime<E> {
 
     pub fn run(&self) -> anyhow::Result<()> {
         loop {
-            let next_tick_time = self.tick()?;
-            let now = unix_timestamp();
-
-            if next_tick_time == 0 {
-                std::thread::sleep(Duration::from_secs(1));
-            } else if next_tick_time > now {
-                std::thread::sleep(Duration::from_nanos(next_tick_time - now));
+            let next_tick_dur = self.tick()?;
+            if let Some(next_tick_dur) = next_tick_dur {
+                std::thread::sleep(next_tick_dur);
             };
         }
     }
 
-    pub fn tick(&self) -> anyhow::Result<u64> {
+    pub fn tick(&self) -> anyhow::Result<Option<Duration>> {
         let exocore_tick = self.func_tick.get0::<u64>()?;
-        Ok(exocore_tick().expect("Couldn't tick"))
+        let now = unix_timestamp();
+        let next_tick_time = exocore_tick().expect("Couldn't tick");
+
+        if next_tick_time > now {
+            Ok(Some(Duration::from_nanos(next_tick_time - now)))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn send_message(&self, message: InMessage) -> anyhow::Result<()> {
@@ -296,12 +299,16 @@ mod tests {
             .unwrap();
 
         // ticking right away shouldn't do anything since app is sleeping for 100ms
-        app.tick().unwrap();
+        let next_tick_duration = app
+            .tick()
+            .unwrap()
+            .unwrap_or_else(|| Duration::from_nanos(0));
         let last_log = env.last_log().unwrap();
         assert!(last_log.contains("before sleep"));
 
-        // wait 100ms
-        sleep(Duration::from_millis(100));
+        // wait for next tick duration
+        assert!(next_tick_duration > Duration::from_millis(10));
+        sleep(next_tick_duration);
 
         // ticking after sleep time should now wake up and continue
         app.tick().unwrap();
