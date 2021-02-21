@@ -7,19 +7,44 @@ use futures::{Future, FutureExt};
 
 use crate::binding::__exocore_host_now;
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
+pub struct Timestamp(pub u64);
+
+impl std::ops::Add<Duration> for Timestamp {
+    type Output = Timestamp;
+
+    fn add(self, rhs: Duration) -> Self::Output {
+        Timestamp(self.0 + rhs.as_nanos() as u64)
+    }
+}
+
+impl From<u64> for Timestamp {
+    fn from(v: u64) -> Self {
+        Timestamp(v)
+    }
+}
+
+impl Into<u64> for Timestamp {
+    fn into(self) -> u64 {
+        self.0
+    }
+}
+
+pub fn now() -> Timestamp {
+    unsafe { Timestamp(__exocore_host_now()) }
+}
+
+pub async fn sleep(duration: Duration) {
+    let time = now() + duration;
+    TIMERS.push(time).await;
+}
+
 lazy_static! {
     static ref TIMERS: Timers = Timers::new();
 }
 
-pub type Timestamp = u64;
-
-pub fn now() -> Timestamp {
-    unsafe { __exocore_host_now() }
-}
-
-pub async fn sleep(duration: Duration) {
-    let time = now() + duration.as_nanos() as u64;
-    TIMERS.push(time).await;
+struct Timers {
+    timers: Mutex<BinaryHeap<std::cmp::Reverse<Timer>>>,
 }
 
 pub(crate) fn poll_timers() {
@@ -28,10 +53,6 @@ pub(crate) fn poll_timers() {
 
 pub(crate) fn next_timer_time() -> Option<Timestamp> {
     TIMERS.next_timer()
-}
-
-struct Timers {
-    timers: Mutex<BinaryHeap<std::cmp::Reverse<Timer>>>,
 }
 
 impl Timers {

@@ -1,29 +1,24 @@
-pub use app::{App, AppError, __exocore_app_register};
-pub(crate) mod executor;
-pub use executor::spawn;
-pub use exocore_apps_sdk_macro::exocore_app;
-
-pub(crate) mod store;
-pub use store::Store;
-
-pub mod time;
-
 #[macro_use]
 extern crate lazy_static;
-use std::sync::Arc;
+#[macro_use]
+extern crate log;
 
-pub(crate) mod app;
 pub(crate) mod binding;
-pub(crate) mod log;
+pub(crate) mod logging;
 
-pub struct Exocore {
-    pub store: Arc<Store>,
-}
+pub mod app;
+pub mod client;
+pub mod executor;
+pub mod store;
+pub mod time;
 
-impl Exocore {
-    fn new() -> Exocore {
-        Exocore {
-            store: Arc::new(Store::new()),
-        }
-    }
+pub use exocore_apps_macro::exocore_app;
+
+pub mod prelude {
+    pub use super::app::{App, AppError};
+    pub use super::client::Exocore;
+    pub use super::executor::spawn;
+    pub use super::exocore_app;
+    pub use super::store::{Store, StoreError};
+    pub use super::time::{now, sleep, Timestamp};
 }

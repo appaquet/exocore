@@ -14,7 +14,7 @@ use {
 static mut EXECUTOR: Option<Mutex<Executor>> = None;
 static mut SPAWNER: Option<Spawner> = None;
 
-pub(crate) fn create_executor() {
+pub(crate) fn init() {
     // Maximum number of tasks to allow queueing in the channel at once.
     // This is just to make `sync_channel` happy, and wouldn't be present in
     // a real executor.

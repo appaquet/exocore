@@ -1,23 +1,20 @@
-use super::Exocore;
 use std::error::Error;
-use std::sync::Mutex;
+
+use crate::client::Exocore;
 
 pub trait App: Send {
     fn start(&self, client: &Exocore) -> Result<(), AppError>;
 }
 
-static mut APP: Option<Mutex<Box<dyn App>>> = None;
-
 // Called by #[exocore_app] macro at application initialization.
 pub fn __exocore_app_register(app: Box<dyn App>) {
-    unsafe {
-        APP = Some(Mutex::new(app));
-    }
+    let exocore = Exocore::get();
+    exocore.register_app(app);
 }
 
 pub(crate) fn boot_app() {
-    let app = unsafe { APP.as_ref().unwrap().lock().unwrap() };
-    app.start(&Exocore::new()).unwrap();
+    let exocore = Exocore::get();
+    exocore.with_app(|app| app.start(exocore).expect("Failed to start application"))
 }
 
 #[derive(Debug, thiserror::Error)]

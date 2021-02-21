@@ -600,7 +600,7 @@ mod tests {
         super::{Cell, CellNodeRole, CellNodes},
         *,
     };
-    use crate::tests_utils::root_test_fixtures_path;
+    use crate::tests_utils::find_test_fixture;
     use exocore_protos::{
         apps::manifest_schema,
         core::{
@@ -712,7 +712,7 @@ mod tests {
 
     #[test]
     fn parse_node_config_example_yaml_file() -> anyhow::Result<()> {
-        let config_path = root_test_fixtures_path("examples/node.yaml");
+        let config_path = find_test_fixture("examples/node.yaml");
         let config = LocalNodeConfig::from_yaml_file(config_path)?;
 
         let (cells, node) = Cell::from_local_node_config(config)?;
@@ -784,7 +784,7 @@ mod tests {
 
     #[test]
     fn node_config_inlined() -> anyhow::Result<()> {
-        let config_path = root_test_fixtures_path("examples/node.yaml");
+        let config_path = find_test_fixture("examples/node.yaml");
         let config = LocalNodeConfig::from_yaml_file(config_path)?;
 
         let inlined_config = config.inlined().unwrap();

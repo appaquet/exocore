@@ -1,12 +1,13 @@
-use super::executor;
-use crate::{app, time};
+use exocore_protos::apps::in_message::InMessageType;
+use exocore_protos::apps::{InMessage, MessageStatus};
+use exocore_protos::prost::Message;
 
 #[cfg(target_arch = "wasm32")]
 #[link(wasm_import_module = "exocore")]
 extern "C" {
     pub(crate) fn __exocore_host_log(level: u8, bytes: *const u8, len: usize);
     pub(crate) fn __exocore_host_now() -> u64;
-    pub(crate) fn __exocore_host_out_message(msg_type: u32, bytes: *const u8, len: usize) -> u32;
+    pub(crate) fn __exocore_host_out_message(bytes: *const u8, len: usize) -> u32;
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -16,15 +17,14 @@ pub(crate) unsafe fn __exocore_host_log(_level: u8, _bytes: *const u8, _len: usi
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) unsafe fn __exocore_host_now() -> u64 {
-    panic!("Not implemented in outside of wasm environment");
+    let now = std::time::SystemTime::now();
+    now.duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as u64
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) unsafe fn __exocore_host_out_message(
-    msg_type: u32,
-    bytes: *const u8,
-    len: usize,
-) -> u32 {
+pub(crate) unsafe fn __exocore_host_out_message(_bytes: *const u8, _len: usize) -> u32 {
     panic!("Not implemented in outside of wasm environment");
 }
 
@@ -35,27 +35,57 @@ pub extern "C" fn __exocore_app_init() {}
 
 #[no_mangle]
 pub extern "C" fn __exocore_init() {
-    crate::log::init().expect("Couldn't setup logging");
-    executor::create_executor();
+    crate::logging::init().expect("Couldn't setup logging");
+    crate::executor::init();
+
+    let exocore = crate::client::Exocore::get();
+    exocore.store.start();
 }
 
+/// Ticks timer, executor and returns the next timestamp at which we should minimally be polled again.
 #[no_mangle]
 pub extern "C" fn __exocore_tick() -> u64 {
-    time::poll_timers();
-    executor::poll_executor();
+    crate::time::poll_timers();
+    crate::executor::poll_executor();
 
-    // return time at which we want to be tick
-    time::next_timer_time().unwrap_or(0)
+    // returns time at which we want to be tick
+    crate::time::next_timer_time()
+        .map(|t| -> u64 { t.into() })
+        .unwrap_or(0)
 }
 
 #[no_mangle]
 pub extern "C" fn __exocore_app_boot() {
-    app::boot_app();
+    crate::app::boot_app();
 }
 
 #[no_mangle]
-pub extern "C" fn __exocore_in_message(msg_type: u32, ptr: *mut u8, size: usize) -> u32 {
-    0
+pub extern "C" fn __exocore_in_message(ptr: *const u8, size: usize) -> u32 {
+    let exomind = crate::client::Exocore::get();
+
+    let bytes = unsafe { std::slice::from_raw_parts(ptr, size) };
+    let msg = match InMessage::decode(bytes) {
+        Ok(msg) => msg,
+        Err(err) => {
+            error!("Couldn't decode incoming message: {}", err);
+            return MessageStatus::DecodeError as u32;
+        }
+    };
+
+    let res = match InMessageType::from_i32(msg.r#type) {
+        Some(InMessageType::StoreEntityResults) => exomind.store.handle_query_results(msg),
+        Some(InMessageType::StoreMutationResult) => exomind.store.handle_mutation_result(msg),
+        Some(InMessageType::Invalid) | None => {
+            error!("Received an invalid message type: {}", msg.r#type);
+            return MessageStatus::Unhandled as u32;
+        }
+    };
+
+    if let Err(err) = res {
+        return err as u32;
+    }
+
+    MessageStatus::Ok as u32
 }
 
 #[no_mangle]

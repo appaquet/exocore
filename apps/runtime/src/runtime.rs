@@ -3,50 +3,50 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::anyhow;
-use exocore_protos::apps::{InMessage, OutMessage};
+use exocore_protos::apps::{InMessage, MessageStatus, OutMessage};
+use exocore_protos::prost::{self, ProstMessageExt};
 use wasmtime::*;
 
-pub struct AppRuntime {
+#[derive(Clone)]
+pub struct AppRuntime<E: Environment> {
     instance: Instance,
-    inner: Arc<Inner>,
+    func_send_message: Func,
+    func_tick: Func,
+    env: Arc<E>,
 }
 
-struct Inner {
-    message_handler: Box<dyn Fn(OutMessage)>,
+pub trait Environment: Send + Sync + 'static {
+    fn handle_message(&self, msg: OutMessage);
+    fn handle_log(&self, msg: &str);
 }
 
-impl AppRuntime {
-    pub fn from_file<P, F>(file: P, message_handler: F) -> anyhow::Result<AppRuntime>
+impl<E: Environment> AppRuntime<E> {
+    pub fn from_file<P>(file: P, env: Arc<E>) -> anyhow::Result<AppRuntime<E>>
     where
         P: AsRef<Path>,
-        F: Fn(OutMessage) + 'static,
     {
-        let inner = Arc::new(Inner {
-            message_handler: Box::new(message_handler),
-        });
-
         let engine = Engine::default();
         let store = Store::new(&engine);
 
         let mut linker = Linker::new(&store);
-        setup_host_module(&mut linker, &inner)?;
+        Self::setup_host_module(&mut linker, &env)?;
 
         let module = Module::from_file(&engine, file)?;
         let instance = linker.instantiate(&module)?;
 
-        bootstrap_module(&instance)?;
+        let (func_tick, func_send_message) = bootstrap_module(&instance)?;
 
-        Ok(AppRuntime { instance, inner })
+        Ok(AppRuntime {
+            instance,
+            func_tick,
+            func_send_message,
+            env,
+        })
     }
 
     pub fn run(&self) -> anyhow::Result<()> {
-        let exocore_tick = self.instance.get_func("__exocore_tick").expect(
-            "`__exocore_tick` was not an exported function. Did you implement #[exocore_app]?",
-        );
-        let exocore_tick = exocore_tick.get0::<u64>()?;
-
         loop {
-            let next_tick_time = exocore_tick().expect("Couldn't tick");
+            let next_tick_time = self.tick()?;
             let now = unix_timestamp();
 
             if next_tick_time == 0 {
@@ -57,67 +57,78 @@ impl AppRuntime {
         }
     }
 
-    pub fn send_message(&self, message: InMessage) {
-        // TODO: Send to inner
+    pub fn tick(&self) -> anyhow::Result<u64> {
+        let exocore_tick = self.func_tick.get0::<u64>()?;
+        Ok(exocore_tick().expect("Couldn't tick"))
+    }
+
+    pub fn send_message(&self, message: InMessage) -> anyhow::Result<()> {
+        let message_bytes = message.encode_to_vec();
+
+        let func = self.func_send_message.get2::<i32, i32, u32>()?;
+        let (message_ptr, message_size) = wasm_alloc(&self.instance, &message_bytes)?;
+        let res = func(message_ptr, message_size);
+        wasm_free(&self.instance, message_ptr, message_size)?;
+
+        let status = MessageStatus::from_i32(res? as i32);
+        // TODO: Handle error
+
+        Ok(())
+    }
+
+    fn setup_host_module(linker: &mut Linker, env: &Arc<E>) -> anyhow::Result<()> {
+        let env_clone = env.clone();
+        linker.func(
+            "exocore",
+            "__exocore_host_log",
+            move |caller: Caller<'_>, level: i32, ptr: i32, len: i32| {
+                // TODO: Handle level
+
+                read_wasm_str(caller, ptr, len, |msg| {
+                    env_clone.handle_log(msg);
+                })?;
+
+                Ok(())
+            },
+        )?;
+
+        linker.func(
+            "exocore",
+            "__exocore_host_now",
+            |_caller: Caller<'_>| -> u64 { unix_timestamp() },
+        )?;
+
+        let env = env.clone();
+        linker.func(
+            "exocore",
+            "__exocore_host_out_message",
+            move |caller: Caller<'_>, ptr: i32, len: i32| -> u32 {
+                let status = match read_wasm_message::<OutMessage>(caller, ptr, len) {
+                    Ok(msg) => {
+                        env.as_ref().handle_message(msg);
+                        MessageStatus::Ok
+                    }
+                    Err(err) => {
+                        error!("Couldn't decode message sent from application: {}", err);
+                        MessageStatus::DecodeError
+                    }
+                };
+
+                status as u32
+            },
+        )?;
+
+        Ok(())
     }
 }
 
-// let send_resp = instance
-//     .get_func("send_resp")
-//     .expect("`send_resp` was not an exported function");
-// let data_ptr = wasm_alloc(&instance, b"hello")?;
-// let send_resp = send_resp.get2::<i32, i32, ()>()?;
-// send_resp(data_ptr, 5)?;
-// wasm_free(&instance, data_ptr, 5)?;
-
-// let print_hello = instance
-//     .get_func("print_hello")
-//     .expect("`print_hello` was not an exported function");
-// let print_hello = print_hello.get0::<()>()?;
-// print_hello()?;
-
-// Ok(())
-
-fn setup_host_module(linker: &mut Linker, inner: &Arc<Inner>) -> anyhow::Result<()> {
-    linker.func(
-        "exocore",
-        "__exocore_host_log",
-        |caller: Caller<'_>, level: i32, ptr: i32, len: i32| {
-            println!("WASM: {} {}", level, read_wasm_string(caller, ptr, len)?);
-            Ok(())
-        },
-    )?;
-
-    linker.func(
-        "exocore",
-        "__exocore_host_now",
-        |_caller: Caller<'_>| -> u64 { unix_timestamp() },
-    )?;
-
-    let inner = inner.clone();
-    linker.func(
-        "exocore",
-        "__exocore_host_out_message",
-        move |_caller: Caller<'_>, msg_type: u32, ptr: i32, len: i32| -> u32 {
-            // TODO: Deserialize message
-
-            let msg = OutMessage::default();
-            inner.message_handler.as_ref()(msg);
-
-            0 // TODO: error code
-        },
-    )?;
-
-    Ok(())
-}
-
-fn bootstrap_module(instance: &Instance) -> anyhow::Result<()> {
+fn bootstrap_module(instance: &Instance) -> anyhow::Result<(Func, Func)> {
     // TODO: Convert expects to Error
 
     // Initialize environment
     let exocore_init = instance
         .get_func("__exocore_init")
-        .expect("`__exocore_init` was not an exported function. Did you include SDK?");
+        .expect("`__exocore_init` was not an exported function. Did you include the SDK?");
     let exocore_init = exocore_init.get0::<()>()?;
     exocore_init()?;
 
@@ -129,19 +140,31 @@ fn bootstrap_module(instance: &Instance) -> anyhow::Result<()> {
     exocore_app_init()?;
 
     // Boot the application
-    let exocore_app_boot = instance.get_func("__exocore_app_boot").expect(
-        "`__exocore_app_boot` was not an exported function. Did you implement #[exocore_app]?",
-    );
+    let exocore_app_boot = instance
+        .get_func("__exocore_app_boot")
+        .expect("`__exocore_app_boot` was not an exported function. Did you include the SDK?");
     let exocore_app_boot = exocore_app_boot.get0::<()>()?;
     exocore_app_boot()?;
 
-    Ok(())
+    // Extract tick & message sending functions
+    let exocore_tick = instance
+        .get_func("__exocore_tick")
+        .expect("`__exocore_tick` was not an exported function. Did you include the SDK?");
+    let exocore_send_message = instance
+        .get_func("__exocore_in_message")
+        .expect("`__exocore_in_message` was not an exported function. Did you include the SDK?");
+
+    Ok((exocore_tick, exocore_send_message))
 }
 
-/// Reads a string from a wasm pointer and len.
+/// Reads a bytes from a wasm pointer and len.
 ///
 /// Mostly copied from wasmtime::Func comments.
-fn read_wasm_string(caller: Caller<'_>, ptr: i32, len: i32) -> Result<String, Trap> {
+fn read_wasm_message<M: prost::Message + Default>(
+    caller: Caller<'_>,
+    ptr: i32,
+    len: i32,
+) -> Result<M, Trap> {
     let mem = match caller.get_export("memory") {
         Some(Extern::Memory(mem)) => mem,
         _ => return Err(Trap::new("failed to find host memory")),
@@ -152,20 +175,50 @@ fn read_wasm_string(caller: Caller<'_>, ptr: i32, len: i32) -> Result<String, Tr
             .data_unchecked()
             .get(ptr as u32 as usize..)
             .and_then(|arr| arr.get(..len as u32 as usize));
-        let string = match data {
+
+        match data {
+            Some(data) => {
+                M::decode(data).map_err(|err| Trap::new("couldn't read message"))
+                // TODO: Better error handling
+            }
+            None => Err(Trap::new("pointer/length out of bounds")),
+        }
+    }
+}
+
+/// Reads a str from a wasm pointer and len.
+///
+/// Mostly copied from wasmtime::Func comments.
+fn read_wasm_str<F: FnOnce(&str)>(
+    caller: Caller<'_>,
+    ptr: i32,
+    len: i32,
+    f: F,
+) -> Result<(), Trap> {
+    let mem = match caller.get_export("memory") {
+        Some(Extern::Memory(mem)) => mem,
+        _ => return Err(Trap::new("failed to find host memory")),
+    };
+
+    unsafe {
+        let data = mem
+            .data_unchecked()
+            .get(ptr as u32 as usize..)
+            .and_then(|arr| arr.get(..len as u32 as usize));
+        match data {
             Some(data) => match std::str::from_utf8(data) {
-                Ok(s) => s,
+                Ok(s) => f(s),
                 Err(_) => return Err(Trap::new("invalid utf-8")),
             },
             None => return Err(Trap::new("pointer/length out of bounds")),
         };
-
-        Ok(string.into())
     }
+
+    Ok(())
 }
 
 // Inspired from https://radu-matei.com/blog/practical-guide-to-wasm-memory/#passing-arrays-to-modules-using-wasmtime
-fn wasm_alloc(instance: &Instance, bytes: &[u8]) -> Result<i32, anyhow::Error> {
+fn wasm_alloc(instance: &Instance, bytes: &[u8]) -> Result<(i32, i32), anyhow::Error> {
     let mem = match instance.get_export("memory") {
         Some(Extern::Memory(mem)) => mem,
         _ => return Err(anyhow!("failed to find host memory")),
@@ -189,7 +242,7 @@ fn wasm_alloc(instance: &Instance, bytes: &[u8]) -> Result<i32, anyhow::Error> {
         raw.copy_from(bytes.as_ptr(), bytes.len());
     }
 
-    Ok(guest_ptr_offset)
+    Ok((guest_ptr_offset, bytes.len() as i32))
 }
 
 fn wasm_free(instance: &Instance, ptr: i32, size: i32) -> Result<(), anyhow::Error> {
@@ -207,4 +260,135 @@ fn unix_timestamp() -> u64 {
     now.duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos() as u64
+}
+
+#[cfg(test)]
+mod tests {
+    use exocore_core::tests_utils::find_test_fixture;
+    use exocore_protos::apps::in_message::InMessageType;
+    use exocore_protos::apps::out_message::OutMessageType;
+    use exocore_protos::store::{EntityResults, MutationResult};
+    use std::sync::Mutex;
+    use std::thread::sleep;
+
+    use super::*;
+
+    /// Runs the application defined in `exocore-apps-example`. See its `lib.rs` to follow the sequence.
+    #[test]
+    fn example_golden_path() {
+        exocore_core::logging::setup(None);
+        let example_path = find_test_fixture("fixtures/example.wasm");
+        let env = Arc::new(TestEnv::new());
+
+        let app = AppRuntime::from_file(example_path, env.clone()).unwrap();
+
+        // first tick should execute up to sleep
+        app.tick().unwrap();
+        assert!(env.find_log("application initialized").is_some());
+        assert!(env.find_log("task starting").is_some());
+
+        // should now be sleeping for 100ms
+        let last_log = env.last_log().unwrap();
+        assert!(last_log.contains("before sleep"));
+        let time_before_sleep = last_log
+            .replace("before sleep ", "")
+            .parse::<u64>()
+            .unwrap();
+
+        // ticking right away shouldn't do anything since app is sleeping for 100ms
+        app.tick().unwrap();
+        let last_log = env.last_log().unwrap();
+        assert!(last_log.contains("before sleep"));
+
+        // wait 100ms
+        sleep(Duration::from_millis(100));
+
+        // ticking after sleep time should now wake up and continue
+        app.tick().unwrap();
+        let after_sleep_log = env.find_log("after sleep").unwrap();
+        let time_after_sleep = after_sleep_log
+            .replace("after sleep ", "")
+            .parse::<u64>()
+            .unwrap();
+        assert!((time_after_sleep - time_before_sleep) > 100_000_000); // 100ms in nano
+
+        // should have sent mutation request to host
+        let message = env.pop_message().unwrap();
+        assert_eq!(message.r#type, OutMessageType::StoreMutationRequest as i32);
+
+        // reply with mutation result, should report that mutation has succeed
+        app.send_message(InMessage {
+            r#type: InMessageType::StoreMutationResult.into(),
+            rendez_vous_id: message.rendez_vous_id,
+            data: MutationResult::default().encode_to_vec(),
+        })
+        .unwrap();
+        app.tick().unwrap();
+        assert!(env.find_log("mutation success").is_some());
+
+        // should have sent query to host
+        let message = env.pop_message().unwrap();
+        assert_eq!(message.r#type, OutMessageType::StoreEntityQuery as i32);
+
+        // reply with query result, should report that query has succeed
+        app.send_message(InMessage {
+            r#type: InMessageType::StoreEntityResults.into(),
+            rendez_vous_id: message.rendez_vous_id,
+            data: EntityResults::default().encode_to_vec(),
+        })
+        .unwrap();
+        app.tick().unwrap();
+        assert!(env.find_log("query success").is_some());
+
+        // should have completed
+        assert_eq!(env.last_log(), Some("task done".to_string()));
+    }
+
+    struct TestEnv {
+        logs: Mutex<Vec<String>>,
+        messages: Mutex<Vec<OutMessage>>,
+    }
+
+    impl TestEnv {
+        fn new() -> TestEnv {
+            TestEnv {
+                logs: Mutex::new(Vec::new()),
+                messages: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn find_log(&self, needle: &str) -> Option<String> {
+            let logs = self.logs.lock().unwrap();
+            for log in logs.iter() {
+                if log.contains(needle) {
+                    return Some(log.clone());
+                }
+            }
+
+            None
+        }
+
+        fn last_log(&self) -> Option<String> {
+            let logs = self.logs.lock().unwrap();
+            logs.last().cloned()
+        }
+
+        fn pop_message(&self) -> Option<OutMessage> {
+            let mut msgs = self.messages.lock().unwrap();
+            msgs.pop()
+        }
+    }
+
+    impl Environment for TestEnv {
+        fn handle_message(&self, msg: OutMessage) {
+            let mut messages = self.messages.lock().unwrap();
+            messages.push(msg);
+        }
+
+        fn handle_log(&self, msg: &str) {
+            info!("Got log from app: {}", msg);
+            let mut logs = self.logs.lock().unwrap();
+            logs.push(msg.to_string());
+        }
+    }
 }

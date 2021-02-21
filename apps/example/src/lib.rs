@@ -3,37 +3,46 @@ extern crate log;
 
 use std::time::Duration;
 
-use exocore_apps_sdk::time::{now, sleep};
-use exocore_apps_sdk::{exocore_app, spawn, App, AppError, Exocore};
+use exocore_apps_sdk::prelude::*;
+use exocore_store::mutation::MutationBuilder;
 use exocore_store::query::QueryBuilder;
 
 #[exocore_app]
-pub struct MyApp {
-    // TODO:
-}
+pub struct TestApplication {}
 
-impl MyApp {
+impl TestApplication {
     fn new() -> Self {
-        MyApp {}
+        TestApplication {}
     }
 }
 
-impl App for MyApp {
+impl App for TestApplication {
     fn start(&self, exocore: &Exocore) -> Result<(), AppError> {
-        // TODO: Check if default objects are created
-        info!("initialized!");
+        info!("application initialized");
 
         let store = exocore.store.clone();
         spawn(async move {
-            info!("inside future!");
+            info!("task starting");
 
-            loop {
-                sleep(Duration::from_millis(500)).await;
-                info!("tick {}", now());
+            info!("before sleep {}", now().0);
+            sleep(Duration::from_millis(100)).await;
+            info!("after sleep {}", now().0);
 
-                let q = QueryBuilder::with_id("test").build();
-                let _ = store.query(q).await;
+            info!("before mutation");
+            let m = MutationBuilder::new().delete_entity("entity1").build();
+            match store.mutate(m).await {
+                Ok(_) => info!("mutation success"),
+                Err(err) => info!("mutation error: {}", err),
             }
+
+            info!("before query");
+            let q = QueryBuilder::with_id("test").build();
+            match store.query(q).await {
+                Ok(_) => info!("query success"),
+                Err(err) => info!("query error: {}", err),
+            }
+
+            info!("task done")
         });
 
         Ok(())
