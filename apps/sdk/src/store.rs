@@ -63,7 +63,7 @@ impl Store {
 
         let (sender, receiver) = oneshot::channel();
         {
-            let mut inner = self.inner.lock().expect("Inner lock poisoned");
+            let mut inner = self.inner.lock().unwrap();
             let pending = OneshotRequest {
                 sender,
                 timeout: now() + QUERY_TIMEOUT,
@@ -87,7 +87,7 @@ impl Store {
 
         let (sender, receiver) = oneshot::channel();
         {
-            let mut inner = self.inner.lock().expect("Inner lock poisoned");
+            let mut inner = self.inner.lock().unwrap();
             let pending = OneshotRequest {
                 sender,
                 timeout: now() + MUTATION_TIMEOUT,
@@ -101,7 +101,7 @@ impl Store {
     }
 
     pub(crate) fn handle_mutation_result(&self, msg: InMessage) -> Result<(), MessageStatus> {
-        let mut inner = self.inner.lock().expect("Inner lock poisoned");
+        let mut inner = self.inner.lock().unwrap();
         let rdv = msg.rendez_vous_id as usize;
 
         if let Some(req) = inner.pending_mutations.remove(&rdv) {
@@ -116,7 +116,7 @@ impl Store {
     }
 
     pub(crate) fn handle_query_results(&self, msg: InMessage) -> Result<(), MessageStatus> {
-        let mut inner = self.inner.lock().expect("Inner lock poisoned");
+        let mut inner = self.inner.lock().unwrap();
         let rdv = msg.rendez_vous_id as usize;
 
         if let Some(req) = inner.pending_queries.remove(&rdv) {
@@ -137,7 +137,7 @@ impl Store {
                 let now = now();
 
                 {
-                    let mut inner = store.inner.lock().expect("Inner lock poisoned");
+                    let mut inner = store.inner.lock().unwrap();
                     check_timed_out_queries(&mut inner, now);
                     check_timed_out_mutations(&mut inner, now);
                 }

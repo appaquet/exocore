@@ -1,11 +1,13 @@
+//! Sample application used for integration tests in application runtime. Don't modify it without changing tests.
+
 #[macro_use]
 extern crate log;
 
 use std::time::Duration;
 
-use exocore_apps_sdk::prelude::*;
-use exocore_store::mutation::MutationBuilder;
-use exocore_store::query::QueryBuilder;
+use exocore::apps::sdk::prelude::*;
+use exocore::store::mutation::MutationBuilder;
+use exocore::store::query::QueryBuilder;
 
 #[exocore_app]
 pub struct TestApplication {}

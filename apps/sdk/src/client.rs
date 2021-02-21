@@ -21,7 +21,7 @@ impl Exocore {
     }
 
     pub(crate) fn register_app(&self, app: Box<dyn App>) {
-        let mut app_box = self.app.lock().expect("App lock is poisoned");
+        let mut app_box = self.app.lock().unwrap();
         if app_box.is_some() {
             panic!("An application is already registered")
         }
@@ -29,7 +29,7 @@ impl Exocore {
     }
 
     pub(crate) fn with_app<F: FnMut(&mut dyn App)>(&self, mut f: F) {
-        let mut app_box = self.app.lock().expect("App lock is poisoned");
+        let mut app_box = self.app.lock().unwrap();
         let app = app_box
             .as_mut()
             .expect("No application is registered (no application struct with #[exocore_app])");
