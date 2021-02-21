@@ -4,8 +4,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::Error;
-use crate::utils::path::{child_to_abs_path_string, child_to_relative_path_string};
 use exocore_protos::core::CellApplicationConfig;
 use exocore_protos::{
     apps::manifest_schema,
@@ -17,6 +15,9 @@ use exocore_protos::{
         },
     },
 };
+
+use super::Error;
+use crate::utils::path::{child_to_abs_path_string, child_to_relative_path_string};
 
 /// Extension for `LocalNodeConfig` proto.
 pub trait LocalNodeConfigExt {
@@ -596,11 +597,6 @@ impl ManifestExt for Manifest {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        super::{Cell, CellNodeRole, CellNodes},
-        *,
-    };
-    use crate::tests_utils::find_test_fixture;
     use exocore_protos::{
         apps::manifest_schema,
         core::{
@@ -612,6 +608,12 @@ mod tests {
             NodeCellConfig, NodeConfig,
         },
     };
+
+    use super::{
+        super::{Cell, CellNodeRole, CellNodes},
+        *,
+    };
+    use crate::tests_utils::find_test_fixture;
 
     #[test]
     fn parse_node_config_yaml_ser_deser() -> anyhow::Result<()> {

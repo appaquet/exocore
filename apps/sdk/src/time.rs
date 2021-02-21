@@ -54,12 +54,13 @@ lazy_static! {
     static ref TIMERS: Timers = Timers::new();
 }
 
-/// Timer containers polled at interval by the application runtime. The `poll_timers` method is called
-/// when the application is being polled. Once polled, the `next_timer_time` returns an optional timestamp
-/// at which the next poll of the timers is expected.
+/// Timer containers polled at interval by the application runtime. The
+/// `poll_timers` method is called when the application is being polled. Once
+/// polled, the `next_timer_time` returns an optional timestamp at which the
+/// next poll of the timers is expected.
 ///
-/// Uses a binary heap to sort timers in trigger order so that the head always represents the next timer to
-/// be triggered.
+/// Uses a binary heap to sort timers in trigger order so that the head always
+/// represents the next timer to be triggered.
 struct Timers {
     timers: Mutex<BinaryHeap<std::cmp::Reverse<Timer>>>,
 }
@@ -69,7 +70,8 @@ pub(crate) fn poll_timers() {
     TIMERS.poll();
 }
 
-/// Returns the timestamp of the next timer that needs to be triggered. Returns none if no timers are scheduled.
+/// Returns the timestamp of the next timer that needs to be triggered. Returns
+/// none if no timers are scheduled.
 pub(crate) fn next_timer_time() -> Option<Timestamp> {
     TIMERS.next_timer()
 }
@@ -119,7 +121,8 @@ struct Timer {
     sender: oneshot::Sender<()>,
 }
 
-// Not really Eq since 2 timers could have same trigger time. We only require this for ordering.
+/// Not really Eq since 2 timers could have same trigger time. We only require
+/// this for ordering.
 impl PartialEq for Timer {
     fn eq(&self, other: &Self) -> bool {
         self.time.eq(&other.time)

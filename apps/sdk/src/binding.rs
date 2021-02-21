@@ -41,7 +41,8 @@ pub extern "C" fn __exocore_init() {
     exocore.store.start();
 }
 
-/// Ticks timer, executor and returns the next timestamp at which we should minimally be polled again.
+/// Ticks timer, executor and returns the next timestamp at which we should
+/// minimally be polled again.
 #[no_mangle]
 pub extern "C" fn __exocore_tick() -> u64 {
     crate::time::poll_timers();

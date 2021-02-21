@@ -1,4 +1,5 @@
-//! Sample application used for integration tests in application runtime. Don't modify it without changing tests.
+//! Sample application used for integration tests in application runtime. Don't
+//! modify it without changing tests.
 
 #[macro_use]
 extern crate log;

@@ -1,4 +1,5 @@
-///! Simple executor to be used inside of an application runtime. The executor is polled when needed by the runtime.
+//! Simple executor to be used inside of an application runtime. The executor
+//! is polled when needed by the runtime.
 use {
     futures::{
         future::{BoxFuture, FutureExt},
@@ -133,7 +134,8 @@ mod tests {
         // nothing has been executed yet, so should not have received on first channel
         assert!(receiver1.try_recv().unwrap().is_none());
 
-        // create second task which will receive from first channel, then send to another one
+        // create second task which will receive from first channel, then send to
+        // another one
         let (sender2, mut receiver2) = oneshot::channel();
         spawn(async move {
             sender2.send(receiver1.await.unwrap()).unwrap();

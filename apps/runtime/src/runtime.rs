@@ -305,16 +305,18 @@ fn unix_timestamp() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+    use std::thread::sleep;
+
     use exocore_core::tests_utils::find_test_fixture;
     use exocore_protos::apps::in_message::InMessageType;
     use exocore_protos::apps::out_message::OutMessageType;
     use exocore_protos::store::{EntityResults, MutationResult};
-    use std::sync::Mutex;
-    use std::thread::sleep;
 
     use super::*;
 
-    /// Runs the application defined in `exocore-apps-example`. See its `lib.rs` to follow the sequence.
+    /// Runs the application defined in `exocore-apps-example`. See its `lib.rs`
+    /// to follow the sequence.
     #[test]
     fn example_golden_path() {
         exocore_core::logging::setup(None);
