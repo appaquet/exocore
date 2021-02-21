@@ -2,26 +2,21 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::anyhow;
 use exocore_protos::apps::{InMessage, MessageStatus, OutMessage};
 use exocore_protos::prost::{self, ProstMessageExt};
+use log::Level;
 use wasmtime::*;
 
 #[derive(Clone)]
-pub struct AppRuntime<E: Environment> {
+pub struct AppRuntime<E: HostEnvironment> {
     instance: Instance,
     func_send_message: Func,
     func_tick: Func,
     env: Arc<E>,
 }
 
-pub trait Environment: Send + Sync + 'static {
-    fn handle_message(&self, msg: OutMessage);
-    fn handle_log(&self, msg: &str);
-}
-
-impl<E: Environment> AppRuntime<E> {
-    pub fn from_file<P>(file: P, env: Arc<E>) -> anyhow::Result<AppRuntime<E>>
+impl<E: HostEnvironment> AppRuntime<E> {
+    pub fn from_file<P>(file: P, env: Arc<E>) -> Result<AppRuntime<E>, AppRuntimeError>
     where
         P: AsRef<Path>,
     {
@@ -44,7 +39,7 @@ impl<E: Environment> AppRuntime<E> {
         })
     }
 
-    pub fn run(&self) -> anyhow::Result<()> {
+    pub fn run(&self) -> Result<(), AppRuntimeError> {
         loop {
             let next_tick_dur = self.tick()?;
             if let Some(next_tick_dur) = next_tick_dur {
@@ -53,7 +48,7 @@ impl<E: Environment> AppRuntime<E> {
         }
     }
 
-    pub fn tick(&self) -> anyhow::Result<Option<Duration>> {
+    pub fn tick(&self) -> Result<Option<Duration>, AppRuntimeError> {
         let exocore_tick = self.func_tick.get0::<u64>()?;
         let now = unix_timestamp();
         let next_tick_time = exocore_tick().expect("Couldn't tick");
@@ -65,7 +60,7 @@ impl<E: Environment> AppRuntime<E> {
         }
     }
 
-    pub fn send_message(&self, message: InMessage) -> anyhow::Result<()> {
+    pub fn send_message(&self, message: InMessage) -> Result<(), AppRuntimeError> {
         let message_bytes = message.encode_to_vec();
 
         let func = self.func_send_message.get2::<i32, i32, u32>()?;
@@ -73,22 +68,31 @@ impl<E: Environment> AppRuntime<E> {
         let res = func(message_ptr, message_size);
         wasm_free(&self.instance, message_ptr, message_size)?;
 
-        let status = MessageStatus::from_i32(res? as i32);
-        // TODO: Handle error
+        match MessageStatus::from_i32(res? as i32) {
+            Some(MessageStatus::Ok) => {}
+            other => return Err(AppRuntimeError::MessageStatus(other)),
+        }
 
         Ok(())
     }
 
-    fn setup_host_module(linker: &mut Linker, env: &Arc<E>) -> anyhow::Result<()> {
+    fn setup_host_module(linker: &mut Linker, env: &Arc<E>) -> Result<(), AppRuntimeError> {
         let env_clone = env.clone();
         linker.func(
             "exocore",
             "__exocore_host_log",
             move |caller: Caller<'_>, level: i32, ptr: i32, len: i32| {
-                // TODO: Handle level
+                let log_level = match level {
+                    1 => Level::Error,
+                    2 => Level::Warn,
+                    3 => Level::Info,
+                    4 => Level::Debug,
+                    5 => Level::Trace,
+                    _ => Level::Error,
+                };
 
                 read_wasm_str(caller, ptr, len, |msg| {
-                    env_clone.handle_log(msg);
+                    env_clone.handle_log(log_level, msg);
                 })?;
 
                 Ok(())
@@ -125,37 +129,70 @@ impl<E: Environment> AppRuntime<E> {
     }
 }
 
-fn bootstrap_module(instance: &Instance) -> anyhow::Result<(Func, Func)> {
-    // TODO: Convert expects to Error
+pub trait HostEnvironment: Send + Sync + 'static {
+    fn handle_message(&self, msg: OutMessage);
+    fn handle_log(&self, level: log::Level, msg: &str);
+}
 
+#[derive(Debug, thiserror::Error)]
+pub enum AppRuntimeError {
+    #[error("The application is missing function '{0}'. Did you include SDK and implement #[exocore_app]?")]
+    MissingFunction(&'static str),
+
+    #[error("WASM runtime error '{0}'")]
+    Runtime(&'static str),
+
+    #[error("WASM execution aborted: {0}")]
+    Trap(#[from] Trap),
+
+    #[error("Message handling error: status={0:?}")]
+    MessageStatus(Option<MessageStatus>),
+
+    #[error("Message decoding error: {0}")]
+    MessageDecode(#[from] exocore_protos::prost::DecodeError),
+
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
+}
+
+impl From<AppRuntimeError> for Trap {
+    fn from(err: AppRuntimeError) -> Self {
+        match err {
+            AppRuntimeError::Trap(t) => t,
+            other => Trap::new(other.to_string()),
+        }
+    }
+}
+
+fn bootstrap_module(instance: &Instance) -> Result<(Func, Func), AppRuntimeError> {
     // Initialize environment
     let exocore_init = instance
         .get_func("__exocore_init")
-        .expect("`__exocore_init` was not an exported function. Did you include the SDK?");
+        .ok_or(AppRuntimeError::MissingFunction("__exocore_init"))?;
     let exocore_init = exocore_init.get0::<()>()?;
     exocore_init()?;
 
     // Create application instance
-    let exocore_app_init = instance.get_func("__exocore_app_init").expect(
-        "`__exocore_app_init` was not an exported function. Did you implement #[exocore_app]?",
-    );
+    let exocore_app_init = instance
+        .get_func("__exocore_app_init")
+        .ok_or(AppRuntimeError::MissingFunction("__exocore_app_init"))?;
     let exocore_app_init = exocore_app_init.get0::<()>()?;
     exocore_app_init()?;
 
     // Boot the application
     let exocore_app_boot = instance
         .get_func("__exocore_app_boot")
-        .expect("`__exocore_app_boot` was not an exported function. Did you include the SDK?");
+        .ok_or(AppRuntimeError::MissingFunction("__exocore_app_boot"))?;
     let exocore_app_boot = exocore_app_boot.get0::<()>()?;
     exocore_app_boot()?;
 
     // Extract tick & message sending functions
     let exocore_tick = instance
         .get_func("__exocore_tick")
-        .expect("`__exocore_tick` was not an exported function. Did you include the SDK?");
+        .ok_or(AppRuntimeError::MissingFunction("__exocore_tick"))?;
     let exocore_send_message = instance
         .get_func("__exocore_in_message")
-        .expect("`__exocore_in_message` was not an exported function. Did you include the SDK?");
+        .ok_or(AppRuntimeError::MissingFunction("__exocore_in_message"))?;
 
     Ok((exocore_tick, exocore_send_message))
 }
@@ -167,10 +204,10 @@ fn read_wasm_message<M: prost::Message + Default>(
     caller: Caller<'_>,
     ptr: i32,
     len: i32,
-) -> Result<M, Trap> {
+) -> Result<M, AppRuntimeError> {
     let mem = match caller.get_export("memory") {
         Some(Extern::Memory(mem)) => mem,
-        _ => return Err(Trap::new("failed to find host memory")),
+        _ => return Err(AppRuntimeError::Runtime("failed to find host memory")),
     };
 
     unsafe {
@@ -180,11 +217,8 @@ fn read_wasm_message<M: prost::Message + Default>(
             .and_then(|arr| arr.get(..len as u32 as usize));
 
         match data {
-            Some(data) => {
-                M::decode(data).map_err(|err| Trap::new("couldn't read message"))
-                // TODO: Better error handling
-            }
-            None => Err(Trap::new("pointer/length out of bounds")),
+            Some(data) => Ok(M::decode(data)?),
+            None => Err(AppRuntimeError::Runtime("pointer/length out of bounds")),
         }
     }
 }
@@ -197,10 +231,10 @@ fn read_wasm_str<F: FnOnce(&str)>(
     ptr: i32,
     len: i32,
     f: F,
-) -> Result<(), Trap> {
+) -> Result<(), AppRuntimeError> {
     let mem = match caller.get_export("memory") {
         Some(Extern::Memory(mem)) => mem,
-        _ => return Err(Trap::new("failed to find host memory")),
+        _ => return Err(AppRuntimeError::Runtime("failed to find host memory")),
     };
 
     unsafe {
@@ -211,9 +245,9 @@ fn read_wasm_str<F: FnOnce(&str)>(
         match data {
             Some(data) => match std::str::from_utf8(data) {
                 Ok(s) => f(s),
-                Err(_) => return Err(Trap::new("invalid utf-8")),
+                Err(_) => return Err(AppRuntimeError::Runtime("invalid utf-8")),
             },
-            None => return Err(Trap::new("pointer/length out of bounds")),
+            None => return Err(AppRuntimeError::Runtime("pointer/length out of bounds")),
         };
     }
 
@@ -221,15 +255,15 @@ fn read_wasm_str<F: FnOnce(&str)>(
 }
 
 // Inspired from https://radu-matei.com/blog/practical-guide-to-wasm-memory/#passing-arrays-to-modules-using-wasmtime
-fn wasm_alloc(instance: &Instance, bytes: &[u8]) -> Result<(i32, i32), anyhow::Error> {
+fn wasm_alloc(instance: &Instance, bytes: &[u8]) -> Result<(i32, i32), AppRuntimeError> {
     let mem = match instance.get_export("memory") {
         Some(Extern::Memory(mem)) => mem,
-        _ => return Err(anyhow!("failed to find host memory")),
+        _ => return Err(AppRuntimeError::Runtime("failed to find host memory")),
     };
 
     let alloc = instance
         .get_func("__exocore_alloc")
-        .expect("expected alloc function not found");
+        .ok_or(AppRuntimeError::MissingFunction("__exocore_alloc"))?;
     let alloc_result = alloc.call(&[Val::from(bytes.len() as i32)])?;
 
     let guest_ptr_offset = match alloc_result
@@ -237,7 +271,11 @@ fn wasm_alloc(instance: &Instance, bytes: &[u8]) -> Result<(i32, i32), anyhow::E
         .expect("expected the result of the allocation to have one value")
     {
         Val::I32(val) => *val,
-        _ => return Err(anyhow!("guest pointer must be Val::I32")),
+        _ => {
+            return Err(AppRuntimeError::Runtime(
+                "__exocore_alloc returned a non-i32 pointer",
+            ))
+        }
     };
 
     unsafe {
@@ -248,10 +286,10 @@ fn wasm_alloc(instance: &Instance, bytes: &[u8]) -> Result<(i32, i32), anyhow::E
     Ok((guest_ptr_offset, bytes.len() as i32))
 }
 
-fn wasm_free(instance: &Instance, ptr: i32, size: i32) -> Result<(), anyhow::Error> {
+fn wasm_free(instance: &Instance, ptr: i32, size: i32) -> Result<(), AppRuntimeError> {
     let alloc = instance
         .get_func("__exocore_free")
-        .expect("expected alloc function not found");
+        .ok_or(AppRuntimeError::MissingFunction("__exocore_free"))?;
     alloc.call(&[Val::from(ptr), Val::from(size)])?;
 
     Ok(())
@@ -386,14 +424,14 @@ mod tests {
         }
     }
 
-    impl Environment for TestEnv {
+    impl HostEnvironment for TestEnv {
         fn handle_message(&self, msg: OutMessage) {
             let mut messages = self.messages.lock().unwrap();
             messages.push(msg);
         }
 
-        fn handle_log(&self, msg: &str) {
-            info!("Got log from app: {}", msg);
+        fn handle_log(&self, level: log::Level, msg: &str) {
+            log!(level, "WASM APP: {}", msg);
             let mut logs = self.logs.lock().unwrap();
             logs.push(msg.to_string());
         }

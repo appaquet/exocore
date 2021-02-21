@@ -36,7 +36,6 @@ pub extern "C" fn __exocore_app_init() {}
 #[no_mangle]
 pub extern "C" fn __exocore_init() {
     crate::logging::init().expect("Couldn't setup logging");
-    crate::executor::init();
 
     let exocore = crate::client::Exocore::get();
     exocore.store.start();

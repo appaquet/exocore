@@ -58,7 +58,7 @@ members = [
   "store",
   "chain",
   "apps/runtime",
-  "apps/macro",
+  "apps/macros",
   "apps/sdk",
   "apps/example",
   "discovery",

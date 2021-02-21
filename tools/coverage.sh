@@ -19,7 +19,7 @@ export CARGO_INCREMENTAL=0
 export RUSTFLAGS="-Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort"
 
 export CARGO_OPTIONS="--all --all-features --exclude=exo --exclude=exocore-client-web"
-export CARGO_OPTIONS="$CARGO_OPTIONS --exclude=exocore-client-android --exclude=exocore-client-c --exclude=exocore-apps-sdk-macro"
+export CARGO_OPTIONS="$CARGO_OPTIONS --exclude=exocore-client-android --exclude=exocore-client-c --exclude=exocore-apps-macros"
 
 cargo clean -p exocore-protos
 cargo test $CARGO_OPTIONS

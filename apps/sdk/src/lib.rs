@@ -12,7 +12,7 @@ pub mod executor;
 pub mod store;
 pub mod time;
 
-pub use exocore_apps_macro::exocore_app;
+pub use exocore_apps_macros::exocore_app;
 
 pub mod prelude {
     pub use super::app::{App, AppError};

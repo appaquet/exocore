@@ -13,7 +13,7 @@ pub fn exocore_app(_metadata: TokenStream, input: TokenStream) -> TokenStream {
         #[no_mangle]
         pub extern "C" fn __exocore_app_init() {
             let instance = <#struct_ident>::new();
-            exocore_apps_sdk::app::__exocore_app_register(Box::new(instance));
+            ::exocore_apps_sdk::app::__exocore_app_register(Box::new(instance));
         }
     })
 }

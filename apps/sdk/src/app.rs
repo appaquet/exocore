@@ -1,5 +1,3 @@
-use std::error::Error;
-
 use crate::client::Exocore;
 
 pub trait App: Send {
@@ -19,6 +17,6 @@ pub(crate) fn boot_app() {
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    #[error("Other error: {0:?}")]
-    Other(Box<dyn Error>),
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }

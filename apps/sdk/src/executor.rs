@@ -1,3 +1,4 @@
+///! Simple executor to be used inside of an application runtime. The executor is polled when needed by the runtime.
 use {
     futures::{
         future::{BoxFuture, FutureExt},
@@ -11,32 +12,35 @@ use {
     },
 };
 
-static mut EXECUTOR: Option<Mutex<Executor>> = None;
-static mut SPAWNER: Option<Spawner> = None;
+const MAX_QUEUED_TASKS: usize = 100_000;
 
-pub(crate) fn init() {
-    // Maximum number of tasks to allow queueing in the channel at once.
-    // This is just to make `sync_channel` happy, and wouldn't be present in
-    // a real executor.
-    const MAX_QUEUED_TASKS: usize = 10_000;
+/// Spawns a task onto the executor.
+pub fn spawn(future: impl Future<Output = ()> + 'static + Send) {
+    EXECUTOR.spawner.spawn(future);
+}
+
+pub(crate) fn poll_executor() {
+    let executor = EXECUTOR.executor.lock().unwrap();
+    executor.poll();
+}
+
+lazy_static! {
+    static ref EXECUTOR: ExecutorPair = init();
+}
+
+struct ExecutorPair {
+    executor: Mutex<Executor>,
+    spawner: Spawner,
+}
+
+fn init() -> ExecutorPair {
     let (task_sender, ready_queue) = sync_channel(MAX_QUEUED_TASKS);
     let executor = Executor { ready_queue };
     let spawner = Spawner { task_sender };
 
-    unsafe {
-        SPAWNER = Some(spawner);
-        EXECUTOR = Some(Mutex::new(executor));
-    }
-}
-
-pub(crate) fn poll_executor() {
-    let executor = unsafe { EXECUTOR.as_ref().unwrap().lock().unwrap() };
-    executor.tick();
-}
-
-pub fn spawn(future: impl Future<Output = ()> + 'static + Send) {
-    unsafe {
-        SPAWNER.as_ref().unwrap().spawn(future);
+    ExecutorPair {
+        executor: Mutex::new(executor),
+        spawner,
     }
 }
 
@@ -46,8 +50,7 @@ struct Executor {
 }
 
 impl Executor {
-    fn tick(&self) {
-        // TODO: Should use try_recv so we don't block
+    fn poll(&self) {
         while let Ok(task) = self.ready_queue.try_recv() {
             // Take the future, and if it has not yet completed (is still Some),
             // poll it in an attempt to complete it.
@@ -111,5 +114,38 @@ impl ArcWake for Task {
             .task_sender
             .send(cloned)
             .expect("too many tasks queued");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use futures::channel::oneshot;
+
+    use super::*;
+
+    #[test]
+    fn simple_two_tasks_channels() {
+        let (sender1, mut receiver1) = oneshot::channel();
+        spawn(async move {
+            sender1.send("hello").unwrap();
+        });
+
+        // nothing has been executed yet, so should not have received on first channel
+        assert!(receiver1.try_recv().unwrap().is_none());
+
+        // create second task which will receive from first channel, then send to another one
+        let (sender2, mut receiver2) = oneshot::channel();
+        spawn(async move {
+            sender2.send(receiver1.await.unwrap()).unwrap();
+        });
+
+        // nothing has been executed yet, so should not have received on second channel
+        assert!(receiver2.try_recv().unwrap().is_none());
+
+        // poll executor, should have received from first channel and forward to second
+        poll_executor();
+
+        // second channel should have received
+        assert_eq!(receiver2.try_recv().unwrap(), Some("hello"));
     }
 }
