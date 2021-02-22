@@ -1,19 +1,26 @@
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
+    },
+    time::Duration,
+};
 
-use exocore_protos::apps::out_message::OutMessageType;
-use exocore_protos::apps::{InMessage, MessageStatus, OutMessage};
-use exocore_protos::generated::store::{EntityQuery, EntityResults};
-use exocore_protos::prost::{Message, ProstMessageExt};
-use exocore_protos::store::{MutationRequest, MutationResult};
+use exocore_protos::{
+    apps::{out_message::OutMessageType, InMessage, MessageStatus, OutMessage},
+    generated::store::{EntityQuery, EntityResults},
+    prost::{Message, ProstMessageExt},
+    store::{MutationRequest, MutationResult},
+};
 use futures::channel::oneshot;
 
-use crate::prelude::{sleep, spawn};
-use crate::time::{now, Timestamp};
+use crate::{
+    prelude::{sleep, spawn},
+    time::{now, Timestamp},
+};
 
-// TODO: Should be shared with defaults in remote store `ClientConfiguration`
+// Keep in sync with remote store `ClientConfiguration`
 const MUTATION_TIMEOUT: Duration = Duration::from_secs(5);
 const QUERY_TIMEOUT: Duration = Duration::from_secs(10);
 const TIMEOUT_CHECK_INTERVAL: Duration = Duration::from_secs(1);
@@ -24,7 +31,7 @@ pub struct Store {
     inner: Mutex<Inner>,
 
     #[cfg(test)]
-    host_message_sender: Option<Box<dyn Fn(OutMessage) + Send + Sync>>,
+    host_message_sender: Option<Box<dyn Fn(OutMessage) -> MessageStatus + Send + Sync>>,
 }
 
 #[derive(Default)]
@@ -71,7 +78,7 @@ impl Store {
             inner.pending_mutations.insert(rdv, pending);
         }
 
-        self.send_host_message(msg);
+        self.send_host_message(msg)?;
 
         receiver.await.map_err(StoreError::from)
     }
@@ -95,7 +102,7 @@ impl Store {
             inner.pending_queries.insert(rdv, pending);
         }
 
-        self.send_host_message(msg);
+        self.send_host_message(msg)?;
 
         receiver.await.map_err(StoreError::from)
     }
@@ -148,18 +155,23 @@ impl Store {
     }
 
     #[cfg(not(test))]
-    fn send_host_message(&self, msg: OutMessage) {
-        let msg_encoded = msg.encode_to_vec();
+    fn send_host_message(&self, msg: OutMessage) -> Result<(), StoreError> {
+        let encoded = msg.encode_to_vec();
         unsafe {
-            // TODO: Handle error
-            crate::binding::__exocore_host_out_message(msg_encoded.as_ptr(), msg_encoded.len());
+            let code = crate::binding::__exocore_host_out_message(encoded.as_ptr(), encoded.len());
+            StoreError::from_message_status(code as i32)?;
         }
+
+        Ok(())
     }
 
     #[cfg(test)]
-    fn send_host_message(&self, msg: OutMessage) {
+    fn send_host_message(&self, msg: OutMessage) -> Result<(), StoreError> {
         let sender = self.host_message_sender.as_ref().unwrap();
-        sender(msg);
+        let code = sender(msg);
+        StoreError::from_message_status(code as i32)?;
+
+        Ok(())
     }
 }
 
@@ -191,17 +203,31 @@ fn check_timed_out_mutations(inner: &mut std::sync::MutexGuard<Inner>, now: Time
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
-    #[error("Unknown error")]
-    Unknown,
+    #[error(transparent)]
+    Unknown(#[from] anyhow::Error),
+    #[error("Host message error: {0:?}")]
+    HostMessage(MessageStatus),
     #[error("Query or mutation got cancelled or timed out")]
     Cancelled(#[from] oneshot::Canceled),
+}
+
+impl StoreError {
+    fn from_message_status(code: i32) -> Result<(), StoreError> {
+        match MessageStatus::from_i32(code) {
+            Some(MessageStatus::Ok) => Ok(()),
+            Some(status) => Err(StoreError::HostMessage(status)),
+            None => Err(StoreError::Unknown(anyhow::anyhow!(
+                "Unknown message status code: {}",
+                code
+            ))),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use exocore_protos::apps::in_message::InMessageType;
-    use futures::channel::mpsc;
-    use futures::StreamExt;
+    use futures::{channel::mpsc, StreamExt};
 
     use super::*;
 
@@ -289,6 +315,7 @@ mod tests {
             store.host_message_sender = Some(Box::new(move |msg| {
                 let mut out_msg_sender = out_msg_sender.lock().unwrap();
                 out_msg_sender.try_send(msg).unwrap();
+                MessageStatus::Ok
             }));
             Arc::new(store)
         };

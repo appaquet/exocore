@@ -3,14 +3,12 @@ extern crate log;
 
 use std::sync::Arc;
 
-use exocore_core::logging::setup;
 use exocore_protos::apps::{InMessage, OutMessage};
 use runtime::{AppRuntime, HostEnvironment};
 
 mod runtime;
 
 fn main() -> anyhow::Result<()> {
-    setup(None);
     struct MyEnv;
     impl HostEnvironment for MyEnv {
         fn handle_message(&self, out: OutMessage) {

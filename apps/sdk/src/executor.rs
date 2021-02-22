@@ -1,16 +1,19 @@
-//! Simple executor to be used inside of an application runtime. The executor
-//! is polled when needed by the runtime.
-use {
-    futures::{
-        future::{BoxFuture, FutureExt},
-        task::{waker_ref, ArcWake},
+//! Simple executor to be used inside of an application runtime. The executor is
+//! polled when needed by the runtime.
+//!
+//! This is partially copied and adapted from https://rust-lang.github.io/async-book/02_execution/04_executor.html.
+
+use futures::{
+    future::{BoxFuture, FutureExt},
+    task::{waker_ref, ArcWake},
+};
+use std::{
+    future::Future,
+    sync::{
+        mpsc::{sync_channel, Receiver, SyncSender},
+        Arc, Mutex,
     },
-    std::{
-        future::Future,
-        sync::mpsc::{sync_channel, Receiver, SyncSender},
-        sync::{Arc, Mutex},
-        task::Context,
-    },
+    task::Context,
 };
 
 const MAX_QUEUED_TASKS: usize = 100_000;

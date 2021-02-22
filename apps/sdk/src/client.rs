@@ -1,7 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use crate::app::App;
-use crate::store::Store;
+use crate::{app::App, store::Store};
 
 lazy_static! {
     static ref EXOCORE: Exocore = Exocore {
@@ -10,6 +9,7 @@ lazy_static! {
     };
 }
 
+/// Exocore client.
 pub struct Exocore {
     pub store: Arc<Store>,
     app: Arc<Mutex<Option<Box<dyn App>>>>,

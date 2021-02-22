@@ -1,5 +1,7 @@
 use crate::client::Exocore;
 
+/// Trait implemented by an application WASM module. The struct implementing
+/// this trait should have the `#[exocore_app]` macro attribute.
 pub trait App: Send {
     fn start(&self, client: &Exocore) -> Result<(), AppError>;
 }

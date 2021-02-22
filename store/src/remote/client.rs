@@ -177,6 +177,7 @@ pub struct ClientConfiguration {
     pub watched_query_channel_size: usize,
 }
 
+/// Keep in sync with application SDK store.
 impl Default for ClientConfiguration {
     fn default() -> Self {
         ClientConfiguration {

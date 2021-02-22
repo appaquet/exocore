@@ -1,12 +1,13 @@
-use std::path::Path;
-use std::sync::Arc;
-use std::time::Duration;
+use std::{path::Path, sync::Arc, time::Duration};
 
-use exocore_protos::apps::{InMessage, MessageStatus, OutMessage};
-use exocore_protos::prost::{self, ProstMessageExt};
+use exocore_protos::{
+    apps::{InMessage, MessageStatus, OutMessage},
+    prost::{self, ProstMessageExt},
+};
 use log::Level;
 use wasmtime::*;
 
+/// Runtime for an application WASM module.
 #[derive(Clone)]
 pub struct AppRuntime<E: HostEnvironment> {
     instance: Instance,
@@ -51,7 +52,7 @@ impl<E: HostEnvironment> AppRuntime<E> {
     pub fn tick(&self) -> Result<Option<Duration>, AppRuntimeError> {
         let exocore_tick = self.func_tick.get0::<u64>()?;
         let now = unix_timestamp();
-        let next_tick_time = exocore_tick().expect("Couldn't tick");
+        let next_tick_time = exocore_tick()?;
 
         if next_tick_time > now {
             Ok(Some(Duration::from_nanos(next_tick_time - now)))
@@ -82,15 +83,7 @@ impl<E: HostEnvironment> AppRuntime<E> {
             "exocore",
             "__exocore_host_log",
             move |caller: Caller<'_>, level: i32, ptr: i32, len: i32| {
-                let log_level = match level {
-                    1 => Level::Error,
-                    2 => Level::Warn,
-                    3 => Level::Info,
-                    4 => Level::Debug,
-                    5 => Level::Trace,
-                    _ => Level::Error,
-                };
-
+                let log_level = log_level_from_i32(level);
                 read_wasm_str(caller, ptr, len, |msg| {
                     env_clone.handle_log(log_level, msg);
                 })?;
@@ -129,11 +122,24 @@ impl<E: HostEnvironment> AppRuntime<E> {
     }
 }
 
+fn log_level_from_i32(level: i32) -> Level {
+    match level {
+        1 => Level::Error,
+        2 => Level::Warn,
+        3 => Level::Info,
+        4 => Level::Debug,
+        5 => Level::Trace,
+        _ => Level::Error,
+    }
+}
+
+/// Environment to which messages and logs from the WASM application are sent.
 pub trait HostEnvironment: Send + Sync + 'static {
     fn handle_message(&self, msg: OutMessage);
     fn handle_log(&self, level: log::Level, msg: &str);
 }
 
+/// Application runtime error.
 #[derive(Debug, thiserror::Error)]
 pub enum AppRuntimeError {
     #[error("The application is missing function '{0}'. Did you include SDK and implement #[exocore_app]?")]
@@ -266,10 +272,10 @@ fn wasm_alloc(instance: &Instance, bytes: &[u8]) -> Result<(i32, i32), AppRuntim
         .ok_or(AppRuntimeError::MissingFunction("__exocore_alloc"))?;
     let alloc_result = alloc.call(&[Val::from(bytes.len() as i32)])?;
 
-    let guest_ptr_offset = match alloc_result
-        .get(0)
-        .expect("expected the result of the allocation to have one value")
-    {
+    let ptr_val = alloc_result.get(0).ok_or(AppRuntimeError::Runtime(
+        "__exocore_alloc didn't return pointer",
+    ))?;
+    let ptr = match ptr_val {
         Val::I32(val) => *val,
         _ => {
             return Err(AppRuntimeError::Runtime(
@@ -279,11 +285,11 @@ fn wasm_alloc(instance: &Instance, bytes: &[u8]) -> Result<(i32, i32), AppRuntim
     };
 
     unsafe {
-        let raw = mem.data_ptr().offset(guest_ptr_offset as isize);
+        let raw = mem.data_ptr().offset(ptr as isize);
         raw.copy_from(bytes.as_ptr(), bytes.len());
     }
 
-    Ok((guest_ptr_offset, bytes.len() as i32))
+    Ok((ptr, bytes.len() as i32))
 }
 
 fn wasm_free(instance: &Instance, ptr: i32, size: i32) -> Result<(), AppRuntimeError> {
@@ -296,7 +302,7 @@ fn wasm_free(instance: &Instance, ptr: i32, size: i32) -> Result<(), AppRuntimeE
 }
 
 fn unix_timestamp() -> u64 {
-    // TODO: Should be consistent time
+    // TODO: Should be consistent timestamp
     let now = std::time::SystemTime::now();
     now.duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -305,13 +311,13 @@ fn unix_timestamp() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
-    use std::thread::sleep;
+    use std::{sync::Mutex, thread::sleep};
 
     use exocore_core::tests_utils::find_test_fixture;
-    use exocore_protos::apps::in_message::InMessageType;
-    use exocore_protos::apps::out_message::OutMessageType;
-    use exocore_protos::store::{EntityResults, MutationResult};
+    use exocore_protos::{
+        apps::{in_message::InMessageType, out_message::OutMessageType},
+        store::{EntityResults, MutationResult},
+    };
 
     use super::*;
 

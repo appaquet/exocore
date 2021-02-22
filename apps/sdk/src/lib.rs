@@ -15,10 +15,12 @@ pub mod time;
 pub use exocore_apps_macros::exocore_app;
 
 pub mod prelude {
-    pub use super::app::{App, AppError};
-    pub use super::client::Exocore;
-    pub use super::executor::spawn;
-    pub use super::exocore_app;
-    pub use super::store::{Store, StoreError};
-    pub use super::time::{now, sleep, Timestamp};
+    pub use super::{
+        app::{App, AppError},
+        client::Exocore,
+        executor::spawn,
+        exocore_app,
+        store::{Store, StoreError},
+        time::{now, sleep, Timestamp},
+    };
 }
