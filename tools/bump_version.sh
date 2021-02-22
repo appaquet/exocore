@@ -30,6 +30,7 @@ CRATES=( \
   "apps/runtime" \
   "apps/macros" \
   "apps/sdk" \
+  "apps/example" \
 )
 
 for CRATE in "${CRATES[@]}"; do
