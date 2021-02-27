@@ -17,6 +17,6 @@ pub mod utils;
 pub extern "C" fn exocore_init() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
-        exocore_core::logging::setup(Some(log::LevelFilter::Info));
+        exocore_core::logging::setup(Some(log::LevelFilter::Debug));
     });
 }

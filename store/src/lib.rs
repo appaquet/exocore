@@ -11,6 +11,7 @@ pub mod error;
 pub mod mutation;
 pub mod ordering;
 pub mod query;
+pub mod client;
 
 #[cfg(feature = "local")]
 pub mod local;

@@ -1188,6 +1188,7 @@ dependencies = [
  "anyhow",
  "exocore-core",
  "exocore-protos",
+ "exocore-store",
  "log",
  "thiserror",
  "wasmtime",
@@ -1253,6 +1254,7 @@ dependencies = [
  "log",
  "log4rs",
  "serde_json",
+ "weak-table",
 ]
 
 [[package]]
@@ -4485,6 +4487,12 @@ checksum = "474403335b9a90b21120ab8131dd888f0a8d041c2d365ab960feddfe5a73c4b6"
 dependencies = [
  "wast",
 ]
+
+[[package]]
+name = "weak-table"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a8f3bf74f2d43500dea6a8291b6ac943e3465ea9936b94bd017e61b7b21dd01"
 
 [[package]]
 name = "web-sys"

@@ -360,13 +360,7 @@ impl Inner {
     fn send_query(
         &mut self,
         query: EntityQuery,
-    ) -> Result<
-        (
-            ConsistentTimestamp,
-            oneshot::Receiver<Result<EntityResults, Error>>,
-        ),
-        Error,
-    > {
+    ) -> Result<oneshot::Receiver<Result<EntityResults, Error>>, Error> {
         let (result_sender, receiver) = oneshot::channel();
 
         let store_node = self.store_node.as_ref().ok_or(Error::NotConnected)?;
@@ -389,7 +383,7 @@ impl Inner {
             },
         );
 
-        Ok((request_id, receiver))
+        Ok(receiver)
     }
 
     fn watch_query(
@@ -583,14 +577,13 @@ impl ClientHandle {
             Err(_err) => return Error::Poisoned.into(),
         };
 
-        let (request_id, receiver) = match inner.send_query(query) {
-            Ok((request_id, receiver)) => (request_id, receiver),
+        let receiver = match inner.send_query(query) {
+            Ok(receiver) => receiver,
             Err(err) => return err.into(),
         };
 
         QueryFuture {
             result: Ok(receiver),
-            request_id,
         }
     }
 
@@ -623,27 +616,6 @@ impl ClientHandle {
         }
     }
 
-    pub fn cancel_query(&self, query_id: ConsistentTimestamp) -> Result<(), Error> {
-        let inner = match self.inner.upgrade() {
-            Some(inner) => inner,
-            None => return Err(Error::Dropped),
-        };
-        let mut inner = match inner.write() {
-            Ok(inner) => inner,
-            Err(err) => return Err(err.into()),
-        };
-
-        if let Some(query) = inner.watched_queries.remove(&query_id) {
-            debug!("Cancelling watched query {:?}", query_id);
-            let _ = inner.send_unwatch_query(query.query.watch_token);
-        } else {
-            debug!("Cancelling query {:?}", query_id);
-            inner.pending_queries.remove(&query_id);
-        }
-
-        Ok(())
-    }
-
     pub fn store_node(&self) -> Option<Node> {
         let inner = self.inner.upgrade()?;
         let inner = inner.read().ok()?;
@@ -654,21 +626,11 @@ impl ClientHandle {
 /// Future query result.
 pub struct QueryFuture {
     result: Result<oneshot::Receiver<Result<EntityResults, Error>>, Error>,
-    request_id: ConsistentTimestamp,
-}
-
-impl QueryFuture {
-    pub fn query_id(&self) -> ConsistentTimestamp {
-        self.request_id
-    }
 }
 
 impl From<Error> for QueryFuture {
     fn from(err: Error) -> Self {
-        QueryFuture {
-            result: Err(err),
-            request_id: ConsistentTimestamp(0),
-        }
+        QueryFuture { result: Err(err) }
     }
 }
 

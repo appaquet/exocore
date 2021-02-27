@@ -241,7 +241,7 @@ async fn watched_query_timeout() -> anyhow::Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn watched_drop_unregisters() -> anyhow::Result<()> {
+async fn watched_drop_cancel() -> anyhow::Result<()> {
     let mut test_remote_store = TestRemoteStore::new().await?;
     test_remote_store.start_server().await?;
     test_remote_store.start_client().await?;
@@ -257,33 +257,6 @@ async fn watched_drop_unregisters() -> anyhow::Result<()> {
 
     // drop stream
     drop(stream);
-
-    // query should be unwatched
-    expect_eventually(|| {
-        let watched_queries = test_remote_store.local_store.store_handle.watched_queries();
-        watched_queries.is_empty()
-    });
-
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn watched_cancel() -> anyhow::Result<()> {
-    let mut test_remote_store = TestRemoteStore::new().await?;
-    test_remote_store.start_server().await?;
-    test_remote_store.start_client().await?;
-
-    let query = QueryBuilder::matches("hello").build();
-    let stream = test_remote_store.client_handle.watched_query(query);
-    let query_id = stream.query_id();
-
-    // wait for watched query to registered
-    expect_eventually(|| {
-        let watched_queries = test_remote_store.local_store.store_handle.watched_queries();
-        !watched_queries.is_empty()
-    });
-
-    test_remote_store.client_handle.cancel_query(query_id)?;
 
     // query should be unwatched
     expect_eventually(|| {
