@@ -17,6 +17,7 @@ use crate::{
     mutation::{MutationBuilder, MutationRequestLike},
     query::QueryBuilder,
     remote::server::{Server, ServerConfiguration},
+    store::Store,
 };
 
 #[tokio::test(flavor = "multi_thread")]
@@ -156,7 +157,7 @@ async fn watched_query() -> anyhow::Result<()> {
     test_remote_store.send_and_await_mutation(mutation).await?;
 
     let query = QueryBuilder::matches("hello").build();
-    let mut stream = block_on_stream(test_remote_store.client_handle.watched_query(query));
+    let mut stream = block_on_stream(test_remote_store.client_handle.watched_query(query)?);
 
     let results = stream.next().unwrap().unwrap();
     assert_eq!(results.entities.len(), 1);
@@ -179,7 +180,7 @@ async fn watched_query_error_propagation() -> anyhow::Result<()> {
     test_remote_store.start_client().await?;
 
     let query = QueryBuilder::test(false).build();
-    let mut stream = block_on_stream(test_remote_store.client_handle.watched_query(query));
+    let mut stream = block_on_stream(test_remote_store.client_handle.watched_query(query)?);
 
     let results = stream.next().unwrap();
     assert!(results.is_err());
@@ -217,7 +218,7 @@ async fn watched_query_timeout() -> anyhow::Result<()> {
     test_remote_store.send_and_await_mutation(mutation).await?;
 
     let query = QueryBuilder::matches("hello").build();
-    let mut stream = block_on_stream(test_remote_store.client_handle.watched_query(query));
+    let mut stream = block_on_stream(test_remote_store.client_handle.watched_query(query)?);
 
     let results = stream.next().unwrap().unwrap();
     assert_eq!(results.entities.len(), 1);
@@ -274,7 +275,7 @@ async fn client_drop_stops_watched_stream() -> anyhow::Result<()> {
     test_remote_store.start_client().await?;
 
     let query = QueryBuilder::matches("hello").build();
-    let mut stream = block_on_stream(test_remote_store.client_handle.watched_query(query));
+    let mut stream = block_on_stream(test_remote_store.client_handle.watched_query(query)?);
 
     let results = stream.next().unwrap();
     assert!(results.is_ok());
@@ -364,7 +365,7 @@ impl TestRemoteStore {
         Ok(())
     }
 
-    async fn send_and_await_mutation<M: Into<MutationRequestLike>>(
+    async fn send_and_await_mutation<M: Into<MutationRequestLike> + Send + Sync>(
         &mut self,
         request: M,
     ) -> Result<MutationResult, Error> {

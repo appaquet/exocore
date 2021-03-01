@@ -4,6 +4,7 @@ use std::{
     task::{Context, Poll},
 };
 
+use async_trait::async_trait;
 use exocore_core::{
     cell::Cell,
     futures::{interval, spawn_blocking, BatchingStream},
@@ -459,6 +460,102 @@ where
         &self,
         mut query: EntityQuery,
     ) -> Result<WatchedQueryStream<CS, PS>, Error> {
+        let inner = self.inner.upgrade().ok_or(Error::Dropped)?;
+        let mut inner = inner.write().map_err(|_| Error::Dropped)?;
+
+        let mut watch_token = query.watch_token;
+        if watch_token == 0 {
+            watch_token = inner.clock.consistent_time(inner.cell.local_node()).into();
+            query.watch_token = watch_token;
+        }
+
+        let (sender, receiver) = mpsc::channel(self.config.handle_watch_query_channel_size);
+        let sender = Arc::new(Mutex::new(sender));
+
+        inner
+            .watched_queries
+            .track_query(watch_token, &query, sender.clone());
+
+        // ok to dismiss send as sender end will be dropped in case of an error and
+        // consumer will be notified by channel being closed
+        let _ = inner.incoming_queries_sender.try_send(QueryRequest {
+            query: Box::new(query),
+            sender: QueryRequestSender::WatchedQuery(sender, watch_token),
+        });
+
+        Ok(WatchedQueryStream {
+            watch_token,
+            inner: self.inner.clone(),
+            receiver,
+        })
+    }
+}
+
+#[async_trait]
+impl<CS, PS> crate::store::Store for StoreHandle<CS, PS>
+where
+    CS: exocore_chain::chain::ChainStore,
+    PS: exocore_chain::pending::PendingStore,
+{
+    type WatchedQueryStreamT = WatchedQueryStream<CS, PS>;
+
+    async fn mutate<M: Into<MutationRequestLike> + Send + Sync>(
+        &self,
+        request: M,
+    ) -> Result<MutationResult, Error> {
+        let inner = self.inner.upgrade().ok_or(Error::Dropped)?;
+
+        let request = request.into().0;
+        let return_entities = request.return_entities;
+
+        let mutation_future = {
+            let inner = inner.read().map_err(|_| Error::Dropped)?;
+            inner.handle_mutation_request(request)?
+        };
+
+        let mut mutation_result = mutation_future.await.map_err(|_err| Error::Cancelled)??;
+
+        if return_entities {
+            let query_result = self
+                .query(EntityQuery {
+                    predicate: Some(entity_query::Predicate::Operations(OperationsPredicate {
+                        operation_ids: mutation_result.operation_ids.clone(),
+                    })),
+                    ..Default::default()
+                })
+                .await?;
+
+            mutation_result.entities = query_result
+                .entities
+                .into_iter()
+                .flat_map(|e| e.entity)
+                .collect();
+        }
+
+        Ok(mutation_result)
+    }
+
+    async fn query(&self, query: EntityQuery) -> Result<EntityResults, Error> {
+        let inner = self.inner.upgrade().ok_or(Error::Dropped)?;
+
+        let receiver = {
+            let mut inner = inner.write().map_err(|_| Error::Dropped)?;
+
+            // ok to dismiss send as sender end will be dropped in case of an error and
+            // consumer will be notified by channel being closed
+            let (sender, receiver) = oneshot::channel();
+            let _ = inner.incoming_queries_sender.try_send(QueryRequest {
+                query: Box::new(query),
+                sender: QueryRequestSender::Query(sender),
+            });
+
+            receiver
+        };
+
+        receiver.await.map_err(|_err| Error::Cancelled)?
+    }
+
+    fn watched_query(&self, mut query: EntityQuery) -> Result<Self::WatchedQueryStreamT, Error> {
         let inner = self.inner.upgrade().ok_or(Error::Dropped)?;
         let mut inner = inner.write().map_err(|_| Error::Dropped)?;
 

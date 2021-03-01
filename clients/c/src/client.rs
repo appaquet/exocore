@@ -11,7 +11,10 @@ use exocore_protos::{
     prost::{Message, ProstMessageExt},
     store::MutationRequest,
 };
-use exocore_store::remote::{Client as StoreClient, ClientConfiguration, ClientHandle};
+use exocore_store::{
+    remote::{Client as StoreClient, ClientConfiguration, ClientHandle},
+    store::Store,
+};
 use exocore_transport::{
     p2p::Libp2pTransportConfig, Libp2pTransport, ServiceType, TransportServiceHandle,
 };
@@ -422,18 +425,16 @@ impl Client {
         let mutation =
             MutationRequest::decode(mutation_bytes).map_err(|_| MutationStatus::Error)?;
 
-        let store_handle = self.store_handle.clone();
-
         debug!("Sending a mutation");
+
+        let store = self.store_handle.clone();
         let callback_ctx = CallbackContext { ctx: callback_ctx };
         self._runtime.spawn(async move {
-            let future_result = store_handle.mutate(mutation);
+            let future_result = store.mutate(mutation);
 
-            let result = future_result.await;
-            match result {
+            match future_result.await {
                 Ok(res) => {
                     debug!("Mutation result received");
-
                     let encoded = res.encode_to_vec();
                     callback(
                         MutationStatus::Success,
@@ -442,7 +443,6 @@ impl Client {
                         callback_ctx.ctx,
                     );
                 }
-
                 Err(err) => {
                     warn!("Mutation future has failed: {}", err);
                     callback(MutationStatus::Error, std::ptr::null(), 0, callback_ctx.ctx);
@@ -470,43 +470,42 @@ impl Client {
         debug!("Sending a query (id={})", operation_id);
 
         let (cancel_sender, cancel_receiver) = oneshot::channel();
-        {
-            let callback_ctx = CallbackContext { ctx: callback_ctx };
-            let operation_id = operation_id.clone(); // query keeps strong ref to it since it's used for cancellation
-            let store = self.store_handle.clone();
-            self._runtime.spawn(async move {
-                let future_result = store.query(query);
-                let result = select! {
-                    _ = cancel_receiver.fuse() => {
-                        debug!("Query got cancelled (id={})", operation_id);
-                        callback(QueryStatus::Error, std::ptr::null(), 0, callback_ctx.ctx);
-                        return;
-                    }
-                    result = future_result.fuse() => {
-                        result
-                    }
-                };
-
-                match result {
-                    Ok(res) => {
-                        debug!("Query results received (id={})", operation_id);
-
-                        let encoded = res.encode_to_vec();
-                        callback(
-                            QueryStatus::Success,
-                            encoded.as_ptr(),
-                            encoded.len(),
-                            callback_ctx.ctx,
-                        );
-                    }
-
-                    Err(err) => {
-                        info!("Query future has failed (id={}): {}", operation_id, err);
-                        callback(QueryStatus::Error, std::ptr::null(), 0, callback_ctx.ctx);
-                    }
+        let callback_ctx = CallbackContext { ctx: callback_ctx };
+        let operation_id_clone = operation_id.clone(); // query keeps strong ref to it since it's used for cancellation
+        let store = self.store_handle.clone();
+        self._runtime.spawn(async move {
+            let future_result = store.query(query);
+            let result = select! {
+                _ = cancel_receiver.fuse() => {
+                    debug!("Query got cancelled (id={})", operation_id_clone);
+                    callback(QueryStatus::Error, std::ptr::null(), 0, callback_ctx.ctx);
+                    return;
                 }
-            });
-        }
+                result = future_result.fuse() => {
+                    result
+                }
+            };
+
+            match result {
+                Ok(res) => {
+                    debug!("Query results received (id={})", operation_id_clone);
+                    let encoded = res.encode_to_vec();
+                    callback(
+                        QueryStatus::Success,
+                        encoded.as_ptr(),
+                        encoded.len(),
+                        callback_ctx.ctx,
+                    );
+                }
+                Err(err) => {
+                    info!(
+                        "Query future has failed (id={}): {}",
+                        operation_id_clone, err
+                    );
+                    callback(QueryStatus::Error, std::ptr::null(), 0, callback_ctx.ctx);
+                }
+            }
+        });
         self.operations_canceller
             .insert(operation_id.clone(), cancel_sender);
 
@@ -539,51 +538,66 @@ impl Client {
         self.operations_canceller
             .insert(operation_id.clone(), cancel_sender);
 
-        {
-            let callback_ctx = CallbackContext { ctx: callback_ctx };
-            let store = self.store_handle.clone();
-            let operation_id = operation_id.clone(); // query keeps strong ref to it since it's used for cancellation
-            self._runtime.spawn(async move {
-                let mut result_stream = store.watched_query(query);
-                let mut cancel_receiver = cancel_receiver.fuse();
+        let callback_ctx = CallbackContext { ctx: callback_ctx };
+        let store = self.store_handle.clone();
+        let operation_id_clone = operation_id.clone(); // query keeps strong ref to it since it's used for cancellation
+        self._runtime.spawn(async move {
+            let mut result_stream = match store.watched_query(query) {
+                Ok(ok) => ok,
+                Err(err) => {
+                    info!(
+                        "Failed to start watched query (id={}): {}",
+                        operation_id_clone, err
+                    );
+                    callback(
+                        WatchedQueryStatus::Error,
+                        std::ptr::null(),
+                        0,
+                        callback_ctx.ctx,
+                    );
+                    return;
+                }
+            };
 
-                let status = loop {
-                    let result = select! {
-                        _ = cancel_receiver => {
-                            debug!("Watched query cancelled (id={})", operation_id);
-                            break WatchedQueryStatus::Done;
-                        }
-                        result = result_stream.next().fuse() => {
-                            result
-                        }
-                    };
-
-                    match result {
-                        Some(Ok(res)) => {
-                            debug!("Watched query results received (id={})", operation_id);
-
-                            let encoded = res.encode_to_vec();
-                            callback(
-                                WatchedQueryStatus::Success,
-                                encoded.as_ptr(),
-                                encoded.len(),
-                                callback_ctx.ctx,
-                            );
-                        }
-                        Some(Err(err)) => {
-                            info!("Watched query has failed (id={}): {}", operation_id, err);
-                            break WatchedQueryStatus::Error;
-                        }
-                        None => {
-                            debug!("Watched query done (id={})", operation_id);
-                            break WatchedQueryStatus::Done;
-                        }
+            let mut cancel_receiver = cancel_receiver.fuse();
+            let status = loop {
+                let result = select! {
+                    _ = cancel_receiver => {
+                        debug!("Watched query cancelled (id={})", operation_id_clone);
+                        break WatchedQueryStatus::Done;
+                    }
+                    result = result_stream.next().fuse() => {
+                        result
                     }
                 };
 
-                callback(status, std::ptr::null(), 0, callback_ctx.ctx);
-            });
-        }
+                match result {
+                    Some(Ok(res)) => {
+                        debug!("Watched query results received (id={})", operation_id_clone);
+                        let encoded = res.encode_to_vec();
+                        callback(
+                            WatchedQueryStatus::Success,
+                            encoded.as_ptr(),
+                            encoded.len(),
+                            callback_ctx.ctx,
+                        );
+                    }
+                    Some(Err(err)) => {
+                        info!(
+                            "Watched query has failed (id={}): {}",
+                            operation_id_clone, err
+                        );
+                        break WatchedQueryStatus::Error;
+                    }
+                    None => {
+                        debug!("Watched query done (id={})", operation_id_clone);
+                        break WatchedQueryStatus::Done;
+                    }
+                }
+            };
+
+            callback(status, std::ptr::null(), 0, callback_ctx.ctx);
+        });
 
         Ok(WatchedQueryHandle {
             status: WatchedQueryStatus::Success,
