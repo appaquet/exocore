@@ -497,9 +497,9 @@ where
     CS: exocore_chain::chain::ChainStore,
     PS: exocore_chain::pending::PendingStore,
 {
-    type WatchedQueryStreamT = WatchedQueryStream<CS, PS>;
+    type WatchedQueryStream = WatchedQueryStream<CS, PS>;
 
-    async fn mutate<M: Into<MutationRequestLike> + Send + Sync>(
+    async fn mutate<M: Into<MutationRequestLike> + Send>(
         &self,
         request: M,
     ) -> Result<MutationResult, Error> {
@@ -555,7 +555,7 @@ where
         receiver.await.map_err(|_err| Error::Cancelled)?
     }
 
-    fn watched_query(&self, mut query: EntityQuery) -> Result<Self::WatchedQueryStreamT, Error> {
+    fn watched_query(&self, mut query: EntityQuery) -> Result<Self::WatchedQueryStream, Error> {
         let inner = self.inner.upgrade().ok_or(Error::Dropped)?;
         let mut inner = inner.write().map_err(|_| Error::Dropped)?;
 

@@ -557,9 +557,9 @@ impl ClientHandle {
 
 #[async_trait]
 impl crate::store::Store for ClientHandle {
-    type WatchedQueryStreamT = WatchedQueryStream;
+    type WatchedQueryStream = WatchedQueryStream;
 
-    async fn mutate<M: Into<MutationRequestLike> + Send + Sync>(
+    async fn mutate<M: Into<MutationRequestLike> + Send>(
         &self,
         request: M,
     ) -> Result<MutationResult, Error> {
@@ -587,7 +587,7 @@ impl crate::store::Store for ClientHandle {
         receiver.await.map_err(|_err| Error::Cancelled)?
     }
 
-    fn watched_query(&self, mut query: EntityQuery) -> Result<Self::WatchedQueryStreamT, Error> {
+    fn watched_query(&self, mut query: EntityQuery) -> Result<Self::WatchedQueryStream, Error> {
         let inner = self.inner.upgrade().ok_or(Error::Dropped)?;
         let mut inner = inner.write()?;
 

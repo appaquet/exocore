@@ -4,16 +4,19 @@ use futures::Stream;
 
 use crate::{error::Error, mutation::MutationRequestLike};
 
+/// Trait implemented by entities store. There are two main implementation at
+/// the moment: the local store and the remote store. The local store is a
+/// locally hosted store, while the remote is a store that is on a remote node.
 #[async_trait]
 pub trait Store {
-    type WatchedQueryStreamT: Stream<Item = Result<EntityResults, Error>>;
+    type WatchedQueryStream: Stream<Item = Result<EntityResults, Error>>;
 
-    async fn mutate<M: Into<MutationRequestLike> + Send + Sync>(
+    async fn mutate<M: Into<MutationRequestLike> + Send>(
         &self,
         request: M,
     ) -> Result<MutationResult, Error>;
 
     async fn query(&self, query: EntityQuery) -> Result<EntityResults, Error>;
 
-    fn watched_query(&self, query: EntityQuery) -> Result<Self::WatchedQueryStreamT, Error>;
+    fn watched_query(&self, query: EntityQuery) -> Result<Self::WatchedQueryStream, Error>;
 }

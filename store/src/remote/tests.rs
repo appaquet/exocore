@@ -365,7 +365,7 @@ impl TestRemoteStore {
         Ok(())
     }
 
-    async fn send_and_await_mutation<M: Into<MutationRequestLike> + Send + Sync>(
+    async fn send_and_await_mutation<M: Into<MutationRequestLike> + Send>(
         &mut self,
         request: M,
     ) -> Result<MutationResult, Error> {

@@ -48,7 +48,6 @@ impl WatchedQuery {
         };
 
         let (drop_sender, drop_receiver) = oneshot::channel();
-
         spawn_future_non_send(async move {
             let mut results = match store_handle.watched_query(query) {
                 Ok(ok) => ok,
