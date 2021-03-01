@@ -323,10 +323,10 @@ pub unsafe extern "C" fn exocore_client_free(client: *mut Client) {
 ///
 /// This structure is opaque to the client and is used as context for calls.
 ///
-/// Query operations can be cancelled thanks to `operations_canceller` weak map.
-/// It holds a weak reference to an operation id generated for each query, for
-/// which its strong counterpart is owned by the query's spawn future. The query
-/// future selects on the receiver channel to cancel.
+/// Queries can be cancelled thanks to `operations_canceller` weak map. It holds
+/// a weak reference to an operation id generated for each query, for
+/// which its strong counterpart is owned by the query's spawned future. The
+/// query future selects on the receiver channel to cancel.
 pub struct Client {
     _runtime: Runtime,
     clock: Clock,
