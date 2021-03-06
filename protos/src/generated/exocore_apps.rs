@@ -12,6 +12,8 @@ pub struct Manifest {
     #[prost(message, repeated, tag = "4")]
     #[serde(default)]
     pub schemas: ::prost::alloc::vec::Vec<ManifestSchema>,
+    #[prost(message, optional, tag = "6")]
+    pub module: ::core::option::Option<ManifestModule>,
 }
 #[derive(Serialize, Deserialize, Clone, PartialEq, ::prost::Message)]
 pub struct ManifestSchema {
@@ -34,6 +36,13 @@ pub mod manifest_schema {
         )]
         Bytes(::prost::alloc::vec::Vec<u8>),
     }
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ManifestModule {
+    #[prost(string, tag = "1")]
+    pub url: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub multihash: ::prost::alloc::string::String,
 }
 /// Message sent to application running in WASM from runtime.
 #[derive(Clone, PartialEq, ::prost::Message)]

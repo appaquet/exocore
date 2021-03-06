@@ -1198,6 +1198,7 @@ dependencies = [
  "exocore-core",
  "exocore-protos",
  "exocore-store",
+ "futures",
  "log",
  "thiserror",
  "wasmtime",
