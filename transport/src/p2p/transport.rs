@@ -10,7 +10,13 @@ use exocore_core::{
 };
 use exocore_protos::generated::common_capnp::envelope;
 use futures::{channel::mpsc, prelude::*, FutureExt, SinkExt, StreamExt};
-use libp2p::{Multiaddr, NetworkBehaviour, core::PeerId, identify::{Identify, IdentifyEvent}, ping::{Ping, PingEvent}, swarm::{ExpandedSwarm, NetworkBehaviourEventProcess, Swarm}};
+use libp2p::{
+    core::PeerId,
+    identify::{Identify, IdentifyEvent},
+    ping::{Ping, PingEvent},
+    swarm::{ExpandedSwarm, NetworkBehaviourEventProcess, Swarm},
+    Multiaddr, NetworkBehaviour,
+};
 
 use super::{
     behaviour::{ExocoreBehaviour, ExocoreBehaviourEvent, ExocoreBehaviourMessage, PeerStatus},
