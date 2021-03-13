@@ -192,6 +192,7 @@ pub mod cell_node_config {
         InvalidRole = 0,
         ChainRole = 1,
         StoreRole = 2,
+        AppHostRole = 3,
     }
 }
 #[derive(Serialize, Deserialize, Clone, PartialEq, ::prost::Message)]

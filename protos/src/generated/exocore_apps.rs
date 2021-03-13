@@ -37,7 +37,7 @@ pub mod manifest_schema {
         Bytes(::prost::alloc::vec::Vec<u8>),
     }
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, ::prost::Message)]
 pub struct ManifestModule {
     #[prost(string, tag = "1")]
     pub url: ::prost::alloc::string::String,
@@ -55,6 +55,8 @@ pub struct InMessage {
     pub rendez_vous_id: u32,
     #[prost(bytes = "vec", tag = "3")]
     pub data: ::prost::alloc::vec::Vec<u8>,
+    #[prost(string, tag = "4")]
+    pub error: ::prost::alloc::string::String,
 }
 /// Nested message and enum types in `InMessage`.
 pub mod in_message {

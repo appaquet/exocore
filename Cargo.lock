@@ -1141,6 +1141,7 @@ dependencies = [
  "console 0.14.0",
  "dialoguer",
  "dirs-next",
+ "exocore-apps-runtime",
  "exocore-chain",
  "exocore-core",
  "exocore-discovery",
@@ -1203,6 +1204,7 @@ dependencies = [
  "exocore-store",
  "futures",
  "log",
+ "reqwest",
  "thiserror",
  "wasmtime",
 ]
