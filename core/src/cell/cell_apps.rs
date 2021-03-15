@@ -1,4 +1,8 @@
-use std::{collections::HashMap, ops::Deref, sync::{Arc, RwLock}};
+use std::{
+    collections::HashMap,
+    ops::Deref,
+    sync::{Arc, RwLock},
+};
 
 use exocore_protos::{
     generated::exocore_core::{cell_application_config, CellApplicationConfig},

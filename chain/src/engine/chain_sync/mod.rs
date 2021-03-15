@@ -391,7 +391,10 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
         let leader_node_info = self.get_or_create_node_info_mut(&leader_node_id);
 
         if leader_node_info.chain_fully_downloaded() {
-            info!("Changing status to synchronized. Fully synchronized with leader {}", leader_node_info.node_id);
+            info!(
+                "Changing status to synchronized. Fully synchronized with leader {}",
+                leader_node_info.node_id
+            );
             self.status = Status::Synchronized;
             return Ok(());
         }

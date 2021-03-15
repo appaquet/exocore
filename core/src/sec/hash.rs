@@ -21,7 +21,6 @@ pub trait MultihashDigestExt: StatefulHasher + Default {
 
     fn to_multihash(&self) -> Multihash;
 
-
     fn update_from_reader<R: Read>(&mut self, mut read: R) -> Result<Multihash, std::io::Error> {
         let mut bytes = Vec::new();
         read.read_to_end(&mut bytes)?;
@@ -68,6 +67,8 @@ pub enum HashError {
 
 #[cfg(test)]
 mod tests {
+    use std::io::{Seek, SeekFrom, Write};
+
     use super::*;
 
     #[test]
@@ -79,6 +80,21 @@ mod tests {
         let stateful = hasher.to_multihash();
 
         assert_eq!(stateful, stateless);
+    }
+
+    #[test]
+    fn multihash_from_reader() {
+        let stateless = Code::Sha3_256.digest(b"Hello world");
+
+        let mut file = tempfile::tempfile().unwrap();
+        file.write_all(b"Hello world").unwrap();
+        file.seek(SeekFrom::Start(0)).unwrap();
+
+        let mut hasher = Sha3_256::default();
+        hasher.update_from_reader(file).unwrap();
+        let file_hash = hasher.to_multihash();
+
+        assert_eq!(stateless, file_hash);
     }
 
     #[test]

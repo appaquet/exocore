@@ -3,8 +3,8 @@ mod cell;
 mod config;
 mod daemon;
 mod disco;
-mod sec;
 mod node;
+mod sec;
 mod term;
 mod utils;
 
