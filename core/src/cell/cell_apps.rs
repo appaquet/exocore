@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
+use std::{collections::HashMap, ops::Deref, sync::{Arc, RwLock}};
 
 use exocore_protos::{
     generated::exocore_core::{cell_application_config, CellApplicationConfig},
@@ -73,6 +70,14 @@ pub struct CellApplication {
 
 impl CellApplication {
     pub fn application(&self) -> &Application {
+        &self.application
+    }
+}
+
+impl Deref for CellApplication {
+    type Target = Application;
+
+    fn deref(&self) -> &Self::Target {
         &self.application
     }
 }

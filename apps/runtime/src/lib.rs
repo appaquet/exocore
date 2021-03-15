@@ -1,16 +1,17 @@
 #[macro_use]
 extern crate log;
 
-use std::{io::Write, path::PathBuf, sync::Arc, time::Duration};
+use std::{fs::File, io::Write, path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::anyhow;
 use error::Error;
 use exocore_core::{
     cell::Cell,
     futures::{block_on, owned_spawn, sleep, spawn_blocking, spawn_future, BatchingStream},
+    sec::hash::{multihash_decode_bs58, MultihashDigestExt, MultihashExt, Sha3_256},
 };
 use exocore_protos::{
-    apps::{self, in_message::InMessageType, out_message::OutMessageType, InMessage, OutMessage},
+    apps::{in_message::InMessageType, out_message::OutMessageType, InMessage, OutMessage},
     prost::{Message, ProstMessageExt},
     store::{EntityMutation, EntityQuery},
 };
@@ -30,69 +31,84 @@ const MSG_BUFFER_SIZE: usize = 5000;
 const RUNTIME_MSG_BATCH_SIZE: usize = 1000;
 
 pub struct Applications<S: Store> {
+    cell: Cell,
     store: S,
     apps: Vec<Application>,
 }
 
-impl<S: Store + Clone + Send + 'static> Applications<S> {
+impl<S: Store> Applications<S> {
     pub async fn new(cell: Cell, store: S) -> Result<Applications<S>, Error> {
         let apps_directory = cell
             .apps_directory()
-            .ok_or_else(|| anyhow!("Cell doesn't have an apps directory"))?;
+            .ok_or_else(|| anyhow!("Cell {}: No apps directory configured", cell))?;
 
         let mut apps = Vec::new();
         for app in cell.applications().applications() {
-            let app = app.application();
-            let app_manifest = app.manifest();
+            let cell_app = app.application();
+            let app_manifest = cell_app.manifest();
 
             let module_manifest = if let Some(module) = &app_manifest.module {
-                module
+                module.clone()
             } else {
                 continue;
             };
 
-            let module_path = apps_directory.join(format!(
-                "{}_{}/module.wasm",
-                app_manifest.name, app_manifest.version
-            ));
-            maybe_download_module(&module_path, app_manifest, module_manifest).await?;
+            let app = Application {
+                cell: cell.clone(),
+                cell_app: cell_app.clone(),
+                module_manifest,
+                module_path: apps_directory.join(format!(
+                    "{}_{}/module.wasm",
+                    app_manifest.name, app_manifest.version
+                )),
+            };
+            app.ensure_downloaded().await?;
 
-            apps.push(Application {
-                _app: app.clone(),
-                module_path,
-            });
+            apps.push(app);
         }
 
-        Ok(Applications { store, apps })
+        Ok(Applications { cell, store, apps })
     }
 
     pub async fn run(self) -> Result<(), Error> {
-        let mut spawn_set = Vec::new();
+        let mut spawned_apps = Vec::new();
 
         for app in self.apps {
-            spawn_set.push(owned_spawn(Self::start_app_loop(app, self.store.clone())));
+            debug!(
+                "Cell {}: Starting application {}",
+                self.cell,
+                app.cell_app.name()
+            );
+            spawned_apps.push(owned_spawn(Self::start_app_loop(app, self.store.clone())));
         }
 
-        // TODO: Get messages back from store.
-        // TODO: Tick
-        // TODO: Get out message, send to store
-
-        let _ = select_all(spawn_set).await;
+        // wait for any applications to terminate
+        let _ = select_all(spawned_apps).await;
 
         Ok(())
     }
 
     async fn start_app_loop(app: Application, store: S) {
+        // TODO: Backoff
         loop {
-            let (in_sender, in_receiver) = mpsc::channel(MSG_BUFFER_SIZE);
-            let (out_sender, mut out_receiver) = mpsc::channel(MSG_BUFFER_SIZE);
+            let store = store.clone();
+            Self::start_app(&app, store).await;
+        }
+    }
 
+    async fn start_app(app: &Application, store: S) {
+        let (in_sender, in_receiver) = mpsc::channel(MSG_BUFFER_SIZE);
+        let (out_sender, mut out_receiver) = mpsc::channel(MSG_BUFFER_SIZE);
+
+        // Spawn the application module runtime on a separate thread.
+        let runtime_spawn = {
             let env = Arc::new(WiredEnvironment {
+                log_prefix: app.to_string(),
                 sender: std::sync::Mutex::new(out_sender),
             });
 
             let app_module_path = app.module_path.clone();
-            let runtime_spawn = spawn_blocking(|| -> Result<(), Error> {
+            spawn_blocking(|| -> Result<(), Error> {
                 let app_runtime = AppRuntime::from_file(app_module_path, env)?;
                 let mut batch_receiver = BatchingStream::new(in_receiver, RUNTIME_MSG_BATCH_SIZE);
 
@@ -120,10 +136,13 @@ impl<S: Store + Clone + Send + 'static> Applications<S> {
                     let next_tick_duration = app_runtime.tick()?.unwrap_or(MIN_TICK_TIME);
                     next_tick = sleep(next_tick_duration);
                 }
-            });
+            })
+        };
 
+        // Spawn a task to handle store requests coming from the application
+        let store_worker = {
             let store = store.clone();
-            let store_worker = async move {
+            async move {
                 let in_sender = Arc::new(Mutex::new(in_sender));
                 while let Some(message) = out_receiver.next().await {
                     match OutMessageType::from_i32(message.r#type) {
@@ -155,17 +174,17 @@ impl<S: Store + Clone + Send + 'static> Applications<S> {
                 }
 
                 Ok::<(), Error>(())
-            };
+            }
+        };
 
-            futures::select! {
-                res = runtime_spawn.fuse() => {
-                    info!("App runtime spawn has stopped: {:?}", res);
-                }
-                _ = store_worker.fuse() => {
-                    info!("Store worker task has stopped");
-                }
-            };
-        }
+        futures::select! {
+            res = runtime_spawn.fuse() => {
+                info!("{}: App runtime spawn has stopped: {:?}", app, res);
+            }
+            _ = store_worker.fuse() => {
+                info!("{}: Store worker task has stopped", app);
+            }
+        };
     }
 }
 
@@ -196,7 +215,7 @@ fn handle_store_message<F, O>(
     });
 }
 
-async fn handle_entity_query<S: Store + Send + 'static>(
+async fn handle_entity_query<S: Store>(
     out_message: OutMessage,
     store: S,
 ) -> Result<Vec<u8>, Error> {
@@ -207,7 +226,7 @@ async fn handle_entity_query<S: Store + Send + 'static>(
     Ok(res.encode_to_vec())
 }
 
-async fn handle_entity_mutation<S: Store + Send + 'static>(
+async fn handle_entity_mutation<S: Store>(
     out_message: OutMessage,
     store: S,
 ) -> Result<Vec<u8>, Error> {
@@ -218,12 +237,8 @@ async fn handle_entity_mutation<S: Store + Send + 'static>(
     Ok(res.encode_to_vec())
 }
 
-struct Application {
-    _app: exocore_core::cell::Application,
-    module_path: PathBuf,
-}
-
 struct WiredEnvironment {
+    log_prefix: String,
     sender: std::sync::Mutex<mpsc::Sender<exocore_protos::apps::OutMessage>>,
 }
 
@@ -236,64 +251,140 @@ impl runtime::HostEnvironment for WiredEnvironment {
     }
 
     fn handle_log(&self, level: log::Level, msg: &str) {
-        log!(level, "WASM APP: {}", msg);
+        log!(level, "{}: WASM - {}", self.log_prefix, msg);
     }
 }
 
-async fn maybe_download_module(
-    module_path: &PathBuf,
-    app_manifest: &apps::Manifest,
-    module: &apps::ManifestModule,
-) -> Result<(), Error> {
-    // TODO: Check checksum
-    let module_exists = std::fs::metadata(&module_path).is_ok();
-    if module_exists {
-        return Ok(());
+struct Application {
+    cell: Cell,
+    cell_app: exocore_core::cell::Application,
+    module_manifest: exocore_protos::apps::ManifestModule,
+    module_path: PathBuf,
+}
+
+impl Application {
+    async fn ensure_downloaded(&self) -> Result<(), Error> {
+        if self.is_module_downloaded() {
+            return Ok(());
+        }
+
+        if let Some(parent) = self.module_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|err| {
+                anyhow!(
+                    "{}: Couldn't create module directory '{:?}': {}",
+                    self,
+                    parent,
+                    err
+                )
+            })?;
+        }
+
+        if self.module_manifest.url.starts_with("file://") {
+            let source_path = self.module_manifest.url.strip_prefix("file://").unwrap();
+            std::fs::copy(source_path, &self.module_path).map_err(|err| {
+                anyhow!(
+                    "{}: Couldn't copy app module from '{:?}' to path '{:?}': {}",
+                    self,
+                    source_path,
+                    self.module_path,
+                    err
+                )
+            })?;
+        } else {
+            let body = reqwest::get(&self.module_manifest.url)
+                .await
+                .map_err(|err| {
+                    anyhow!(
+                        "{}: Couldn't download app module from {}: {}",
+                        self,
+                        self.module_manifest.url,
+                        err
+                    )
+                })?
+                .bytes()
+                .await
+                .map_err(|err| {
+                    anyhow!(
+                        "{}: Couldn't download app module from {}: {}",
+                        self,
+                        self.module_manifest.url,
+                        err
+                    )
+                })?;
+
+            let mut file = File::create(&self.module_path)
+                .map_err(|err| anyhow!("Couldn't create module app file: {}", err))?;
+            file.write_all(body.as_ref())
+                .map_err(|err| anyhow!("Couldn't write app file: {}", err))?;
+        }
+
+        if !self.is_module_downloaded() {
+            return Err(anyhow!(
+                "{}: Module file not downloaded or not matching multihash",
+                self
+            )
+            .into());
+        }
+
+        Ok(())
     }
 
-    if let Some(parent) = module_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|err| anyhow!("Couldn't create module directory '{:?}': {}", parent, err))?;
+    fn is_module_downloaded(&self) -> bool {
+        let module_exists = std::fs::metadata(&self.module_path).is_ok();
+        if !module_exists {
+            debug!("{}: Module doesn't exist at {:?}", self, self.module_path);
+            return false;
+        }
+
+        let file = match File::open(&self.module_path) {
+            Ok(file) => file,
+            Err(err) => {
+                debug!(
+                    "{}: Couldn't open module from disk at {:?}: {}",
+                    self, self.module_path, err
+                );
+                return false;
+            }
+        };
+
+        let expected_multihash = match multihash_decode_bs58(&self.module_manifest.multihash) {
+            Ok(mh) => mh,
+            Err(err) => {
+                warn!(
+                    "{}: Couldn't decode expected module multihash in manifest: {}",
+                    self, err
+                );
+                return false;
+            }
+        };
+
+        let mut hasher = Sha3_256::default();
+        match hasher.update_from_reader(file) {
+            Ok(mh) if mh == expected_multihash => true,
+            Ok(mh) => {
+                let mh_bs58 = mh.encode_bs58();
+
+                warn!(
+                    "{}: Module multihash in manifest doesn't match module file (expected={} module={})",
+                    self,
+                    self.module_manifest.multihash,
+                    mh_bs58,
+                );
+                false
+            }
+            Err(err) => {
+                warn!(
+                    "{}: Couldn't compute multihash of {:?}: {}",
+                    self, self.module_path, err
+                );
+                false
+            }
+        }
     }
+}
 
-    if module.url.starts_with("file://") {
-        let source_path = module.url.strip_prefix("file://").unwrap();
-        std::fs::copy(source_path, module_path).map_err(|err| {
-            anyhow!(
-                "Couldn't copy app module from '{:?}' to path '{:?}': {}",
-                source_path,
-                module_path,
-                err
-            )
-        })?;
-        return Ok(());
+impl std::fmt::Display for Application {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} App{{{}}}", self.cell, self.cell_app.name())
     }
-
-    let body = reqwest::get(&module.url)
-        .await
-        .map_err(|err| {
-            anyhow!(
-                "Couldn't download app {} module from {}: {}",
-                app_manifest.name,
-                module.url,
-                err
-            )
-        })?
-        .bytes()
-        .await
-        .map_err(|err| {
-            anyhow!(
-                "Couldn't download app {} module from {}: {}",
-                app_manifest.name,
-                module.url,
-                err
-            )
-        })?;
-
-    let mut file = std::fs::File::create(&module_path)
-        .map_err(|err| anyhow!("Couldn't create module app file: {}", err))?;
-    file.write_all(body.as_ref())
-        .map_err(|err| anyhow!("Couldn't write app file: {}", err))?;
-
-    Ok(())
 }
