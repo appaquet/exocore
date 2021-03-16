@@ -16,8 +16,9 @@ use exocore_protos::{
 use exocore_store::store::Store;
 use futures::{
     channel::mpsc,
-    future::{select_all, FutureExt},
+    future::{pending, select_all, FutureExt},
     lock::Mutex,
+    stream::empty,
     Future, SinkExt, StreamExt,
 };
 
@@ -25,12 +26,17 @@ use crate::{runtime::AppRuntime, Config, Error};
 
 const MSG_BUFFER_SIZE: usize = 5000;
 const RUNTIME_MSG_BATCH_SIZE: usize = 1000;
+const APP_MIN_TICK_TIME: Duration = Duration::from_millis(100);
 
-/// Applications host.
+/// Exocore applications host.
+///
+/// Executes applications that have a WASM module in a background thread per
+/// applications and handles incoming and outgoing messages to the module for
+/// store and communication.
 pub struct Applications<S: Store> {
     config: Config,
-    clock: Clock,
     cell: Cell,
+    clock: Clock,
     store: S,
     apps: Vec<Application>,
 }
@@ -73,22 +79,23 @@ impl<S: Store> Applications<S> {
 
         Ok(Applications {
             config,
-            clock,
             cell,
+            clock,
             store,
             apps,
         })
     }
 
+    /// Starts and runs applications.
     pub async fn run(self) -> Result<(), Error> {
-        let mut spawned_apps = Vec::new();
+        if self.apps.is_empty() {
+            info!("{}: No apps to start. Blocking forever.", self.cell);
+            pending::<()>().await;
+            return Ok(());
+        }
 
+        let mut spawned_apps = Vec::new();
         for app in self.apps {
-            debug!(
-                "Cell {}: Starting application {}",
-                self.cell,
-                app.cell_app.name()
-            );
             spawned_apps.push(owned_spawn(Self::start_app_loop(
                 self.clock.clone(),
                 self.config,
@@ -134,12 +141,12 @@ impl<S: Store> Applications<S> {
             });
 
             let app_module_path = app.module_path.clone();
-            spawn_blocking(|| -> Result<(), Error> {
+            let app_prefix = app.to_string();
+            spawn_blocking(move || -> Result<(), Error> {
                 let app_runtime = AppRuntime::from_file(app_module_path, env)?;
                 let mut batch_receiver = BatchingStream::new(in_receiver, RUNTIME_MSG_BATCH_SIZE);
 
-                const MIN_TICK_TIME: Duration = Duration::from_millis(100);
-                let mut next_tick = sleep(MIN_TICK_TIME);
+                let mut next_tick = sleep(APP_MIN_TICK_TIME);
                 loop {
                     let in_messages: Option<Vec<InMessage>> = block_on(async {
                         futures::select! {
@@ -151,7 +158,10 @@ impl<S: Store> Applications<S> {
                     let in_messages = if let Some(in_messages) = in_messages {
                         in_messages
                     } else {
-                        info!("In message receiver returned none. Stopping app runtime");
+                        info!(
+                            "{}: In message receiver returned none. Stopping app runtime",
+                            app_prefix
+                        );
                         return Ok(());
                     };
 
@@ -159,7 +169,7 @@ impl<S: Store> Applications<S> {
                         app_runtime.send_message(in_message)?;
                     }
 
-                    let next_tick_duration = app_runtime.tick()?.unwrap_or(MIN_TICK_TIME);
+                    let next_tick_duration = app_runtime.tick()?.unwrap_or(APP_MIN_TICK_TIME);
                     next_tick = sleep(next_tick_duration);
                 }
             })
@@ -168,6 +178,7 @@ impl<S: Store> Applications<S> {
         // Spawn a task to handle store requests coming from the application
         let store_worker = {
             let store = store.clone();
+            let app_prefix = app.to_string();
             async move {
                 let in_sender = Arc::new(Mutex::new(in_sender));
                 while let Some(message) = out_receiver.next().await {
@@ -192,8 +203,8 @@ impl<S: Store> Applications<S> {
                         }
                         other => {
                             error!(
-                                "Got an unknown message type {:?} with id {}",
-                                other, message.r#type
+                                "{}: Got an unknown message type {:?} with id {}",
+                                app_prefix, other, message.r#type
                             );
                         }
                     }
