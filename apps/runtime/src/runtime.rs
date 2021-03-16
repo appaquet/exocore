@@ -42,6 +42,7 @@ impl<E: HostEnvironment> AppRuntime<E> {
         })
     }
 
+    // Runs an iteration on the WASM module.
     pub fn tick(&self) -> Result<Option<Duration>, Error> {
         let exocore_tick = self.func_tick.get0::<u64>()?;
         let now = unix_timestamp();
@@ -54,6 +55,7 @@ impl<E: HostEnvironment> AppRuntime<E> {
         }
     }
 
+    // Send a message to the WASM module.
     pub fn send_message(&self, message: InMessage) -> Result<(), Error> {
         let message_bytes = message.encode_to_vec();
 

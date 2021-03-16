@@ -1,6 +1,6 @@
 use std::pin::Pin;
 
-use exocore_apps_runtime::Applications;
+use exocore_apps_runtime::{Applications, Config as ApplicationsConfig};
 use exocore_chain::{
     DirectoryChainStore, DirectoryChainStoreConfig, Engine, EngineConfig, EngineHandle,
     MemoryPendingStore,
@@ -133,7 +133,10 @@ pub async fn cmd_daemon(ctx: &Context) -> anyhow::Result<()> {
                 services_completion.push(store_task.boxed());
 
                 if cell.local_node_has_role(CellNodeRole::AppHost) {
-                    let apps = Applications::new(cell.clone(), store_handle).await?;
+                    let apps_config = ApplicationsConfig::default();
+                    let apps =
+                        Applications::new(apps_config, clock.clone(), cell.clone(), store_handle)
+                            .await?;
                     services_completion.push(
                         async move {
                             let res = apps.run().await;

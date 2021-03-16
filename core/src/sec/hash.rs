@@ -6,6 +6,7 @@ pub use multihash::{Hasher, Multihash, MultihashDigest, Sha3_256, Sha3_512, Stat
 use crate::framing;
 
 const MULTIHASH_CODE_SIZE: usize = 2;
+
 /// Multihash digest extension.
 pub trait MultihashDigestExt: StatefulHasher + Default {
     fn input_signed_frame<I: framing::FrameReader>(
