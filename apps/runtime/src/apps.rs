@@ -18,7 +18,6 @@ use futures::{
     channel::mpsc,
     future::{pending, select_all, FutureExt},
     lock::Mutex,
-    stream::empty,
     Future, SinkExt, StreamExt,
 };
 
