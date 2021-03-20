@@ -3,6 +3,7 @@ use std::{
     sync::{Arc, RwLock, Weak},
 };
 
+use bytes::Bytes;
 use exocore_core::utils::handle_set::Handle;
 use exocore_protos::generated::data_chain_capnp::chain_operation;
 use futures::prelude::*;
@@ -255,7 +256,7 @@ pub enum Event {
 pub struct EngineOperation {
     pub operation_id: OperationId,
     pub status: EngineOperationStatus,
-    pub operation_frame: Arc<super::operation::OperationFrame<Vec<u8>>>,
+    pub operation_frame: Arc<super::operation::OperationFrame<Bytes>>,
 }
 
 impl EngineOperation {

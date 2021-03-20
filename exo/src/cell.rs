@@ -1,5 +1,6 @@
 use std::{io::Write, path::PathBuf, time::Duration};
 
+use bytes::Bytes;
 use clap::Clap;
 use exocore_chain::{
     block::{Block, BlockOperations, BlockOwned},
@@ -709,7 +710,7 @@ fn cmd_import_chain(
     let mut blocks_count = 0;
 
     let mut flush_buffer =
-        |block_op_id: OperationId, operations_buffer: &mut Vec<OperationFrame<Vec<u8>>>| {
+        |block_op_id: OperationId, operations_buffer: &mut Vec<OperationFrame<Bytes>>| {
             let operations = BlockOperations::from_operations(operations_buffer.iter())
                 .expect("Couldn't create BlockOperations from operations buffer");
             let block = BlockOwned::new_with_prev_block(

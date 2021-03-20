@@ -1,6 +1,7 @@
 use std::io;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use bytes::Bytes;
 
 use super::{
     check_from_size, check_into_size, check_offset_subtract, Error, FrameBuilder, FrameReader,
@@ -30,8 +31,8 @@ impl<I: FrameReader> SizedFrame<I> {
     }
 }
 
-impl SizedFrame<Vec<u8>> {
-    pub fn new_from_reader<R: std::io::Read>(reader: &mut R) -> Result<SizedFrame<Vec<u8>>, Error> {
+impl SizedFrame<Bytes> {
+    pub fn new_from_reader<R: std::io::Read>(reader: &mut R) -> Result<SizedFrame<Bytes>, Error> {
         let inner_size = reader.read_u32::<LittleEndian>()? as usize;
 
         let mut buf = vec![0u8; inner_size + 8];
@@ -40,7 +41,7 @@ impl SizedFrame<Vec<u8>> {
         reader.read_exact(&mut buf[4..8 + inner_size])?;
 
         Ok(SizedFrame {
-            inner: buf,
+            inner: Bytes::from(buf),
             inner_size,
         })
     }
@@ -107,7 +108,7 @@ impl<I: FrameBuilder> SizedFrameBuilder<I> {
 }
 
 impl<I: FrameBuilder> FrameBuilder for SizedFrameBuilder<I> {
-    type OwnedFrameType = SizedFrame<Vec<u8>>;
+    type OwnedFrameType = SizedFrame<Bytes>;
 
     fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<usize, Error> {
         if let Some(inner_size) = self.inner.expected_size() {
@@ -231,7 +232,7 @@ impl<R: std::io::Read> Iterator for SizedFrameReaderIterator<R> {
 
 pub struct IteratedSizedReaderFrame {
     pub offset: usize,
-    pub frame: SizedFrame<Vec<u8>>,
+    pub frame: SizedFrame<Bytes>,
 }
 
 #[cfg(test)]
@@ -245,7 +246,7 @@ mod tests {
 
     #[test]
     fn can_build_and_read_sized_inner() -> anyhow::Result<()> {
-        let inner = vec![8u8; 100];
+        let inner = Bytes::from(vec![8u8; 100]);
         let builder = SizedFrameBuilder::new(inner.clone());
         assert_builder_equals(&builder)?;
 
@@ -289,7 +290,7 @@ mod tests {
 
     #[test]
     fn can_build_to_owned() {
-        let builder = SizedFrameBuilder::new(vec![1; 10]);
+        let builder = SizedFrameBuilder::new(Bytes::from(vec![1; 10]));
 
         let frame = builder.as_owned_frame();
         assert_eq!(vec![1; 10], frame.exposed_data());
@@ -302,10 +303,10 @@ mod tests {
             let buffer = Vec::new();
             let mut buffer_cursor = Cursor::new(buffer);
 
-            let frame1 = SizedFrameBuilder::new(vec![1u8; 10]);
+            let frame1 = SizedFrameBuilder::new(Bytes::from(vec![1u8; 10]));
             frame1.write_to(&mut buffer_cursor)?;
 
-            let frame2 = SizedFrameBuilder::new(vec![2u8; 10]);
+            let frame2 = SizedFrameBuilder::new(Bytes::from(vec![2u8; 10]));
             frame2.write_to(&mut buffer_cursor)?;
 
             buffer_cursor.into_inner()
@@ -330,10 +331,10 @@ mod tests {
             let buffer = Vec::new();
             let mut buffer_cursor = Cursor::new(buffer);
 
-            let frame1 = SizedFrameBuilder::new(vec![1u8; 10]);
+            let frame1 = SizedFrameBuilder::new(Bytes::from(vec![1u8; 10]));
             frame1.write_to(&mut buffer_cursor)?;
 
-            let frame2 = SizedFrameBuilder::new(vec![2u8; 10]);
+            let frame2 = SizedFrameBuilder::new(Bytes::from(vec![2u8; 10]));
             frame2.write_to(&mut buffer_cursor)?;
 
             buffer_cursor.into_inner()
@@ -358,10 +359,10 @@ mod tests {
             let buffer = Vec::new();
             let mut buffer_cursor = Cursor::new(buffer);
 
-            let frame1 = SizedFrameBuilder::new(vec![1u8; 10]);
+            let frame1 = SizedFrameBuilder::new(Bytes::from(vec![1u8; 10]));
             frame1.write_to(&mut buffer_cursor)?;
 
-            let frame2 = SizedFrameBuilder::new(vec![2u8; 10]);
+            let frame2 = SizedFrameBuilder::new(Bytes::from(vec![2u8; 10]));
             frame2.write_to(&mut buffer_cursor)?;
 
             buffer_cursor.into_inner()
@@ -380,7 +381,7 @@ mod tests {
 
     #[test]
     fn invalid_from_next_offset() {
-        let frame1 = SizedFrameBuilder::new(vec![1u8; 10]);
+        let frame1 = SizedFrameBuilder::new(Bytes::from(vec![1u8; 10]));
         let buffer = frame1.as_bytes();
 
         let result = SizedFrame::new_from_next_offset(&buffer[..], 1);

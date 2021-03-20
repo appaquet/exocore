@@ -1,5 +1,6 @@
 use std::borrow::Borrow;
 
+use bytes::Bytes;
 use exocore_core::{
     cell::{Cell, CellNodeRole, FullCell, NodeId},
     framing::{
@@ -46,7 +47,7 @@ pub type SignaturesFrame<I> = TypedCapnpFrame<PaddedFrame<SizedFrame<I>>, block_
 /// means that not all signatures may fit. But in theory, it should always
 /// contain enough space for all nodes to add their own signature.
 pub trait Block {
-    type UnderlyingFrame: FrameReader<OwnedType = Vec<u8>>;
+    type UnderlyingFrame: FrameReader<OwnedType = Bytes>;
 
     fn offset(&self) -> BlockOffset;
     fn header(&self) -> &BlockHeaderFrame<Self::UnderlyingFrame>;
@@ -264,17 +265,17 @@ impl<'a> Iterator for BlockOperationsIterator<'a> {
 /// In-memory block.
 pub struct BlockOwned {
     pub offset: BlockOffset,
-    pub header: BlockHeaderFrame<Vec<u8>>,
+    pub header: BlockHeaderFrame<Bytes>,
     pub operations_data: Vec<u8>,
-    pub signatures: SignaturesFrame<Vec<u8>>,
+    pub signatures: SignaturesFrame<Bytes>,
 }
 
 impl BlockOwned {
     pub fn new(
         offset: BlockOffset,
-        header: BlockHeaderFrame<Vec<u8>>,
+        header: BlockHeaderFrame<Bytes>,
         operations_data: Vec<u8>,
-        signatures: SignaturesFrame<Vec<u8>>,
+        signatures: SignaturesFrame<Bytes>,
     ) -> BlockOwned {
         BlockOwned {
             offset,
@@ -362,7 +363,7 @@ impl BlockOwned {
 
         // serialize block header and then re-read it
         let final_frame_builder = build_header_frame(header_frame_builder);
-        let final_frame_data: Vec<u8> = final_frame_builder.as_bytes();
+        let final_frame_data = final_frame_builder.as_bytes();
         let block_header = read_header_frame(final_frame_data)?;
 
         Ok(BlockOwned {
@@ -375,7 +376,7 @@ impl BlockOwned {
 }
 
 impl Block for BlockOwned {
-    type UnderlyingFrame = Vec<u8>;
+    type UnderlyingFrame = Bytes;
 
     fn offset(&self) -> u64 {
         self.offset
@@ -679,7 +680,7 @@ impl BlockSignatures {
     pub fn to_frame_for_new_block(
         &self,
         operations_size: BlockOperationsSize,
-    ) -> Result<SignaturesFrame<Vec<u8>>, Error> {
+    ) -> Result<SignaturesFrame<Bytes>, Error> {
         let mut signatures_frame_builder = self.to_frame_builder();
         let mut signatures_builder = signatures_frame_builder.get_builder();
         signatures_builder.set_operations_size(operations_size);
@@ -693,7 +694,7 @@ impl BlockSignatures {
     pub fn to_frame_for_existing_block(
         &self,
         header_reader: &block_header::Reader,
-    ) -> Result<SignaturesFrame<Vec<u8>>, Error> {
+    ) -> Result<SignaturesFrame<Bytes>, Error> {
         let expected_signatures_size = usize::from(header_reader.get_signatures_size());
 
         // create capnp frame

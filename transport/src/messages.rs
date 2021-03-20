@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use exocore_core::{
     cell::{Cell, CellId, Node},
     framing::{CapnpFrameBuilder, FrameBuilder, FrameReader, TypedCapnpFrame},
@@ -89,11 +90,11 @@ pub struct InMessage {
     pub rendez_vous_id: Option<RendezVousId>,
     pub message_type: u16,
     pub connection: Option<ConnectionID>,
-    pub envelope: TypedCapnpFrame<Vec<u8>, envelope::Owned>,
+    pub envelope: TypedCapnpFrame<Bytes, envelope::Owned>,
 }
 
 impl InMessage {
-    pub fn from_node_and_frame<I: FrameReader<OwnedType = Vec<u8>>>(
+    pub fn from_node_and_frame<I: FrameReader<OwnedType = Bytes>>(
         from: Node,
         envelope: TypedCapnpFrame<I, envelope::Owned>,
     ) -> Result<Box<InMessage>, Error> {
