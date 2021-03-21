@@ -73,6 +73,62 @@ impl FrameReader for StaticData {
     }
 }
 
+#[derive(Clone)]
+pub struct DataRef<'s> {
+    pub(crate) data: &'s [u8],
+    pub(crate) start: usize,
+    pub(crate) end: usize, // exclusive
+}
+
+impl<'s> DataRef<'s> {
+    pub fn to_static(&self) -> StaticData {
+        let bytes = Bytes::from(self.slice(..).to_vec());
+        let len = bytes.len();
+        StaticData {
+            data: StaticDataContainer::Bytes(bytes),
+            start: 0,
+            end: len,
+        }
+    }
+}
+
+impl<'s> Data for DataRef<'s> {
+    fn slice<R: RangeBounds<usize>>(&self, r: R) -> &[u8] {
+        let r = translate_range(self.start, self.end, r);
+        &self.data[r]
+    }
+
+    fn view<R: RangeBounds<usize>>(&self, r: R) -> DataRef<'s> {
+        let r = translate_range(self.start, self.end, r);
+        DataRef {
+            data: self.data,
+            start: r.start,
+            end: r.end,
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.end - self.start
+    }
+}
+
+// TODO: impl on data instead
+impl<'s> FrameReader for DataRef<'s> {
+    type OwnedType = Bytes;
+
+    fn exposed_data(&self) -> &[u8] {
+        self.slice(..)
+    }
+
+    fn whole_data(&self) -> &[u8] {
+        self.slice(..)
+    }
+
+    fn to_owned_frame(&self) -> Self::OwnedType {
+        panic!("Cannot do to_owned_frame since it could be a whole mmap")
+    }
+}
+
 fn translate_range<R: RangeBounds<usize>>(start: usize, end: usize, range: R) -> Range<usize> {
     let new_start = match range.start_bound() {
         Bound::Included(s) => start + *s,
@@ -129,10 +185,7 @@ impl<D: Data> SegmentBlock<D> {
         })
     }
 
-    pub fn new_from_next_offset(
-        data: D,
-        next_offset: usize,
-    ) -> Result<SegmentBlock<D>, Error> {
+    pub fn new_from_next_offset(data: D, next_offset: usize) -> Result<SegmentBlock<D>, Error> {
         let signatures = BlockSignatures::read_frame_from_next_offset(data.clone(), next_offset)?;
         let signatures_reader: block_signatures::Reader = signatures.get_reader()?;
         let signatures_offset = next_offset - signatures.whole_data_size();

@@ -269,6 +269,7 @@ impl ChainStore for DirectoryChainStore {
             };
 
             if need_new_segment {
+                // TODO: Should close before-the-last segment
                 let segment = DirectorySegment::create(self.config, &self.directory, block)?;
                 self.segments.push(segment);
                 self.save_metadata()?;

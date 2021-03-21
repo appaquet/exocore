@@ -1,15 +1,12 @@
-use std::{
-    ffi::OsStr,
-    fs::{File, OpenOptions},
-    ops::Range,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{ffi::OsStr, fs::{File, OpenOptions}, ops::Range, path::{Path, PathBuf}, rc::Weak, sync::{Arc, RwLock}};
 
 use serde::{Deserialize, Serialize};
 
 use super::{DirectoryChainStoreConfig, Error};
-use crate::{block::{Block, BlockOffset, ChainBlockIterator}, chain::data::{Data, StaticData, SegmentBlock, StaticDataContainer}};
+use crate::{
+    block::{Block, BlockOffset},
+    chain::data::{Data, SegmentBlock, StaticData, StaticDataContainer},
+};
 
 /// A segment of the chain, stored in its own file (`segment_file`) and that
 /// should not exceed a size specified by configuration.
@@ -295,7 +292,7 @@ impl SegmentMetadata {
         })?;
 
         // iterate through segments and find the last block and its offset
-        let blocks_iterator = ChainBlockIterator::new(segment.data());
+        let blocks_iterator = SegmentBlockIterator::new(segment);
         let last_block = blocks_iterator.last().ok_or_else(|| {
             Error::Integrity(
                 "Couldn't find last block of segment: no blocks returned by iterator".to_string(),
@@ -328,6 +325,12 @@ struct SegmentFile {
     mmap_mut: memmap2::MmapMut,
     mmap: StaticData,
     current_size: u64,
+}
+
+enum SegmentData {
+    Write(memmap2::MmapMut),
+    Read(Weak<memmap2::Mmap>),
+    Closed,
 }
 
 impl SegmentFile {
@@ -369,7 +372,6 @@ impl SegmentFile {
             })?
         };
 
-
         Ok(SegmentFile {
             path: path.to_path_buf(),
             file,
@@ -377,10 +379,6 @@ impl SegmentFile {
             mmap_mut,
             current_size,
         })
-    }
-
-    fn data(&self) -> &[u8] {
-        self.mmap_mut.as_ref()
     }
 
     fn get_block(&self, offset: usize) -> Result<SegmentBlock<StaticData>, Error> {
@@ -400,6 +398,8 @@ impl SegmentFile {
     }
 
     fn set_len(&mut self, new_size: u64) -> Result<(), Error> {
+        // TODO: Should fail if it's not a read-only segment
+
         // On Windows, we can't resize a file while it's currently being mapped. We
         // close the mmap first by replacing it by an anonymous mmap.
         if cfg!(target_os = "windows") {
@@ -438,6 +438,45 @@ impl SegmentFile {
 
         self.current_size = new_size;
         Ok(())
+    }
+}
+
+/// Block iterator over a SegmentFile blocks.
+struct SegmentBlockIterator<'s> {
+    current_offset: usize,
+    segment: &'s SegmentFile,
+    last_error: Option<Error>,
+}
+
+impl<'s> SegmentBlockIterator<'s> {
+    fn new(segment: &'s SegmentFile) -> SegmentBlockIterator<'s> {
+        SegmentBlockIterator {
+            current_offset: 0,
+            segment,
+            last_error: None,
+        }
+    }
+}
+
+impl<'s> Iterator for SegmentBlockIterator<'s> {
+    type Item = SegmentBlock<StaticData>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current_offset >= self.segment.current_size as usize {
+            return None;
+        }
+
+        let block_res = self.segment.get_block(self.current_offset);
+        match block_res {
+            Ok(block) => {
+                self.current_offset += block.total_size() as usize;
+                Some(block)
+            }
+            Err(other) => {
+                self.last_error = Some(other);
+                None
+            }
+        }
     }
 }
 
@@ -604,7 +643,7 @@ mod tests {
                 .get_block_from_next_offset(segment.next_block_offset)
                 .is_ok());
 
-            let iter = ChainBlockIterator::new(&segment.segment_file.data());
+            let iter = SegmentBlockIterator::new(&segment.segment_file);
             assert_eq!(iter.count(), 1000);
         }
 
@@ -642,7 +681,7 @@ mod tests {
         let truncated_segment_size = segment.segment_file.current_size;
         assert_eq!(truncated_segment_size, next_file_offset as u64);
 
-        let iter = ChainBlockIterator::new(&segment.segment_file.data());
+        let iter = SegmentBlockIterator::new(&segment.segment_file);
         assert_eq!(iter.count(), 1000);
 
         Ok(())
@@ -667,17 +706,17 @@ mod tests {
 
         // should not remove any blocks, only remove over allocated space
         segment.truncate_from_block_offset(segment.next_block_offset)?;
-        let iter = ChainBlockIterator::new(&segment.segment_file.data());
+        let iter = SegmentBlockIterator::new(&segment.segment_file);
         assert_eq!(iter.count(), 1000);
 
         // truncating before beginning of file is impossible
         assert!(segment.truncate_from_block_offset(900).is_err());
 
         // truncating at 10th should result in only 10 blocks left
-        let mut iter = ChainBlockIterator::new(&segment.segment_file.data());
+        let mut iter = SegmentBlockIterator::new(&segment.segment_file);
         let nth_offset = iter.nth(10).unwrap().offset;
         segment.truncate_from_block_offset(nth_offset)?;
-        let iter = ChainBlockIterator::new(&segment.segment_file.data());
+        let iter = SegmentBlockIterator::new(&segment.segment_file);
         assert_eq!(iter.count(), 10);
 
         Ok(())
