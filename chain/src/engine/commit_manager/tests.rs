@@ -1,5 +1,3 @@
-use std::time::{Duration, Instant};
-
 use super::*;
 use crate::{
     chain::ChainStore,
@@ -7,6 +5,7 @@ use crate::{
     operation::{NewOperation, OperationBuilder},
     pending::PendingStore,
 };
+use std::time::{Duration, Instant};
 
 #[test]
 fn should_propose_block_on_new_operations() -> anyhow::Result<()> {
@@ -552,7 +551,7 @@ fn should_cleanup_past_committed_operations() -> anyhow::Result<()> {
     assert_not_in_pending(&cluster, first_op_id);
 
     // check if the block, signatures are still in pending
-    let block: crate::block::BlockRef = cluster.chains[0]
+    let block = cluster.chains[0]
         .get_block_by_operation_id(first_op_id)?
         .unwrap();
     let block_frame = block.header.get_reader()?;
@@ -679,7 +678,7 @@ fn should_cleanup_dangling_operations() -> anyhow::Result<()> {
 
     // revive old operation
     let first_op_id = *operations_id.first().unwrap();
-    let block: crate::block::BlockRef = cluster.chains[0]
+    let block = cluster.chains[0]
         .get_block_by_operation_id(first_op_id)?
         .unwrap();
     let operation = block.get_operation(first_op_id)?.unwrap();

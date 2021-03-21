@@ -512,7 +512,7 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
 
     /// Creates a response to request for blocks data from a remote node.
     /// If we're asked for data, this means we're the lead.
-    fn create_sync_response_for_blocks<'s, I: Iterator<Item = BlockRef<'s>>>(
+    fn create_sync_response_for_blocks<B: Block, I: Iterator<Item = B>>(
         config: &ChainSyncConfig,
         from_offset: BlockOffset,
         to_offset: BlockOffset,
@@ -547,8 +547,8 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
                 "Sending {} block(s) data with total size {} bytes from offset {:?} to offset {:?}",
                 blocks.len(),
                 data_size,
-                blocks.first().map(|b| b.offset),
-                blocks.last().map(|b| b.offset)
+                blocks.first().map(|b| b.offset()),
+                blocks.last().map(|b| b.offset()),
             );
         }
 

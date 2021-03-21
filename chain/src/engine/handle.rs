@@ -10,7 +10,7 @@ use futures::prelude::*;
 
 use super::{EngineError, Inner};
 use crate::{
-    block::{Block, BlockHeight, BlockOffset, BlockOwned, BlockRef},
+    block::{Block, BlockHeight, BlockOffset, BlockOwned},
     chain, operation,
     operation::{OperationBuilder, OperationId},
     pending,
@@ -275,15 +275,15 @@ impl EngineOperation {
         }
     }
 
-    fn from_chain(
-        block: BlockRef,
+    fn from_chain<B: Block>(
+        block: B,
         operation_id: OperationId,
     ) -> Result<Option<EngineOperation>, EngineError> {
         if let Some(operation) = block.get_operation(operation_id)? {
             let height = block.get_height()?;
             return Ok(Some(EngineOperation {
                 operation_id,
-                status: EngineOperationStatus::Committed(block.offset, height),
+                status: EngineOperationStatus::Committed(block.offset(), height),
                 operation_frame: Arc::new(operation.to_owned()),
             }));
         }

@@ -1,17 +1,18 @@
 use std::{
     ffi::OsStr,
     fs::{File, OpenOptions},
-    ops::{Bound, Range, RangeBounds},
+    ops::Range,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
-use bytes::{Buf, Bytes};
-use exocore_core::framing::FrameReader;
 use serde::{Deserialize, Serialize};
 
 use super::{DirectoryChainStoreConfig, Error};
-use crate::block::{Block, BlockOffset, BlockRef, ChainBlockIterator};
+use crate::{
+    block::{Block, BlockOffset, ChainBlockIterator},
+    chain::data::{SegmentBlock, SegmentData, SegmentDataSlice},
+};
 
 /// A segment of the chain, stored in its own file (`segment_file`) and that
 /// should not exceed a size specified by configuration.
@@ -158,7 +159,7 @@ impl DirectorySegment {
         Ok(())
     }
 
-    pub fn get_block(&self, offset: BlockOffset) -> Result<BlockRef, Error> {
+    pub fn get_block(&self, offset: BlockOffset) -> Result<SegmentBlock, Error> {
         let first_block_offset = self.first_block_offset;
         if offset < first_block_offset {
             return Err(Error::OutOfBound(format!(
@@ -178,7 +179,10 @@ impl DirectorySegment {
         self.segment_file.get_block(block_file_offset)
     }
 
-    pub fn get_block_from_next_offset(&self, next_offset: BlockOffset) -> Result<BlockRef, Error> {
+    pub fn get_block_from_next_offset(
+        &self,
+        next_offset: BlockOffset,
+    ) -> Result<SegmentBlock, Error> {
         let first_block_offset = self.first_block_offset;
         if next_offset < first_block_offset {
             return Err(Error::OutOfBound(format!(
@@ -324,7 +328,8 @@ impl SegmentMetadata {
 struct SegmentFile {
     path: PathBuf,
     file: File,
-    mmap: memmap2::MmapMut,
+    mmap_mut: memmap2::MmapMut,
+    mmap: SegmentDataSlice,
     current_size: u64,
 }
 
@@ -351,6 +356,17 @@ impl SegmentFile {
         }
 
         let mmap = unsafe {
+            let mmap = memmap2::MmapOptions::new().map(&file).map_err(|err| {
+                Error::new_io(err, format!("Error mmaping segment file {:?}", path))
+            })?;
+
+            SegmentDataSlice {
+                data: SegmentData::Mmap(Arc::new(mmap)),
+                start: 0,
+                end: current_size as usize,
+            }
+        };
+        let mmap_mut = unsafe {
             memmap2::MmapOptions::new().map_mut(&file).map_err(|err| {
                 Error::new_io(err, format!("Error mmaping segment file {:?}", path))
             })?
@@ -360,31 +376,36 @@ impl SegmentFile {
             path: path.to_path_buf(),
             file,
             mmap,
+            mmap_mut,
             current_size,
         })
     }
 
     fn data(&self) -> &[u8] {
-        self.mmap.as_ref()
+        self.mmap_mut.as_ref()
     }
 
-    fn get_block(&self, offset: usize) -> Result<BlockRef, Error> {
-        Ok(BlockRef::new(&self.mmap[offset..])?)
+    fn get_block(&self, offset: usize) -> Result<SegmentBlock, Error> {
+        let data = self.mmap.view(offset..);
+        Ok(SegmentBlock::new(data)?)
     }
 
-    fn get_block_from_next(&self, next_offset: usize) -> Result<BlockRef, Error> {
-        Ok(BlockRef::new_from_next_offset(&self.mmap, next_offset)?)
+    fn get_block_from_next(&self, next_offset: usize) -> Result<SegmentBlock, Error> {
+        Ok(SegmentBlock::new_from_next_offset(
+            self.mmap.view(..),
+            next_offset,
+        )?)
     }
 
     fn write_block<B: Block>(&mut self, offset: usize, block: &B) {
-        block.copy_data_into(&mut self.mmap[offset..]);
+        block.copy_data_into(&mut self.mmap_mut[offset..]);
     }
 
     fn set_len(&mut self, new_size: u64) -> Result<(), Error> {
         // On Windows, we can't resize a file while it's currently being mapped. We
         // close the mmap first by replacing it by an anonymous mmap.
         if cfg!(target_os = "windows") {
-            self.mmap = memmap2::MmapOptions::new()
+            self.mmap_mut = memmap2::MmapOptions::new()
                 .len(1)
                 .map_anon()
                 .map_err(|err| Error::new_io(err, "Error creating anonymous mmap"))?;
@@ -398,6 +419,18 @@ impl SegmentFile {
         })?;
 
         self.mmap = unsafe {
+            let mmap = memmap2::MmapOptions::new().map(&self.file).map_err(|err| {
+                Error::new_io(err, format!("Error mmaping segment file {:?}", self.path))
+            })?;
+
+            SegmentDataSlice {
+                data: SegmentData::Mmap(Arc::new(mmap)),
+                start: 0,
+                end: new_size as usize,
+            }
+        };
+
+        self.mmap_mut = unsafe {
             memmap2::MmapOptions::new()
                 .map_mut(&self.file)
                 .map_err(|err| {

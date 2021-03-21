@@ -20,9 +20,9 @@ pub enum SegmentData {
 
 #[derive(Clone)]
 pub struct SegmentDataSlice {
-    data: SegmentData,
-    start: usize,
-    end: usize,
+    pub(crate) data: SegmentData,
+    pub(crate) start: usize,
+    pub(crate) end: usize, // exclusive
 }
 
 impl SegmentDataSlice {
@@ -46,23 +46,9 @@ impl SegmentDataSlice {
     pub fn len(&self) -> usize {
         self.end - self.start
     }
-}
 
-fn translate_range<R: RangeBounds<usize>>(start: usize, end: usize, range: R) -> Range<usize> {
-    let new_start = match range.start_bound() {
-        Bound::Included(s) => start + *s,
-        Bound::Excluded(s) => start + *s + 1,
-        Bound::Unbounded => start,
-    };
-    let new_end = match range.end_bound() {
-        Bound::Included(s) => (start + *s).min(end),
-        Bound::Excluded(s) => (start + *s - 1).min(end),
-        Bound::Unbounded => end,
-    };
-
-    Range {
-        start: new_start,
-        end: new_end,
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
@@ -78,7 +64,25 @@ impl FrameReader for SegmentDataSlice {
     }
 
     fn to_owned_frame(&self) -> Self::OwnedType {
-        panic!("Shouldn't be called")
+        panic!("Cannot do to_owned_frame since it could be a whole mmap")
+    }
+}
+
+fn translate_range<R: RangeBounds<usize>>(start: usize, end: usize, range: R) -> Range<usize> {
+    let new_start = match range.start_bound() {
+        Bound::Included(s) => start + *s,
+        Bound::Excluded(s) => start + *s + 1,
+        Bound::Unbounded => start,
+    };
+    let new_end = match range.end_bound() {
+        Bound::Included(s) => (start + *s + 1).min(end),
+        Bound::Excluded(s) => (start + *s).min(end),
+        Bound::Unbounded => end,
+    };
+
+    Range {
+        start: new_start,
+        end: new_end,
     }
 }
 
@@ -97,6 +101,7 @@ impl SegmentBlock {
         let operations_offset = header.whole_data_size();
         let operations_size = header_reader.get_operations_size() as usize;
         let signatures_offset = operations_offset + operations_size;
+        let signatures_size = header_reader.get_signatures_size() as usize;
 
         if signatures_offset >= data.len() {
             return Err(Error::OutOfBound(format!(
@@ -106,9 +111,10 @@ impl SegmentBlock {
             )));
         }
 
-        let operations_data = data.view(operations_offset..operations_offset + operations_size);
-        // TODO: FIX ME
-        let signatures = BlockSignatures::read_frame(data.view(signatures_offset..))?;
+        let signatures_data = data.view(signatures_offset..signatures_offset + signatures_size);
+        let signatures = BlockSignatures::read_frame(signatures_data)?;
+
+        let operations_data = data.view(operations_offset..signatures_offset);
 
         Ok(SegmentBlock {
             offset: header_reader.get_offset(),
@@ -135,7 +141,7 @@ impl SegmentBlock {
         }
 
         let operations_offset = signatures_offset - operations_size;
-        let operations_data = data.view(operations_offset..operations_offset + operations_size);
+        let operations_data = data.view(operations_offset..signatures_offset);
 
         let header = read_header_frame_from_next_offset(data, operations_offset)?;
         let header_reader: block_header::Reader = header.get_reader()?;
@@ -178,10 +184,10 @@ mod tests {
         assert_eq!(translate_range(0, 99, ..), Range { start: 0, end: 99 });
         assert_eq!(translate_range(2, 99, ..), Range { start: 2, end: 99 });
         assert_eq!(translate_range(2, 99, ..120), Range { start: 2, end: 99 });
-        assert_eq!(translate_range(10, 99, 0..9), Range { start: 10, end: 18 });
-        assert_eq!(translate_range(10, 99, 0..=9), Range { start: 10, end: 19 });
-        assert_eq!(translate_range(10, 99, ..9), Range { start: 10, end: 18 });
-        assert_eq!(translate_range(10, 99, ..10), Range { start: 10, end: 19 });
+        assert_eq!(translate_range(10, 99, 0..9), Range { start: 10, end: 19 });
+        assert_eq!(translate_range(10, 99, 0..=9), Range { start: 10, end: 20 });
+        assert_eq!(translate_range(10, 99, ..9), Range { start: 10, end: 19 });
+        assert_eq!(translate_range(10, 99, ..10), Range { start: 10, end: 20 });
         assert_eq!(translate_range(10, 99, 80..), Range { start: 90, end: 99 });
     }
 }

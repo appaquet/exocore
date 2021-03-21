@@ -70,25 +70,8 @@ impl SizedFrame<Bytes> {
     }
 }
 
-// impl SizedFrame<&[u8]> {
-//     pub fn new_from_next_offset(
-//         buffer: &[u8],
-//         next_offset: usize,
-//     ) -> Result<SizedFrame<&[u8]>, Error> {
-//         check_offset_subtract(next_offset, 4)?;
-//         check_from_size(next_offset - 4, buffer)?;
-
-//         let inner_size = (&buffer[next_offset -
-// 4..]).read_u32::<LittleEndian>()? as usize;         let offset_subtract = 4 +
-// inner_size + 4;         check_offset_subtract(next_offset, offset_subtract)?;
-//         let offset = next_offset - offset_subtract;
-
-//         SizedFrame::new(&buffer[offset..])
-//     }
-// }
-
 impl<I: FrameReader> FrameReader for SizedFrame<I> {
-    type OwnedType = SizedFrame<I::OwnedType>;
+    type OwnedType = SizedFrame<Bytes>;
 
     fn exposed_data(&self) -> &[u8] {
         &self.inner.exposed_data()[self.offset + 4..self.offset + 4 + self.inner_size]
@@ -100,7 +83,7 @@ impl<I: FrameReader> FrameReader for SizedFrame<I> {
 
     fn to_owned_frame(&self) -> Self::OwnedType {
         SizedFrame {
-            inner: self.inner.to_owned_frame(),
+            inner: Bytes::from(self.whole_data().to_vec()),
             offset: self.offset,
             inner_size: self.inner_size,
         }

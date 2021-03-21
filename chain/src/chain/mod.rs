@@ -1,15 +1,18 @@
 use std::ops::Range;
 
 use crate::{
-    block::{Block, BlockOffset, BlockRef},
+    block::{Block, BlockOffset},
     operation::OperationId,
 };
 
+pub mod data;
 #[cfg(feature = "directory-chain")]
 pub mod directory;
 
 pub mod error;
 pub use error::Error;
+
+use self::data::SegmentBlock;
 
 /// Persistence for the chain
 pub trait ChainStore: Send + Sync + 'static {
@@ -24,16 +27,16 @@ pub trait ChainStore: Send + Sync + 'static {
         from_next_offset: BlockOffset,
     ) -> Result<StoredBlockIterator, Error>;
 
-    fn get_block(&self, offset: BlockOffset) -> Result<BlockRef, Error>;
+    fn get_block(&self, offset: BlockOffset) -> Result<SegmentBlock, Error>;
 
-    fn get_block_from_next_offset(&self, next_offset: BlockOffset) -> Result<BlockRef, Error>;
+    fn get_block_from_next_offset(&self, next_offset: BlockOffset) -> Result<SegmentBlock, Error>;
 
-    fn get_last_block(&self) -> Result<Option<BlockRef>, Error>;
+    fn get_last_block(&self) -> Result<Option<SegmentBlock>, Error>;
 
     fn get_block_by_operation_id(
         &self,
         operation_id: OperationId,
-    ) -> Result<Option<BlockRef>, Error>;
+    ) -> Result<Option<SegmentBlock>, Error>;
 
     fn truncate_from_offset(&mut self, offset: BlockOffset) -> Result<(), Error>;
 }
@@ -106,7 +109,7 @@ impl std::iter::IntoIterator for Segments {
 }
 
 /// Iterator over stored blocks.
-type StoredBlockIterator<'pers> = Box<dyn Iterator<Item = BlockRef<'pers>> + 'pers>;
+type StoredBlockIterator<'pers> = Box<dyn Iterator<Item = SegmentBlock> + 'pers>;
 
 #[cfg(test)]
 mod tests {

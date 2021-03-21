@@ -8,19 +8,18 @@ use std::{
 use segment::DirectorySegment;
 
 use crate::{
-    block::{Block, BlockOffset, BlockRef},
+    block::{Block, BlockOffset},
     chain::{ChainStore, Error, Segment, StoredBlockIterator},
     operation::OperationId,
 };
 
-mod data;
 mod operations_index;
 mod segment;
 
 use exocore_core::simple_store::{json_disk_store::JsonDiskStore, SimpleStore};
 use operations_index::OperationsIndex;
 
-use super::Segments;
+use super::{data::SegmentBlock, Segments};
 
 const METADATA_FILE: &str = "metadata.json";
 
@@ -312,7 +311,7 @@ impl ChainStore for DirectoryChainStore {
         }))
     }
 
-    fn get_block(&self, offset: BlockOffset) -> Result<BlockRef, Error> {
+    fn get_block(&self, offset: BlockOffset) -> Result<SegmentBlock, Error> {
         let segment = self.get_segment_for_block_offset(offset).ok_or_else(|| {
             Error::OutOfBound(format!("No segment has block with offset {}", offset))
         })?;
@@ -320,7 +319,7 @@ impl ChainStore for DirectoryChainStore {
         segment.get_block(offset)
     }
 
-    fn get_block_from_next_offset(&self, next_offset: BlockOffset) -> Result<BlockRef, Error> {
+    fn get_block_from_next_offset(&self, next_offset: BlockOffset) -> Result<SegmentBlock, Error> {
         let segment = self
             .get_segment_for_next_block_offset(next_offset)
             .ok_or_else(|| {
@@ -333,7 +332,7 @@ impl ChainStore for DirectoryChainStore {
         segment.get_block_from_next_offset(next_offset)
     }
 
-    fn get_last_block(&self) -> Result<Option<BlockRef>, Error> {
+    fn get_last_block(&self) -> Result<Option<SegmentBlock>, Error> {
         let last_segment = if let Some(last_segment) = self.segments.last() {
             last_segment
         } else {
@@ -348,7 +347,7 @@ impl ChainStore for DirectoryChainStore {
     fn get_block_by_operation_id(
         &self,
         operation_id: OperationId,
-    ) -> Result<Option<BlockRef>, Error> {
+    ) -> Result<Option<SegmentBlock>, Error> {
         let operations_index = self
             .operations_index
             .as_ref()
@@ -446,7 +445,7 @@ struct DirectoryBlockIterator<'s> {
 }
 
 impl<'s> Iterator for DirectoryBlockIterator<'s> {
-    type Item = BlockRef<'s>;
+    type Item = SegmentBlock;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {
@@ -503,7 +502,7 @@ struct DirectoryBlockReverseIterator<'s> {
 }
 
 impl<'s> Iterator for DirectoryBlockReverseIterator<'s> {
-    type Item = BlockRef<'s>;
+    type Item = SegmentBlock;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {
@@ -585,23 +584,29 @@ pub mod tests {
         let init_segments = {
             let mut directory_chain = DirectoryChainStore::create(config, dir.path())?;
 
-            let block = create_block(&cell, 0);
-            let second_offset = directory_chain.write_block(&block)?;
+            let block0w = create_block(&cell, 0);
+            let second_offset = directory_chain.write_block(&block0w)?;
 
-            let block = directory_chain.get_block(0)?;
-            assert_eq!(block.offset, 0);
-            let block = directory_chain.get_block_from_next_offset(second_offset)?;
-            assert_eq!(block.offset, 0);
+            let block0r = directory_chain.get_block(0)?;
+            assert_eq!(block0r.offset, 0);
+            assert_eq!(block0r.total_size(), second_offset as usize);
 
-            let block = create_block(&cell, second_offset);
-            let third_offset = directory_chain.write_block(&block)?;
-            let block = directory_chain.get_block(second_offset)?;
-            assert_eq!(block.offset, second_offset);
-            let block = directory_chain.get_block_from_next_offset(third_offset)?;
-            assert_eq!(block.offset, second_offset);
+            let block0n = directory_chain.get_block_from_next_offset(second_offset)?;
+            assert_eq!(block0n.offset, 0);
+            assert_eq!(block0r.total_size(), second_offset as usize);
+
+            let block1w = create_block(&cell, second_offset);
+            let third_offset = directory_chain.write_block(&block1w)?;
+            let block1r = directory_chain.get_block(second_offset)?;
+            assert_eq!(block1r.offset, second_offset);
+            assert_eq!(block1r.total_size(), block1w.total_size());
+
+            let block1n = directory_chain.get_block_from_next_offset(third_offset)?;
+            assert_eq!(block1n.offset, second_offset);
+            assert_eq!(block1n.total_size(), block1w.total_size());
 
             let segments = directory_chain.segments();
-            let data_size = (block.total_size() * 2) as BlockOffset;
+            let data_size = (block1r.total_size() * 2) as BlockOffset;
             assert_eq!(
                 segments,
                 Segments(vec![Segment {
@@ -768,10 +773,10 @@ pub mod tests {
 
         // we cutoff the directory at different position to make sure of its integrity
         for cutoff in 1..30 {
-            let dir = tempfile::tempdir()?;
+            let dir = tempfile::tempdir().unwrap();
 
             let (segments_before, block_n_offset, block_n_plus_offset) = {
-                let mut directory_chain = DirectoryChainStore::create(config, dir.path())?;
+                let mut directory_chain = DirectoryChainStore::create(config, dir.path()).unwrap();
                 append_blocks(&cell, &mut directory_chain, 30, 0);
                 let segments_before = directory_chain
                     .segments()
@@ -779,11 +784,17 @@ pub mod tests {
                     .map(|seg| seg.range.clone())
                     .collect_vec();
 
-                let block_n = directory_chain.blocks_iter(0)?.nth(cutoff - 1).unwrap();
+                let block_n = directory_chain
+                    .blocks_iter(0)
+                    .unwrap()
+                    .nth(cutoff - 1)
+                    .unwrap();
                 let block_n_offset = block_n.offset;
                 let block_n_plus_offset = block_n.next_offset();
 
-                directory_chain.truncate_from_offset(block_n_plus_offset)?;
+                directory_chain
+                    .truncate_from_offset(block_n_plus_offset)
+                    .unwrap();
 
                 let segments_after = directory_chain
                     .segments()
@@ -793,17 +804,19 @@ pub mod tests {
                 assert_ne!(segments_before, segments_after);
                 assert_eq!(segments_after.last().unwrap().end, block_n_plus_offset);
                 assert_eq!(
-                    directory_chain.get_last_block()?.unwrap().offset,
+                    directory_chain.get_last_block().unwrap().unwrap().offset,
                     block_n_offset
                 );
 
-                let iter = directory_chain.blocks_iter(0)?;
+                let iter = directory_chain.blocks_iter(0).unwrap();
                 validate_iterator(iter, cutoff, 0, block_n_offset, false);
 
-                let iter_reverse = directory_chain.blocks_iter_reverse(block_n_plus_offset)?;
+                let iter_reverse = directory_chain
+                    .blocks_iter_reverse(block_n_plus_offset)
+                    .unwrap();
                 validate_iterator(iter_reverse, cutoff, block_n_offset, 0, true);
 
-                validate_directory_operations_index(&directory_chain)?;
+                validate_directory_operations_index(&directory_chain).unwrap();
 
                 (segments_before, block_n_offset, block_n_plus_offset)
             };
@@ -819,16 +832,18 @@ pub mod tests {
                 assert_ne!(segments_before, segments_after);
                 assert_eq!(segments_after.last().unwrap().end, block_n_plus_offset);
 
-                let iter = directory_chain.blocks_iter(0)?;
+                let iter = directory_chain.blocks_iter(0).unwrap();
                 validate_iterator(iter, cutoff, 0, block_n_offset, false);
 
-                let iter_reverse = directory_chain.blocks_iter_reverse(block_n_plus_offset)?;
+                let iter_reverse = directory_chain
+                    .blocks_iter_reverse(block_n_plus_offset)
+                    .unwrap();
                 validate_iterator(iter_reverse, cutoff, block_n_offset, 0, true);
 
-                validate_directory_operations_index(&directory_chain)?;
+                validate_directory_operations_index(&directory_chain).unwrap();
 
                 assert_eq!(
-                    directory_chain.get_last_block()?.unwrap().offset,
+                    directory_chain.get_last_block().unwrap().unwrap().offset,
                     block_n_offset
                 );
             }
