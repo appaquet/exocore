@@ -1,10 +1,13 @@
 use std::{
     ffi::OsStr,
     fs::{File, OpenOptions},
-    ops::Range,
+    ops::{Bound, Range, RangeBounds},
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
+use bytes::{Buf, Bytes};
+use exocore_core::framing::FrameReader;
 use serde::{Deserialize, Serialize};
 
 use super::{DirectoryChainStoreConfig, Error};
@@ -46,8 +49,9 @@ impl DirectorySegment {
             "Creating new segment at {:?} for offset {}",
             directory, first_block_offset
         );
+
         let mut segment_file = SegmentFile::open(&segment_path, config.segment_over_allocate_size)?;
-        block.copy_data_into(&mut segment_file.mmap[0..]);
+        segment_file.write_block(0, block);
         let written_data_size = block.total_size();
 
         Ok(DirectorySegment {
@@ -145,10 +149,8 @@ impl DirectorySegment {
             });
         }
 
-        {
-            self.ensure_file_size(block_size)?;
-            block.copy_data_into(&mut self.segment_file.mmap[next_file_offset..]);
-        }
+        self.ensure_file_size(block_size)?;
+        self.segment_file.write_block(next_file_offset, block);
 
         self.next_file_offset += block_size;
         self.next_block_offset += block_size as BlockOffset;
@@ -173,7 +175,7 @@ impl DirectorySegment {
         }
 
         let block_file_offset = (offset - first_block_offset) as usize;
-        Ok(BlockRef::new(&self.segment_file.mmap[block_file_offset..])?)
+        self.segment_file.get_block(block_file_offset)
     }
 
     pub fn get_block_from_next_offset(&self, next_offset: BlockOffset) -> Result<BlockRef, Error> {
@@ -193,9 +195,7 @@ impl DirectorySegment {
         }
 
         let next_file_offset = (next_offset - first_block_offset) as usize;
-        let block = BlockRef::new_from_next_offset(&self.segment_file.mmap[..], next_file_offset)?;
-
-        Ok(block)
+        self.segment_file.get_block_from_next(next_file_offset)
     }
 
     pub fn truncate_from_block_offset(&mut self, block_offset: BlockOffset) -> Result<(), Error> {
@@ -285,7 +285,7 @@ impl SegmentMetadata {
 
     fn from_segment_file(segment: &SegmentFile) -> Result<SegmentMetadata, Error> {
         // read first block to validate it has the same offset as segment
-        let first_block = BlockRef::new(&segment.mmap[..]).map_err(|err| {
+        let first_block = segment.get_block(0).map_err(|err| {
             error!(
                 "Couldn't read first block from segment file {:?}: {}",
                 &segment.path, err
@@ -294,7 +294,7 @@ impl SegmentMetadata {
         })?;
 
         // iterate through segments and find the last block and its offset
-        let blocks_iterator = ChainBlockIterator::new(&segment.mmap[..]);
+        let blocks_iterator = ChainBlockIterator::new(segment.data());
         let last_block = blocks_iterator.last().ok_or_else(|| {
             Error::Integrity(
                 "Couldn't find last block of segment: no blocks returned by iterator".to_string(),
@@ -317,7 +317,7 @@ impl SegmentMetadata {
     }
 }
 
-/// Wraps a mmap'ed file stored on disk. As mmap cannot access content that is
+/// Wraps a mmap file stored on disk. As mmap cannot access content that is
 /// beyond the file size, the segment is over-allocated so that we can write via
 /// mmap. If writing would exceed the size, we re-allocate the file and re-open
 /// the mmap.
@@ -362,6 +362,22 @@ impl SegmentFile {
             mmap,
             current_size,
         })
+    }
+
+    fn data(&self) -> &[u8] {
+        self.mmap.as_ref()
+    }
+
+    fn get_block(&self, offset: usize) -> Result<BlockRef, Error> {
+        Ok(BlockRef::new(&self.mmap[offset..])?)
+    }
+
+    fn get_block_from_next(&self, next_offset: usize) -> Result<BlockRef, Error> {
+        Ok(BlockRef::new_from_next_offset(&self.mmap, next_offset)?)
+    }
+
+    fn write_block<B: Block>(&mut self, offset: usize, block: &B) {
+        block.copy_data_into(&mut self.mmap[offset..]);
     }
 
     fn set_len(&mut self, new_size: u64) -> Result<(), Error> {
@@ -557,7 +573,7 @@ mod tests {
                 .get_block_from_next_offset(segment.next_block_offset)
                 .is_ok());
 
-            let iter = ChainBlockIterator::new(&segment.segment_file.mmap[0..]);
+            let iter = ChainBlockIterator::new(&segment.segment_file.data());
             assert_eq!(iter.count(), 1000);
         }
 
@@ -595,7 +611,7 @@ mod tests {
         let truncated_segment_size = segment.segment_file.current_size;
         assert_eq!(truncated_segment_size, next_file_offset as u64);
 
-        let iter = ChainBlockIterator::new(&segment.segment_file.mmap[0..]);
+        let iter = ChainBlockIterator::new(&segment.segment_file.data());
         assert_eq!(iter.count(), 1000);
 
         Ok(())
@@ -620,17 +636,17 @@ mod tests {
 
         // should not remove any blocks, only remove over allocated space
         segment.truncate_from_block_offset(segment.next_block_offset)?;
-        let iter = ChainBlockIterator::new(&segment.segment_file.mmap[0..]);
+        let iter = ChainBlockIterator::new(&segment.segment_file.data());
         assert_eq!(iter.count(), 1000);
 
         // truncating before beginning of file is impossible
         assert!(segment.truncate_from_block_offset(900).is_err());
 
         // truncating at 10th should result in only 10 blocks left
-        let mut iter = ChainBlockIterator::new(&segment.segment_file.mmap[0..]);
+        let mut iter = ChainBlockIterator::new(&segment.segment_file.data());
         let nth_offset = iter.nth(10).unwrap().offset;
         segment.truncate_from_block_offset(nth_offset)?;
-        let iter = ChainBlockIterator::new(&segment.segment_file.mmap[0..]);
+        let iter = ChainBlockIterator::new(&segment.segment_file.data());
         assert_eq!(iter.count(), 10);
 
         Ok(())

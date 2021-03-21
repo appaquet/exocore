@@ -212,11 +212,11 @@ pub fn read_header_frame<I: FrameReader>(inner: I) -> Result<BlockHeaderFrame<I>
     Ok(frame)
 }
 
-pub fn read_header_frame_from_next_offset(
-    data: &[u8],
+pub fn read_header_frame_from_next_offset<I: FrameReader>(
+    inner: I,
     next_offset: usize,
-) -> Result<BlockHeaderFrame<&[u8]>, Error> {
-    let sized_frame = SizedFrame::new_from_next_offset(data, next_offset)?;
+) -> Result<BlockHeaderFrame<I>, Error> {
+    let sized_frame = SizedFrame::new_from_next_offset(inner, next_offset)?;
     let multihash_frame = MultihashFrame::new(sized_frame)?;
     let frame = TypedCapnpFrame::new(multihash_frame)?;
     Ok(frame)
@@ -742,11 +742,11 @@ impl BlockSignatures {
         Ok(frame)
     }
 
-    pub fn read_frame_from_next_offset(
-        data: &[u8],
+    pub fn read_frame_from_next_offset<I: FrameReader>(
+        inner: I,
         next_offset: usize,
-    ) -> Result<SignaturesFrame<&[u8]>, Error> {
-        let sized_frame = SizedFrame::new_from_next_offset(data, next_offset)?;
+    ) -> Result<SignaturesFrame<I>, Error> {
+        let sized_frame = SizedFrame::new_from_next_offset(inner, next_offset)?;
         let padded_frame = PaddedFrame::new(sized_frame)?;
         let frame = TypedCapnpFrame::new(padded_frame)?;
         Ok(frame)

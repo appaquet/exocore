@@ -293,9 +293,7 @@ where
         let mut data = vec![0; size];
         self.socket.read_exact(&mut data).await?;
 
-        let msg = ExocoreProtoMessage {
-            data: data.into(),
-        };
+        let msg = ExocoreProtoMessage { data: data.into() };
 
         Ok((msg, self))
     }

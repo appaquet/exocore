@@ -12,6 +12,7 @@ use super::{
 /// support iteration in both directions.
 pub struct SizedFrame<I: FrameReader> {
     inner: I,
+    offset: usize, // offset from beginning of frame (including size)
     inner_size: usize,
 }
 
@@ -23,7 +24,28 @@ impl<I: FrameReader> SizedFrame<I> {
         let inner_size = inner_data.read_u32::<LittleEndian>()? as usize;
         check_from_size(4 + inner_size, inner_data)?;
 
-        Ok(SizedFrame { inner, inner_size })
+        Ok(SizedFrame {
+            inner,
+            offset: 0,
+            inner_size,
+        })
+    }
+
+    pub fn new_from_next_offset(inner: I, next_offset: usize) -> Result<SizedFrame<I>, Error> {
+        let inner_data = inner.exposed_data();
+        check_offset_subtract(next_offset, 4)?;
+        check_from_size(next_offset - 4, inner_data)?;
+
+        let inner_size = (&inner_data[next_offset - 4..]).read_u32::<LittleEndian>()? as usize;
+        let offset_subtract = 4 + inner_size + 4;
+        check_offset_subtract(next_offset, offset_subtract)?;
+        let offset = next_offset - offset_subtract;
+
+        Ok(SizedFrame {
+            inner,
+            offset,
+            inner_size,
+        })
     }
 
     pub fn size(&self) -> usize {
@@ -42,42 +64,44 @@ impl SizedFrame<Bytes> {
 
         Ok(SizedFrame {
             inner: Bytes::from(buf),
+            offset: 0,
             inner_size,
         })
     }
 }
 
-impl SizedFrame<&[u8]> {
-    pub fn new_from_next_offset(
-        buffer: &[u8],
-        next_offset: usize,
-    ) -> Result<SizedFrame<&[u8]>, Error> {
-        check_offset_subtract(next_offset, 4)?;
-        check_from_size(next_offset - 4, buffer)?;
+// impl SizedFrame<&[u8]> {
+//     pub fn new_from_next_offset(
+//         buffer: &[u8],
+//         next_offset: usize,
+//     ) -> Result<SizedFrame<&[u8]>, Error> {
+//         check_offset_subtract(next_offset, 4)?;
+//         check_from_size(next_offset - 4, buffer)?;
 
-        let inner_size = (&buffer[next_offset - 4..]).read_u32::<LittleEndian>()? as usize;
-        let offset_subtract = 4 + inner_size + 4;
-        check_offset_subtract(next_offset, offset_subtract)?;
-        let offset = next_offset - offset_subtract;
+//         let inner_size = (&buffer[next_offset -
+// 4..]).read_u32::<LittleEndian>()? as usize;         let offset_subtract = 4 +
+// inner_size + 4;         check_offset_subtract(next_offset, offset_subtract)?;
+//         let offset = next_offset - offset_subtract;
 
-        SizedFrame::new(&buffer[offset..])
-    }
-}
+//         SizedFrame::new(&buffer[offset..])
+//     }
+// }
 
 impl<I: FrameReader> FrameReader for SizedFrame<I> {
     type OwnedType = SizedFrame<I::OwnedType>;
 
     fn exposed_data(&self) -> &[u8] {
-        &self.inner.exposed_data()[4..4 + self.inner_size]
+        &self.inner.exposed_data()[self.offset + 4..self.offset + 4 + self.inner_size]
     }
 
     fn whole_data(&self) -> &[u8] {
-        &self.inner.whole_data()[0..self.inner_size + 8]
+        &self.inner.whole_data()[self.offset..self.offset + self.inner_size + 8]
     }
 
     fn to_owned_frame(&self) -> Self::OwnedType {
         SizedFrame {
             inner: self.inner.to_owned_frame(),
+            offset: self.offset,
             inner_size: self.inner_size,
         }
     }
@@ -87,6 +111,7 @@ impl<I: FrameReader + Clone> Clone for SizedFrame<I> {
     fn clone(&self) -> Self {
         SizedFrame {
             inner: self.inner.clone(),
+            offset: self.offset,
             inner_size: self.inner_size,
         }
     }

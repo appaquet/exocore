@@ -13,6 +13,7 @@ use crate::{
     operation::OperationId,
 };
 
+mod data;
 mod operations_index;
 mod segment;
 

@@ -90,7 +90,7 @@ pub trait FrameBuilder {
     fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<usize, Error>;
 
     /// Write the frame into the given bytes slice
-    fn write_into(&self, into: &mut [u8]) -> Result<usize, Error>; 
+    fn write_into(&self, into: &mut [u8]) -> Result<usize, Error>;
 
     /// Expected size of the frame (in bytes). Optional since some kind of
     /// frames have an unknown size until they are serialized (ex: capnp)
@@ -111,7 +111,7 @@ pub trait FrameBuilder {
 
 /// Implementation of FrameBuilder for a byte array allow wrapping the content
 /// of the array into another frame
-impl <B: Buf> FrameBuilder for B {
+impl<B: Buf> FrameBuilder for B {
     type OwnedFrameType = Bytes;
 
     fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<usize, Error> {
