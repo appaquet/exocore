@@ -9,10 +9,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use super::{DirectoryChainStoreConfig, Error};
-use crate::{
-    block::{Block, BlockOffset, ChainBlockIterator},
-    chain::data::{SegmentBlock, SegmentData, SegmentDataSlice},
-};
+use crate::{block::{Block, BlockOffset, ChainBlockIterator}, chain::data::{Data, StaticData, SegmentBlock, StaticDataContainer}};
 
 /// A segment of the chain, stored in its own file (`segment_file`) and that
 /// should not exceed a size specified by configuration.
@@ -159,7 +156,7 @@ impl DirectorySegment {
         Ok(())
     }
 
-    pub fn get_block(&self, offset: BlockOffset) -> Result<SegmentBlock, Error> {
+    pub fn get_block(&self, offset: BlockOffset) -> Result<SegmentBlock<StaticData>, Error> {
         let first_block_offset = self.first_block_offset;
         if offset < first_block_offset {
             return Err(Error::OutOfBound(format!(
@@ -182,7 +179,7 @@ impl DirectorySegment {
     pub fn get_block_from_next_offset(
         &self,
         next_offset: BlockOffset,
-    ) -> Result<SegmentBlock, Error> {
+    ) -> Result<SegmentBlock<StaticData>, Error> {
         let first_block_offset = self.first_block_offset;
         if next_offset < first_block_offset {
             return Err(Error::OutOfBound(format!(
@@ -329,7 +326,7 @@ struct SegmentFile {
     path: PathBuf,
     file: File,
     mmap_mut: memmap2::MmapMut,
-    mmap: SegmentDataSlice,
+    mmap: StaticData,
     current_size: u64,
 }
 
@@ -360,8 +357,8 @@ impl SegmentFile {
                 Error::new_io(err, format!("Error mmaping segment file {:?}", path))
             })?;
 
-            SegmentDataSlice {
-                data: SegmentData::Mmap(Arc::new(mmap)),
+            StaticData {
+                data: StaticDataContainer::Mmap(Arc::new(mmap)),
                 start: 0,
                 end: current_size as usize,
             }
@@ -371,6 +368,7 @@ impl SegmentFile {
                 Error::new_io(err, format!("Error mmaping segment file {:?}", path))
             })?
         };
+
 
         Ok(SegmentFile {
             path: path.to_path_buf(),
@@ -385,12 +383,12 @@ impl SegmentFile {
         self.mmap_mut.as_ref()
     }
 
-    fn get_block(&self, offset: usize) -> Result<SegmentBlock, Error> {
+    fn get_block(&self, offset: usize) -> Result<SegmentBlock<StaticData>, Error> {
         let data = self.mmap.view(offset..);
         Ok(SegmentBlock::new(data)?)
     }
 
-    fn get_block_from_next(&self, next_offset: usize) -> Result<SegmentBlock, Error> {
+    fn get_block_from_next(&self, next_offset: usize) -> Result<SegmentBlock<StaticData>, Error> {
         Ok(SegmentBlock::new_from_next_offset(
             self.mmap.view(..),
             next_offset,
@@ -423,8 +421,8 @@ impl SegmentFile {
                 Error::new_io(err, format!("Error mmaping segment file {:?}", self.path))
             })?;
 
-            SegmentDataSlice {
-                data: SegmentData::Mmap(Arc::new(mmap)),
+            StaticData {
+                data: StaticDataContainer::Mmap(Arc::new(mmap)),
                 start: 0,
                 end: new_size as usize,
             }
