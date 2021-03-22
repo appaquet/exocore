@@ -12,7 +12,7 @@ pub mod directory;
 pub mod error;
 pub use error::Error;
 
-use self::data::{SegmentBlock, StaticData};
+use self::data::{DataBlock, MmapData, SegmentData};
 
 /// Persistence for the chain
 pub trait ChainStore: Send + Sync + 'static {
@@ -27,16 +27,19 @@ pub trait ChainStore: Send + Sync + 'static {
         from_next_offset: BlockOffset,
     ) -> Result<StoredBlockIterator, Error>;
 
-    fn get_block(&self, offset: BlockOffset) -> Result<SegmentBlock<StaticData>, Error>;
+    fn get_block(&self, offset: BlockOffset) -> Result<DataBlock<SegmentData>, Error>;
 
-    fn get_block_from_next_offset(&self, next_offset: BlockOffset) -> Result<SegmentBlock<StaticData>, Error>;
+    fn get_block_from_next_offset(
+        &self,
+        next_offset: BlockOffset,
+    ) -> Result<DataBlock<SegmentData>, Error>;
 
-    fn get_last_block(&self) -> Result<Option<SegmentBlock<StaticData>>, Error>;
+    fn get_last_block(&self) -> Result<Option<DataBlock<SegmentData>>, Error>;
 
     fn get_block_by_operation_id(
         &self,
         operation_id: OperationId,
-    ) -> Result<Option<SegmentBlock<StaticData>>, Error>;
+    ) -> Result<Option<DataBlock<SegmentData>>, Error>;
 
     fn truncate_from_offset(&mut self, offset: BlockOffset) -> Result<(), Error>;
 }
@@ -109,7 +112,7 @@ impl std::iter::IntoIterator for Segments {
 }
 
 /// Iterator over stored blocks.
-type StoredBlockIterator<'pers> = Box<dyn Iterator<Item = SegmentBlock<StaticData>> + 'pers>;
+type StoredBlockIterator<'pers> = Box<dyn Iterator<Item = DataBlock<SegmentData>> + 'pers>;
 
 #[cfg(test)]
 mod tests {

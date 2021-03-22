@@ -3,49 +3,72 @@ use std::{
     sync::Arc,
 };
 
-use bytes::Bytes;
+use bytes::{Buf, Bytes};
 use exocore_core::framing::FrameReader;
 use exocore_protos::generated::data_chain_capnp::{block_header, block_signatures};
 
 use crate::block::{
     read_header_frame, read_header_frame_from_next_offset, Block, BlockHeaderFrame, BlockOffset,
-    BlockSignatures, Error, SignaturesFrame,
+    BlockOwned, BlockSignatures, Error, SignaturesFrame,
 };
 
 pub trait Data: FrameReader<OwnedType = Bytes> + Clone {
     fn slice<R: RangeBounds<usize>>(&self, r: R) -> &[u8];
+
     fn view<R: RangeBounds<usize>>(&self, r: R) -> Self;
+
     fn len(&self) -> usize;
+
     fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    fn to_bytes(&self) -> Bytes {
+        Bytes::from(self.slice(..).to_vec())
+    }
+}
+
+impl Data for Bytes {
+    fn slice<R: RangeBounds<usize>>(&self, r: R) -> &[u8] {
+        let r = translate_range(0, self.len(), r);
+        &self.chunk()[r]
+    }
+
+    fn view<R: RangeBounds<usize>>(&self, r: R) -> Self {
+        self.slice(r)
+    }
+
+    fn len(&self) -> usize {
+        self.len()
     }
 }
 
 #[derive(Clone)]
-pub enum StaticDataContainer {
-    Mmap(Arc<memmap2::Mmap>),
-    Bytes(Bytes),
-}
-
-#[derive(Clone)]
-pub struct StaticData {
-    pub(crate) data: StaticDataContainer,
+pub struct MmapData {
+    pub(crate) data: Arc<memmap2::Mmap>,
     pub(crate) start: usize,
     pub(crate) end: usize, // exclusive
 }
 
-impl Data for StaticData {
-    fn slice<R: RangeBounds<usize>>(&self, r: R) -> &[u8] {
-        let r = translate_range(self.start, self.end, r);
-        match &self.data {
-            StaticDataContainer::Mmap(mmap) => &mmap[r],
-            StaticDataContainer::Bytes(bytes) => &bytes[r],
+impl MmapData {
+    pub fn from_mmap(data: Arc<memmap2::Mmap>, len: usize) -> MmapData {
+        MmapData {
+            data,
+            start: 0,
+            end: len,
         }
     }
+}
 
-    fn view<R: RangeBounds<usize>>(&self, r: R) -> StaticData {
+impl Data for MmapData {
+    fn slice<R: RangeBounds<usize>>(&self, r: R) -> &[u8] {
         let r = translate_range(self.start, self.end, r);
-        StaticData {
+        &self.data[r]
+    }
+
+    fn view<R: RangeBounds<usize>>(&self, r: R) -> MmapData {
+        let r = translate_range(self.start, self.end, r);
+        MmapData {
             data: self.data.clone(),
             start: r.start,
             end: r.end,
@@ -57,7 +80,7 @@ impl Data for StaticData {
     }
 }
 
-impl FrameReader for StaticData {
+impl FrameReader for MmapData {
     type OwnedType = Bytes;
 
     fn exposed_data(&self) -> &[u8] {
@@ -74,33 +97,76 @@ impl FrameReader for StaticData {
 }
 
 #[derive(Clone)]
-pub struct DataRef<'s> {
+pub enum SegmentData {
+    Mmap(MmapData),
+    Bytes(Bytes),
+}
+
+impl Data for SegmentData {
+    fn slice<R: RangeBounds<usize>>(&self, r: R) -> &[u8] {
+        match self {
+            SegmentData::Mmap(m) => Data::slice(m, r),
+            SegmentData::Bytes(m) => Data::slice(m, r),
+        }
+    }
+
+    fn view<R: RangeBounds<usize>>(&self, r: R) -> SegmentData {
+        match self {
+            SegmentData::Mmap(m) => SegmentData::Mmap(Data::view(m, r)),
+            SegmentData::Bytes(m) => SegmentData::Bytes(Data::view(m, r)),
+        }
+    }
+
+    fn len(&self) -> usize {
+        match self {
+            SegmentData::Mmap(m) => Data::len(m),
+            SegmentData::Bytes(m) => Data::len(m),
+        }
+    }
+}
+
+impl FrameReader for SegmentData {
+    type OwnedType = Bytes;
+
+    fn exposed_data(&self) -> &[u8] {
+        self.slice(..)
+    }
+
+    fn whole_data(&self) -> &[u8] {
+        self.slice(..)
+    }
+
+    fn to_owned_frame(&self) -> Self::OwnedType {
+        panic!("Cannot do to_owned_frame since it could be a whole mmap")
+    }
+}
+
+#[derive(Clone)]
+pub struct RefData<'s> {
     pub(crate) data: &'s [u8],
     pub(crate) start: usize,
     pub(crate) end: usize, // exclusive
 }
 
-impl<'s> DataRef<'s> {
-    pub fn to_static(&self) -> StaticData {
-        let bytes = Bytes::from(self.slice(..).to_vec());
-        let len = bytes.len();
-        StaticData {
-            data: StaticDataContainer::Bytes(bytes),
+impl<'s> RefData<'s> {
+    pub fn new(data: &[u8]) -> RefData {
+        RefData {
+            data,
             start: 0,
-            end: len,
+            end: data.len(),
         }
     }
 }
 
-impl<'s> Data for DataRef<'s> {
+impl<'s> Data for RefData<'s> {
     fn slice<R: RangeBounds<usize>>(&self, r: R) -> &[u8] {
         let r = translate_range(self.start, self.end, r);
         &self.data[r]
     }
 
-    fn view<R: RangeBounds<usize>>(&self, r: R) -> DataRef<'s> {
+    fn view<R: RangeBounds<usize>>(&self, r: R) -> RefData<'s> {
         let r = translate_range(self.start, self.end, r);
-        DataRef {
+        RefData {
             data: self.data,
             start: r.start,
             end: r.end,
@@ -112,8 +178,7 @@ impl<'s> Data for DataRef<'s> {
     }
 }
 
-// TODO: impl on data instead
-impl<'s> FrameReader for DataRef<'s> {
+impl<'s> FrameReader for RefData<'s> {
     type OwnedType = Bytes;
 
     fn exposed_data(&self) -> &[u8] {
@@ -147,15 +212,15 @@ fn translate_range<R: RangeBounds<usize>>(start: usize, end: usize, range: R) ->
     }
 }
 
-pub struct SegmentBlock<D: Data> {
+pub struct DataBlock<D: Data> {
     pub offset: BlockOffset,
     pub header: BlockHeaderFrame<D>,
     pub operations_data: D,
     pub signatures: SignaturesFrame<D>,
 }
 
-impl<D: Data> SegmentBlock<D> {
-    pub fn new(data: D) -> Result<SegmentBlock<D>, Error> {
+impl<D: Data> DataBlock<D> {
+    pub fn new(data: D) -> Result<DataBlock<D>, Error> {
         let header = read_header_frame(data.clone())?;
         let header_reader: block_header::Reader = header.get_reader()?;
 
@@ -177,7 +242,7 @@ impl<D: Data> SegmentBlock<D> {
 
         let operations_data = data.view(operations_offset..signatures_offset);
 
-        Ok(SegmentBlock {
+        Ok(DataBlock {
             offset: header_reader.get_offset(),
             header,
             operations_data,
@@ -185,7 +250,7 @@ impl<D: Data> SegmentBlock<D> {
         })
     }
 
-    pub fn new_from_next_offset(data: D, next_offset: usize) -> Result<SegmentBlock<D>, Error> {
+    pub fn new_from_next_offset(data: D, next_offset: usize) -> Result<DataBlock<D>, Error> {
         let signatures = BlockSignatures::read_frame_from_next_offset(data.clone(), next_offset)?;
         let signatures_reader: block_signatures::Reader = signatures.get_reader()?;
         let signatures_offset = next_offset - signatures.whole_data_size();
@@ -204,16 +269,25 @@ impl<D: Data> SegmentBlock<D> {
         let header = read_header_frame_from_next_offset(data, operations_offset)?;
         let header_reader: block_header::Reader = header.get_reader()?;
 
-        Ok(SegmentBlock {
+        Ok(DataBlock {
             offset: header_reader.get_offset(),
             operations_data,
             header,
             signatures,
         })
     }
+
+    fn to_owned(&self) -> DataBlock<Bytes> {
+        DataBlock {
+            offset: self.offset,
+            header: self.header.to_owned(),
+            operations_data: self.operations_data.to_bytes(),
+            signatures: self.signatures.to_owned(),
+        }
+    }
 }
 
-impl<D: Data> Block for SegmentBlock<D> {
+impl<D: Data> Block for DataBlock<D> {
     type UnderlyingFrame = D;
 
     fn offset(&self) -> u64 {

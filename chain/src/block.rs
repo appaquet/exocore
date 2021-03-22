@@ -83,7 +83,7 @@ pub trait Block {
             .expect("Couldn't write signatures into given buffer");
     }
 
-    fn as_data_vec(&self) -> Vec<u8> {
+    fn as_data_vec(&self) -> Vec<u8> { // TODO: Should be to bytes
         vec![
             self.header().whole_data(),
             self.operations_data(),
@@ -96,7 +96,7 @@ pub trait Block {
         BlockOwned {
             offset: self.offset(),
             header: self.header().to_owned(),
-            operations_data: self.operations_data().to_vec(),
+            operations_data: Bytes::from(self.operations_data().to_vec()),
             signatures: self.signatures().to_owned(),
         }
     }
@@ -266,7 +266,7 @@ impl<'a> Iterator for BlockOperationsIterator<'a> {
 pub struct BlockOwned {
     pub offset: BlockOffset,
     pub header: BlockHeaderFrame<Bytes>,
-    pub operations_data: Vec<u8>,
+    pub operations_data: Bytes,
     pub signatures: SignaturesFrame<Bytes>,
 }
 
@@ -274,7 +274,7 @@ impl BlockOwned {
     pub fn new(
         offset: BlockOffset,
         header: BlockHeaderFrame<Bytes>,
-        operations_data: Vec<u8>,
+        operations_data: Bytes,
         signatures: SignaturesFrame<Bytes>,
     ) -> BlockOwned {
         BlockOwned {
@@ -484,7 +484,7 @@ impl<'a> Block for BlockRef<'a> {
 pub struct BlockOperations {
     hash: Multihash,
     headers: Vec<BlockOperationHeader>,
-    data: Vec<u8>,
+    data: Bytes,
 }
 
 impl BlockOperations {
@@ -492,7 +492,7 @@ impl BlockOperations {
         BlockOperations {
             hash: Multihash::default(),
             headers: Vec::new(),
-            data: Vec::new(),
+            data: Bytes::new(),
         }
     }
 
@@ -524,7 +524,7 @@ impl BlockOperations {
         Ok(BlockOperations {
             hash: hasher.to_multihash(),
             headers,
-            data,
+            data: Bytes::from(data),
         })
     }
 
