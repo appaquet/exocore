@@ -19,7 +19,7 @@ use exocore_protos::{
     },
 };
 
-use crate::operation::OperationId;
+use crate::{data::Data, operation::OperationId};
 
 pub type BlockOffset = u64;
 pub type BlockHeight = u64;
@@ -83,7 +83,8 @@ pub trait Block {
             .expect("Couldn't write signatures into given buffer");
     }
 
-    fn as_data_vec(&self) -> Vec<u8> { // TODO: Should be to bytes
+    fn as_data_vec(&self) -> Vec<u8> {
+        // TODO: Should be to bytes
         vec![
             self.header().whole_data(),
             self.operations_data(),
@@ -395,6 +396,7 @@ impl Block for BlockOwned {
     }
 }
 
+/// TODO: Replace by DataBlock
 /// A referenced block
 pub struct BlockRef<'a> {
     pub offset: BlockOffset,
@@ -479,6 +481,91 @@ impl<'a> Block for BlockRef<'a> {
     }
 }
 
+pub struct DataBlock<D: Data> {
+    pub offset: BlockOffset,
+    pub header: BlockHeaderFrame<D>,
+    pub operations_data: D,
+    pub signatures: SignaturesFrame<D>,
+}
+
+impl<D: Data> DataBlock<D> {
+    pub fn new(data: D) -> Result<DataBlock<D>, Error> {
+        let header = read_header_frame(data.clone())?;
+        let header_reader: block_header::Reader = header.get_reader()?;
+
+        let operations_offset = header.whole_data_size();
+        let operations_size = header_reader.get_operations_size() as usize;
+        let signatures_offset = operations_offset + operations_size;
+        let signatures_size = header_reader.get_signatures_size() as usize;
+
+        if signatures_offset >= data.len() {
+            return Err(Error::OutOfBound(format!(
+                "Signature offset {} is after data len {}",
+                signatures_offset,
+                data.len()
+            )));
+        }
+
+        let signatures_data = data.view(signatures_offset..signatures_offset + signatures_size);
+        let signatures = BlockSignatures::read_frame(signatures_data)?;
+
+        let operations_data = data.view(operations_offset..signatures_offset);
+
+        Ok(DataBlock {
+            offset: header_reader.get_offset(),
+            header,
+            operations_data,
+            signatures,
+        })
+    }
+
+    pub fn new_from_next_offset(data: D, next_offset: usize) -> Result<DataBlock<D>, Error> {
+        let signatures = BlockSignatures::read_frame_from_next_offset(data.clone(), next_offset)?;
+        let signatures_reader: block_signatures::Reader = signatures.get_reader()?;
+        let signatures_offset = next_offset - signatures.whole_data_size();
+
+        let operations_size = signatures_reader.get_operations_size() as usize;
+        if operations_size > signatures_offset {
+            return Err(Error::OutOfBound(format!(
+                "Tried to read block from next offset {}, but its operations size would exceed beginning of file (operations_size={} signatures_offset={})",
+                next_offset, operations_size, signatures_offset,
+            )));
+        }
+
+        let operations_offset = signatures_offset - operations_size;
+        let operations_data = data.view(operations_offset..signatures_offset);
+
+        let header = read_header_frame_from_next_offset(data, operations_offset)?;
+        let header_reader: block_header::Reader = header.get_reader()?;
+
+        Ok(DataBlock {
+            offset: header_reader.get_offset(),
+            operations_data,
+            header,
+            signatures,
+        })
+    }
+}
+
+impl<D: Data> Block for DataBlock<D> {
+    type UnderlyingFrame = D;
+
+    fn offset(&self) -> u64 {
+        self.offset
+    }
+
+    fn header(&self) -> &BlockHeaderFrame<Self::UnderlyingFrame> {
+        &self.header
+    }
+
+    fn operations_data(&self) -> &[u8] {
+        self.operations_data.slice(..)
+    }
+
+    fn signatures(&self) -> &SignaturesFrame<Self::UnderlyingFrame> {
+        &self.signatures
+    }
+}
 
 /// Wraps operations header stored in a block.
 pub struct BlockOperations {

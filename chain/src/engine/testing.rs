@@ -262,7 +262,12 @@ impl EngineTestCluster {
                 prev_block_msg,
                 seed,
             );
-            let block = BlockOwned::new(next_offset, block_frame, Bytes::from(operations_data), signatures);
+            let block = BlockOwned::new(
+                next_offset,
+                block_frame,
+                Bytes::from(operations_data),
+                signatures,
+            );
             next_offset = self.chains[node_idx].write_block(&block).unwrap();
         }
     }

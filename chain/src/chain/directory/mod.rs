@@ -5,21 +5,21 @@ use std::{
     sync::Arc,
 };
 
-use segment::DirectorySegment;
-
 use crate::{
-    block::{Block, BlockOffset},
+    block::{Block, BlockOffset, DataBlock},
     chain::{ChainStore, Error, Segment, StoredBlockIterator},
     operation::OperationId,
 };
 
-mod operations_index;
-mod segment;
-
 use exocore_core::simple_store::{json_disk_store::JsonDiskStore, SimpleStore};
-use operations_index::OperationsIndex;
 
-use super::{Segments, data::{Data, DataBlock, MmapData, SegmentData}};
+mod operations_index;
+use operations_index::OperationsIndex;
+mod segment;
+use segment::DirectorySegment;
+pub(self) mod tracker;
+
+use super::{ChainData, Segments};
 
 const METADATA_FILE: &str = "metadata.json";
 
@@ -312,7 +312,7 @@ impl ChainStore for DirectoryChainStore {
         }))
     }
 
-    fn get_block(&self, offset: BlockOffset) -> Result<DataBlock<SegmentData>, Error> {
+    fn get_block(&self, offset: BlockOffset) -> Result<DataBlock<ChainData>, Error> {
         let segment = self.get_segment_for_block_offset(offset).ok_or_else(|| {
             Error::OutOfBound(format!("No segment has block with offset {}", offset))
         })?;
@@ -323,7 +323,7 @@ impl ChainStore for DirectoryChainStore {
     fn get_block_from_next_offset(
         &self,
         next_offset: BlockOffset,
-    ) -> Result<DataBlock<SegmentData>, Error> {
+    ) -> Result<DataBlock<ChainData>, Error> {
         let segment = self
             .get_segment_for_next_block_offset(next_offset)
             .ok_or_else(|| {
@@ -336,7 +336,7 @@ impl ChainStore for DirectoryChainStore {
         segment.get_block_from_next_offset(next_offset)
     }
 
-    fn get_last_block(&self) -> Result<Option<DataBlock<SegmentData>>, Error> {
+    fn get_last_block(&self) -> Result<Option<DataBlock<ChainData>>, Error> {
         let last_segment = if let Some(last_segment) = self.segments.last() {
             last_segment
         } else {
@@ -351,7 +351,7 @@ impl ChainStore for DirectoryChainStore {
     fn get_block_by_operation_id(
         &self,
         operation_id: OperationId,
-    ) -> Result<Option<DataBlock<SegmentData>>, Error> {
+    ) -> Result<Option<DataBlock<ChainData>>, Error> {
         let operations_index = self
             .operations_index
             .as_ref()
@@ -449,7 +449,7 @@ struct DirectoryBlockIterator<'s> {
 }
 
 impl<'s> Iterator for DirectoryBlockIterator<'s> {
-    type Item = DataBlock<SegmentData>;
+    type Item = DataBlock<ChainData>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {
@@ -506,7 +506,7 @@ struct DirectoryBlockReverseIterator<'s> {
 }
 
 impl<'s> Iterator for DirectoryBlockReverseIterator<'s> {
-    type Item = DataBlock<SegmentData>;
+    type Item = DataBlock<ChainData>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {

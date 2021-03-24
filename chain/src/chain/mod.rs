@@ -1,18 +1,16 @@
 use std::ops::Range;
 
 use crate::{
-    block::{Block, BlockOffset},
+    block::{Block, BlockOffset, DataBlock},
     operation::OperationId,
 };
 
-pub mod data;
 #[cfg(feature = "directory-chain")]
 pub mod directory;
-
 pub mod error;
 pub use error::Error;
-
-use self::data::{DataBlock, MmapData, SegmentData};
+pub mod data;
+pub use data::ChainData;
 
 /// Persistence for the chain
 pub trait ChainStore: Send + Sync + 'static {
@@ -27,19 +25,19 @@ pub trait ChainStore: Send + Sync + 'static {
         from_next_offset: BlockOffset,
     ) -> Result<StoredBlockIterator, Error>;
 
-    fn get_block(&self, offset: BlockOffset) -> Result<DataBlock<SegmentData>, Error>;
+    fn get_block(&self, offset: BlockOffset) -> Result<DataBlock<ChainData>, Error>;
 
     fn get_block_from_next_offset(
         &self,
         next_offset: BlockOffset,
-    ) -> Result<DataBlock<SegmentData>, Error>;
+    ) -> Result<DataBlock<ChainData>, Error>;
 
-    fn get_last_block(&self) -> Result<Option<DataBlock<SegmentData>>, Error>;
+    fn get_last_block(&self) -> Result<Option<DataBlock<ChainData>>, Error>;
 
     fn get_block_by_operation_id(
         &self,
         operation_id: OperationId,
-    ) -> Result<Option<DataBlock<SegmentData>>, Error>;
+    ) -> Result<Option<DataBlock<ChainData>>, Error>;
 
     fn truncate_from_offset(&mut self, offset: BlockOffset) -> Result<(), Error>;
 }
@@ -112,7 +110,7 @@ impl std::iter::IntoIterator for Segments {
 }
 
 /// Iterator over stored blocks.
-type StoredBlockIterator<'pers> = Box<dyn Iterator<Item = DataBlock<SegmentData>> + 'pers>;
+type StoredBlockIterator<'pers> = Box<dyn Iterator<Item = DataBlock<ChainData>> + 'pers>;
 
 #[cfg(test)]
 mod tests {

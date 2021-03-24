@@ -3,7 +3,7 @@ use std::{
     fs::{File, OpenOptions},
     ops::{Deref, Range},
     path::{Path, PathBuf},
-    sync::{Arc, RwLock},
+    sync::{Arc, RwLock, Weak},
 };
 
 use bytes::Bytes;
@@ -11,8 +11,9 @@ use serde::{Deserialize, Serialize};
 
 use super::{DirectoryChainStoreConfig, Error};
 use crate::{
-    block::{Block, BlockOffset},
-    chain::data::{Data, DataBlock, MmapData, RefData, SegmentData},
+    block::{Block, BlockOffset, DataBlock},
+    chain::ChainData,
+    data::{Data, MmapData, RefData},
 };
 
 /// A segment of the chain, stored in its own file (`segment_file`) and that
@@ -157,7 +158,7 @@ impl DirectorySegment {
         Ok(())
     }
 
-    pub fn get_block(&self, offset: BlockOffset) -> Result<DataBlock<SegmentData>, Error> {
+    pub fn get_block(&self, offset: BlockOffset) -> Result<DataBlock<ChainData>, Error> {
         let first_block_offset = self.first_block_offset;
         if offset < first_block_offset {
             return Err(Error::OutOfBound(format!(
@@ -180,7 +181,7 @@ impl DirectorySegment {
     pub fn get_block_from_next_offset(
         &self,
         next_offset: BlockOffset,
-    ) -> Result<DataBlock<SegmentData>, Error> {
+    ) -> Result<DataBlock<ChainData>, Error> {
         let first_block_offset = self.first_block_offset;
         if next_offset < first_block_offset {
             return Err(Error::OutOfBound(format!(
@@ -335,16 +336,11 @@ enum SegmentMmap {
     Read(Arc<memmap2::Mmap>),
     Closed,
 }
+
 impl SegmentMmap {
     fn is_closed(&self) -> bool {
         matches!(self, SegmentMmap::Closed)
     }
-}
-
-enum MmapStatus {
-    Writable,
-    ReadOnly,
-    Closed,
 }
 
 impl SegmentFile {
@@ -370,27 +366,18 @@ impl SegmentFile {
         }
 
         // TODO: Should be closed by default
-        let mmap_mut = unsafe {
-            SegmentMmap::Write(memmap2::MmapOptions::new().map_mut(&file).map_err(|err| {
-                Error::new_io(err, format!("Error mmaping segment file {:?}", path))
-            })?)
-        };
+        // let mmap_mut = unsafe {
+        //     SegmentMmap::Write(memmap2::MmapOptions::new().map_mut(&file).
+        // map_err(|err| {         Error::new_io(err, format!("Error mmaping
+        // segment file {:?}", path))     })?)
+        // };
 
         Ok(SegmentFile {
             path: path.to_path_buf(),
             file,
-            mmap: RwLock::new(mmap_mut),
+            mmap: RwLock::new(SegmentMmap::Closed),
             current_size,
         })
-    }
-
-    fn mmap_status(&self) -> MmapStatus {
-        let map = self.mmap.read().unwrap();
-        match *map {
-            SegmentMmap::Write(_) => MmapStatus::Writable,
-            SegmentMmap::Read(_) => MmapStatus::ReadOnly,
-            SegmentMmap::Closed => MmapStatus::Closed,
-        }
     }
 
     fn maybe_mmap_read(&self) -> Result<(), Error> {
@@ -421,6 +408,7 @@ impl SegmentFile {
                     return Ok(());
                 }
                 SegmentMmap::Read(_) => {
+                    // TODO: Could be OK if the weak reference has been dropped.
                     return Err(Error::UnexpectedState(
                         "File segment mmap is read-only. Expected closed or writable.".to_string(),
                     ));
@@ -440,7 +428,7 @@ impl SegmentFile {
         Ok(())
     }
 
-    fn get_block(&self, offset: usize) -> Result<DataBlock<SegmentData>, Error> {
+    fn get_block(&self, offset: usize) -> Result<DataBlock<ChainData>, Error> {
         self.maybe_mmap_read()?;
         let map = self.mmap.read().unwrap();
 
@@ -449,19 +437,19 @@ impl SegmentFile {
                 let data = RefData::new(&mmap[offset..]);
                 let block = DataBlock::new(data)?;
                 let bytes = Bytes::from(block.as_data_vec());
-                let data = SegmentData::Bytes(bytes);
+                let data = ChainData::Bytes(bytes);
                 Ok(DataBlock::new(data)?)
             }
             SegmentMmap::Read(mmap) => {
                 let data = MmapData::from_mmap(mmap.clone(), self.current_size as usize);
-                let data = SegmentData::Mmap(data);
+                let data = ChainData::Mmap(data);
                 Ok(DataBlock::new(data.view(offset..))?)
             }
             _ => panic!("expected map to ben open"),
         }
     }
 
-    fn get_block_from_next(&self, next_offset: usize) -> Result<DataBlock<SegmentData>, Error> {
+    fn get_block_from_next(&self, next_offset: usize) -> Result<DataBlock<ChainData>, Error> {
         self.maybe_mmap_read()?;
         let map = self.mmap.read().unwrap();
 
@@ -470,12 +458,12 @@ impl SegmentFile {
                 let data = RefData::new(mmap);
                 let block = DataBlock::new_from_next_offset(data, next_offset)?;
                 let bytes = Bytes::from(block.as_data_vec());
-                let data = SegmentData::Bytes(bytes);
+                let data = ChainData::Bytes(bytes);
                 Ok(DataBlock::new(data)?)
             }
             SegmentMmap::Read(mmap) => {
                 let data = MmapData::from_mmap(mmap.clone(), self.current_size as usize);
-                let data = SegmentData::Mmap(data);
+                let data = ChainData::Mmap(data);
                 Ok(DataBlock::new_from_next_offset(data, next_offset)?)
             }
             _ => panic!("expected map to ben open"),
@@ -504,6 +492,8 @@ impl SegmentFile {
         // On Windows, we can't resize a file while it's currently being mapped. We
         // close the mmap first by replacing it by an anonymous mmap.
         *mmap = SegmentMmap::Closed;
+
+        // TODO: Probably need to tell the segment tracker to drop
 
         self.file.set_len(new_size).map_err(|err| {
             Error::new_io(
@@ -542,7 +532,7 @@ impl<'s> SegmentBlockIterator<'s> {
 }
 
 impl<'s> Iterator for SegmentBlockIterator<'s> {
-    type Item = DataBlock<SegmentData>;
+    type Item = DataBlock<ChainData>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.current_offset >= self.segment.current_size as usize {
