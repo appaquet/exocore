@@ -39,7 +39,7 @@ impl SegmentTracker {
         }
     }
 
-    pub fn register(&self) -> RegisteredSegment {
+    pub fn register(&self, path: String) -> RegisteredSegment {
         let mut inner = self.inner.lock().unwrap();
 
         let id = inner.next_id;
@@ -47,15 +47,19 @@ impl SegmentTracker {
 
         RegisteredSegment {
             id,
+            path,
             access_count: Arc::new(AtomicUsize::new(0)),
         }
     }
 
     pub fn open_write(&self, segment: &RegisteredSegment) {
+        debug!("Opening segment for write '{}'", segment.path);
+
         let mut inner = self.inner.lock().unwrap();
         inner.opened.insert(
             segment.id,
             TrackedSegment {
+                path: segment.path.clone(),
                 access_count_live: segment.access_count.clone(),
                 access_count_last: 0,
                 state: OpenState::Write,
@@ -70,10 +74,13 @@ impl SegmentTracker {
     }
 
     pub fn open_read(&self, segment: &RegisteredSegment, mmap: Arc<memmap2::Mmap>) {
+        debug!("Opening segment for read '{}'", segment.path);
+
         let mut inner = self.inner.lock().unwrap();
         inner.opened.insert(
             segment.id,
             TrackedSegment {
+                path: segment.path.clone(),
                 access_count_live: segment.access_count.clone(),
                 access_count_last: 0,
                 state: OpenState::Read(mmap),
@@ -102,6 +109,7 @@ struct Inner {
 
 impl Inner {
     fn close_least_used(&mut self, last_segment: SegmentId) {
+        debug!("Too many segments open. Trying to close some...");
         struct SegmentStats {
             index: SegmentId,
             access_count: usize,
@@ -126,7 +134,10 @@ impl Inner {
                 continue;
             }
 
-            self.opened.remove(&segment.index);
+            if let Some(segment) = self.opened.remove(&segment.index) {
+                debug!("Closing segment {}", segment.path);
+            }
+
             closed += 1;
             if closed >= to_close {
                 break;
@@ -142,6 +153,7 @@ impl Inner {
 }
 
 struct TrackedSegment {
+    path: String,
     access_count_live: Arc<AtomicUsize>,
     access_count_last: usize,
     state: OpenState,
@@ -177,6 +189,7 @@ impl TrackedSegment {
 #[derive(Clone)]
 pub struct RegisteredSegment {
     id: SegmentId,
+    path: String,
     access_count: Arc<AtomicUsize>,
 }
 
@@ -196,9 +209,9 @@ mod tests {
     fn simple_case() {
         let tracker = SegmentTracker::new(2);
 
-        let segment1 = tracker.register();
-        let segment2 = tracker.register();
-        let segment3 = tracker.register();
+        let segment1 = tracker.register("seg1".to_string());
+        let segment2 = tracker.register("seg2".to_string());
+        let segment3 = tracker.register("seg3".to_string());
 
         let segment2_file = tempfile::tempfile().unwrap();
         let segment3_file = tempfile::tempfile().unwrap();
@@ -220,9 +233,9 @@ mod tests {
     fn sort_access_count() {
         let tracker = SegmentTracker::new(2);
 
-        let segment1 = tracker.register();
-        let segment2 = tracker.register();
-        let segment3 = tracker.register();
+        let segment1 = tracker.register("seg1".to_string());
+        let segment2 = tracker.register("seg2".to_string());
+        let segment3 = tracker.register("seg3".to_string());
 
         let segment1_file = tempfile::tempfile().unwrap();
         let segment2_file = tempfile::tempfile().unwrap();
@@ -249,7 +262,7 @@ mod tests {
     fn force_close() {
         let tracker = SegmentTracker::new(2);
 
-        let segment1 = tracker.register();
+        let segment1 = tracker.register("seg1".to_string());
         tracker.open_write(&segment1);
         tracker.close(&segment1);
 

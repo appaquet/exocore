@@ -380,7 +380,7 @@ impl SegmentFile {
             })?;
         }
 
-        let registered_segment = tracker.register();
+        let registered_segment = tracker.register(path.to_string_lossy().to_string());
 
         Ok(SegmentFile {
             path: path.to_path_buf(),
@@ -447,8 +447,7 @@ impl SegmentFile {
                     // then, if it's still open, we're still reading
                     if mmap.upgrade().is_some() {
                         return Err(Error::UnexpectedState(
-                            "File segment mmap is read-only. Expected closed or writable."
-                                .to_string(),
+                            "Segment is in read-only".to_string(),
                         ));
                     }
                 }
@@ -460,7 +459,7 @@ impl SegmentFile {
         *mmap =
             unsafe {
                 SegmentMmap::Write(memmap2::MmapOptions::new().map_mut(&self.file).map_err(
-                    |err| Error::new_io(err, format!("Error mmaping segment file {:?}", self.path)),
+                    |err| Error::new_io(err, format!("Mmaping segment file {:?}", self.path)),
                 )?)
             };
 
@@ -496,7 +495,9 @@ impl SegmentFile {
                 let data = ChainData::Mmap(data);
                 Ok(DataBlock::new(data.view(offset..))?)
             }
-            _ => panic!("expected map to ben open"),
+            _ => Err(Error::UnexpectedState(
+                "Expected map to be open".to_string(),
+            )),
         }
     }
 
@@ -518,7 +519,9 @@ impl SegmentFile {
                 let data = ChainData::Mmap(data);
                 Ok(DataBlock::new_from_next_offset(data, next_offset)?)
             }
-            _ => panic!("expected map to ben open"),
+            _ => Err(Error::UnexpectedState(
+                "Expected map to be open".to_string(),
+            )),
         }
     }
 
@@ -529,7 +532,9 @@ impl SegmentFile {
         let mmap = if let SegmentMmap::Write(mmap) = &mut *mmap {
             mmap
         } else {
-            panic!("Expected segment to be writable");
+            return Err(Error::UnexpectedState(
+                "Expected map to be writable".to_string(),
+            ));
         };
 
         block.copy_data_into(&mut mmap[offset..]);
@@ -881,13 +886,51 @@ mod tests {
     }
 
     #[test]
-    fn segment_file_reopen_mmap() {
-        // TODO:
-    }
+    fn segment_file_mmap_transition() -> anyhow::Result<()> {
+        let local_node = LocalNode::generate();
+        let cell = FullCell::generate(local_node);
+        let config = DirectoryChainStoreConfig {
+            segment_over_allocate_size: 100_000,
+            ..Default::default()
+        };
+        let dir = tempfile::tempdir()?;
+        let tracker = SegmentTracker::new(1);
 
-    #[test]
-    fn segment_file_write_only() {
-        // TODO:
+        let mut next_offset = 0;
+        let block = create_block(&cell, next_offset);
+        let mut segment = DirectorySegment::create(config, dir.path(), &block, tracker)?;
+        next_offset += block.total_size() as u64;
+
+        let block = create_block(&cell, next_offset);
+        segment.write_block(&block)?;
+
+        {
+            let mmap = segment.segment_file.mmap.read().unwrap();
+            assert!(matches!(&*mmap, SegmentMmap::Write(_)));
+        }
+
+        segment.close_write();
+
+        {
+            let mmap = segment.segment_file.mmap.read().unwrap();
+            assert!(matches!(&*mmap, SegmentMmap::Closed));
+        }
+
+        let block = segment.get_block(0)?;
+
+        {
+            let mmap = segment.segment_file.mmap.read().unwrap();
+            assert!(matches!(&*mmap, SegmentMmap::Read(_)));
+        }
+
+        // cannot open for write since we have a block referencing the data
+        assert!(segment.open_write().is_err());
+
+        drop(block);
+
+        assert!(segment.open_write().is_ok());
+
+        Ok(())
     }
 
     fn append_blocks_to_segment(
