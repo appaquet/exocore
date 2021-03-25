@@ -9,7 +9,14 @@ use exocore_protos::generated::data_chain_capnp::chain_operation;
 use futures::prelude::*;
 
 use super::{EngineError, Inner};
-use crate::{block::{Block, BlockHeight, BlockOffset, BlockOwned, DataBlock}, chain::{self, ChainData}, operation, operation::{OperationBuilder, OperationId}, pending, pending::CommitStatus};
+use crate::{
+    block::{Block, BlockHeight, BlockOffset, DataBlock},
+    chain::{self, ChainData},
+    operation,
+    operation::{OperationBuilder, OperationId},
+    pending,
+    pending::CommitStatus,
+};
 
 /// Handle ot the Engine, allowing communication with the engine.
 /// The engine itself is owned by a future executor.
@@ -106,7 +113,10 @@ where
         }
     }
 
-    pub fn get_chain_block(&self, offset: BlockOffset) -> Result<Option<DataBlock<ChainData>>, EngineError> {
+    pub fn get_chain_block(
+        &self,
+        offset: BlockOffset,
+    ) -> Result<Option<DataBlock<ChainData>>, EngineError> {
         let inner = self.inner.upgrade().ok_or(EngineError::InnerUpgrade)?;
         let unlocked_inner = inner.read()?;
         let block = unlocked_inner.chain_store.get_block(offset).ok();

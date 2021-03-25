@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    slice::from_raw_parts,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc, Mutex,
@@ -180,6 +179,7 @@ pub struct RegisteredSegment {
     id: SegmentId,
     access_count: Arc<AtomicUsize>,
 }
+
 impl RegisteredSegment {
     pub fn access(&self) {
         self.access_count.fetch_add(1, Ordering::Relaxed);
@@ -207,7 +207,7 @@ mod tests {
         tracker.open_read(&segment2, mmap(&segment2_file));
         tracker.open_read(&segment3, mmap(&segment3_file));
 
-        { 
+        {
             // should have dropped segment 2 since 1 is write and segment 3 is latest added
             let inner = tracker.inner.lock().unwrap();
             assert_eq!(inner.opened.len(), 2);
@@ -231,12 +231,13 @@ mod tests {
         tracker.open_read(&segment1, mmap(&segment1_file));
         tracker.open_read(&segment2, mmap(&segment2_file));
 
-        segment1.access(); 
+        segment1.access();
 
         tracker.open_read(&segment3, mmap(&segment3_file));
 
-        { 
-            // should drop segment 2 since segment 1 got access more, and segment 3 just got added
+        {
+            // should drop segment 2 since segment 1 got access more, and segment 3 just got
+            // added
             let inner = tracker.inner.lock().unwrap();
             assert_eq!(inner.opened.len(), 2);
             assert!(inner.opened.contains_key(&segment1.id));
@@ -252,13 +253,13 @@ mod tests {
         tracker.open_write(&segment1);
         tracker.close(&segment1);
 
-        { 
+        {
             let inner = tracker.inner.lock().unwrap();
             assert_eq!(inner.opened.len(), 0);
         }
     }
 
     fn mmap(file: &File) -> Arc<memmap2::Mmap> {
-        unsafe { Arc::new(memmap2::MmapOptions::new().len(1).map(file).unwrap())}
+        unsafe { Arc::new(memmap2::MmapOptions::new().len(1).map(file).unwrap()) }
     }
 }

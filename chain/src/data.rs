@@ -152,7 +152,6 @@ mod mmap {
             panic!("Cannot do to_owned_frame since it could be a whole mmap file")
         }
     }
-
 }
 
 fn translate_range<R: RangeBounds<usize>>(start: usize, end: usize, range: R) -> Range<usize> {

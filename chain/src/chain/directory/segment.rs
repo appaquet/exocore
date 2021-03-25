@@ -1,7 +1,7 @@
 use std::{
     ffi::OsStr,
     fs::{File, OpenOptions},
-    ops::{Deref, Range},
+    ops::Range,
     path::{Path, PathBuf},
     sync::{Arc, RwLock, Weak},
 };
@@ -9,7 +9,10 @@ use std::{
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
-use super::{DirectoryChainStoreConfig, Error};
+use super::{
+    tracker::{RegisteredSegment, SegmentTracker},
+    DirectoryChainStoreConfig, Error,
+};
 use crate::{
     block::{Block, BlockOffset, DataBlock},
     chain::ChainData,
@@ -36,6 +39,7 @@ impl DirectorySegment {
         config: DirectoryChainStoreConfig,
         directory: &Path,
         block: &B,
+        tracker: SegmentTracker,
     ) -> Result<DirectorySegment, Error> {
         let block_header_reader = block.header().get_reader().unwrap();
         let first_block_offset = block_header_reader.get_offset();
@@ -53,7 +57,8 @@ impl DirectorySegment {
             directory, first_block_offset
         );
 
-        let mut segment_file = SegmentFile::open(&segment_path, config.segment_over_allocate_size)?;
+        let mut segment_file =
+            SegmentFile::open(&segment_path, config.segment_over_allocate_size, tracker)?;
         segment_file.write_block(0, block)?;
         let written_data_size = block.total_size();
 
@@ -72,9 +77,10 @@ impl DirectorySegment {
         config: DirectoryChainStoreConfig,
         directory: &Path,
         first_offset: BlockOffset,
+        tracker: SegmentTracker,
     ) -> Result<DirectorySegment, Error> {
         let segment_path = Self::segment_path(directory, first_offset);
-        let segment = Self::open(config, &segment_path)?;
+        let segment = Self::open(config, &segment_path, tracker)?;
 
         if segment.first_block_offset != first_offset {
             return Err(Error::Integrity(format!(
@@ -89,25 +95,27 @@ impl DirectorySegment {
     pub fn open(
         config: DirectoryChainStoreConfig,
         segment_path: &Path,
+        tracker: SegmentTracker,
     ) -> Result<DirectorySegment, Error> {
         info!("Opening segment at {:?}", segment_path);
 
-        let metadata = SegmentMetadata::from_segment_file_path(segment_path)?;
+        let metadata = SegmentMetadata::from_segment_file_path(segment_path, tracker.clone())?;
 
-        Self::open_with_metadata(config, segment_path, &metadata)
+        Self::open_with_metadata(config, segment_path, &metadata, tracker)
     }
 
     pub fn open_with_metadata(
         config: DirectoryChainStoreConfig,
         segment_path: &Path,
         metadata: &SegmentMetadata,
+        tracker: SegmentTracker,
     ) -> Result<DirectorySegment, Error> {
         info!(
             "Opening segment at {:?} with metadata {:?}",
             segment_path, metadata
         );
 
-        let segment_file = SegmentFile::open(&segment_path, 0)?;
+        let segment_file = SegmentFile::open(&segment_path, 0, tracker)?;
         let next_file_offset = (metadata.next_block_offset - metadata.first_block_offset) as usize;
 
         Ok(DirectorySegment {
@@ -213,6 +221,14 @@ impl DirectorySegment {
         self.segment_file.set_len(keep_len)
     }
 
+    pub fn open_write(&self) -> Result<(), Error> {
+        self.segment_file.maybe_mmap_write()
+    }
+
+    pub fn close_write(&self) {
+        self.segment_file.close_write();
+    }
+
     pub fn delete(self) -> Result<(), Error> {
         let segment_path = self.segment_path.clone();
         drop(self);
@@ -280,8 +296,11 @@ pub struct SegmentMetadata {
 }
 
 impl SegmentMetadata {
-    fn from_segment_file_path(path: &Path) -> Result<SegmentMetadata, Error> {
-        let segment_file = SegmentFile::open(path, 0)?;
+    fn from_segment_file_path(
+        path: &Path,
+        tracker: SegmentTracker,
+    ) -> Result<SegmentMetadata, Error> {
+        let segment_file = SegmentFile::open(path, 0, tracker)?;
 
         Self::from_segment_file(&segment_file)
     }
@@ -329,22 +348,18 @@ struct SegmentFile {
     file: File,
     mmap: RwLock<SegmentMmap>,
     current_size: u64,
+    tracker: SegmentTracker,
+    registered_segment: RegisteredSegment,
 }
 
 enum SegmentMmap {
     Write(memmap2::MmapMut),
-    Read(Arc<memmap2::Mmap>),
+    Read(Weak<memmap2::Mmap>),
     Closed,
 }
 
-impl SegmentMmap {
-    fn is_closed(&self) -> bool {
-        matches!(self, SegmentMmap::Closed)
-    }
-}
-
 impl SegmentFile {
-    fn open(path: &Path, minimum_size: u64) -> Result<SegmentFile, Error> {
+    fn open(path: &Path, minimum_size: u64, tracker: SegmentTracker) -> Result<SegmentFile, Error> {
         let file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -365,74 +380,109 @@ impl SegmentFile {
             })?;
         }
 
-        // TODO: Should be closed by default
-        // let mmap_mut = unsafe {
-        //     SegmentMmap::Write(memmap2::MmapOptions::new().map_mut(&file).
-        // map_err(|err| {         Error::new_io(err, format!("Error mmaping
-        // segment file {:?}", path))     })?)
-        // };
+        let registered_segment = tracker.register();
 
         Ok(SegmentFile {
             path: path.to_path_buf(),
             file,
             mmap: RwLock::new(SegmentMmap::Closed),
             current_size,
+            tracker,
+            registered_segment,
         })
     }
 
-    fn maybe_mmap_read(&self) -> Result<(), Error> {
+    fn maybe_mmap_read(&self) -> Result<Option<Arc<memmap2::Mmap>>, Error> {
+        self.registered_segment.access();
+
         {
-            let map = self.mmap.read().unwrap();
-            if !map.is_closed() {
-                return Ok(());
+            // first check if it's already open
+            let mmap = self.mmap.read().unwrap();
+            match &*mmap {
+                SegmentMmap::Read(mmap) => {
+                    // make sure mmap was still open
+                    if let Some(mmap) = mmap.upgrade() {
+                        return Ok(Some(mmap));
+                    }
+                }
+                SegmentMmap::Write(_mmap) => {
+                    return Ok(None);
+                }
+                _ => {}
             }
         }
 
-        let mut map = self.mmap.write().unwrap();
-        *map = unsafe {
+        let mut mmap = self.mmap.write().unwrap();
+        let mmap_arc = unsafe {
             let mmap = memmap2::MmapOptions::new().map(&self.file).map_err(|err| {
                 Error::new_io(err, format!("Error mmaping segment file {:?}", self.path))
             })?;
-
-            SegmentMmap::Read(Arc::new(mmap))
+            Arc::new(mmap)
         };
 
-        Ok(())
+        self.tracker
+            .open_read(&self.registered_segment, mmap_arc.clone());
+
+        *mmap = SegmentMmap::Read(Arc::downgrade(&mmap_arc));
+
+        Ok(Some(mmap_arc))
     }
 
     fn maybe_mmap_write(&self) -> Result<(), Error> {
+        self.registered_segment.access();
+
         {
-            let map = self.mmap.read().unwrap();
-            match &*map {
+            // first check if it's already open for write or it's closed
+            let mmap = self.mmap.read().unwrap();
+            match &*mmap {
                 SegmentMmap::Write(_) => {
                     return Ok(());
                 }
-                SegmentMmap::Read(_) => {
-                    // TODO: Could be OK if the weak reference has been dropped.
-                    return Err(Error::UnexpectedState(
-                        "File segment mmap is read-only. Expected closed or writable.".to_string(),
-                    ));
+                SegmentMmap::Read(mmap) => {
+                    // if it's open to read, we try to close it first
+                    if mmap.upgrade().is_some() {
+                        self.tracker.close(&self.registered_segment);
+                    }
+
+                    // then, if it's still open, we're still reading
+                    if mmap.upgrade().is_some() {
+                        return Err(Error::UnexpectedState(
+                            "File segment mmap is read-only. Expected closed or writable."
+                                .to_string(),
+                        ));
+                    }
                 }
                 SegmentMmap::Closed => {}
             }
         }
 
-        let mut map = self.mmap.write().unwrap();
-        *map =
+        let mut mmap = self.mmap.write().unwrap();
+        *mmap =
             unsafe {
                 SegmentMmap::Write(memmap2::MmapOptions::new().map_mut(&self.file).map_err(
                     |err| Error::new_io(err, format!("Error mmaping segment file {:?}", self.path)),
                 )?)
             };
 
+        self.tracker.open_write(&self.registered_segment);
+
         Ok(())
     }
 
-    fn get_block(&self, offset: usize) -> Result<DataBlock<ChainData>, Error> {
-        self.maybe_mmap_read()?;
-        let map = self.mmap.read().unwrap();
+    fn close_write(&self) {
+        let mut mmap = self.mmap.write().unwrap();
+        if !matches!(&*mmap, &SegmentMmap::Write(_)) {
+            return;
+        }
 
-        match &*map {
+        *mmap = SegmentMmap::Closed;
+    }
+
+    fn get_block(&self, offset: usize) -> Result<DataBlock<ChainData>, Error> {
+        let mmap_read = self.maybe_mmap_read()?;
+
+        let mmap = self.mmap.read().unwrap();
+        match &*mmap {
             SegmentMmap::Write(mmap) => {
                 let data = RefData::new(&mmap[offset..]);
                 let block = DataBlock::new(data)?;
@@ -440,8 +490,9 @@ impl SegmentFile {
                 let data = ChainData::Bytes(bytes);
                 Ok(DataBlock::new(data)?)
             }
-            SegmentMmap::Read(mmap) => {
-                let data = MmapData::from_mmap(mmap.clone(), self.current_size as usize);
+            SegmentMmap::Read(_mmap) => {
+                let mmap = mmap_read.expect("Read mmap, expected it opened");
+                let data = MmapData::from_mmap(mmap, self.current_size as usize);
                 let data = ChainData::Mmap(data);
                 Ok(DataBlock::new(data.view(offset..))?)
             }
@@ -450,10 +501,10 @@ impl SegmentFile {
     }
 
     fn get_block_from_next(&self, next_offset: usize) -> Result<DataBlock<ChainData>, Error> {
-        self.maybe_mmap_read()?;
-        let map = self.mmap.read().unwrap();
+        let mmap_read = self.maybe_mmap_read()?;
 
-        match map.deref() {
+        let mmap = self.mmap.read().unwrap();
+        match &*mmap {
             SegmentMmap::Write(mmap) => {
                 let data = RefData::new(mmap);
                 let block = DataBlock::new_from_next_offset(data, next_offset)?;
@@ -461,8 +512,9 @@ impl SegmentFile {
                 let data = ChainData::Bytes(bytes);
                 Ok(DataBlock::new(data)?)
             }
-            SegmentMmap::Read(mmap) => {
-                let data = MmapData::from_mmap(mmap.clone(), self.current_size as usize);
+            SegmentMmap::Read(_mmap) => {
+                let mmap = mmap_read.expect("Read mmap, expected it opened");
+                let data = MmapData::from_mmap(mmap, self.current_size as usize);
                 let data = ChainData::Mmap(data);
                 Ok(DataBlock::new_from_next_offset(data, next_offset)?)
             }
@@ -473,43 +525,40 @@ impl SegmentFile {
     fn write_block<B: Block>(&mut self, offset: usize, block: &B) -> Result<(), Error> {
         self.maybe_mmap_write()?;
 
-        let mut map = self.mmap.write().unwrap();
-        let mmap = if let SegmentMmap::Write(mmap) = &mut *map {
+        let mut mmap = self.mmap.write().unwrap();
+        let mmap = if let SegmentMmap::Write(mmap) = &mut *mmap {
             mmap
         } else {
-            panic!("Expected writable");
+            panic!("Expected segment to be writable");
         };
 
         block.copy_data_into(&mut mmap[offset..]);
+
         Ok(())
     }
 
     fn set_len(&mut self, new_size: u64) -> Result<(), Error> {
         self.maybe_mmap_write()?;
 
-        let mut mmap = self.mmap.write().unwrap();
+        {
+            // On Windows, we can't resize a file while it's currently being mapped. We
+            // close the mmap first by replacing it by an anonymous mmap.
+            let mut mmap = self.mmap.write().unwrap();
+            *mmap = SegmentMmap::Closed;
 
-        // On Windows, we can't resize a file while it's currently being mapped. We
-        // close the mmap first by replacing it by an anonymous mmap.
-        *mmap = SegmentMmap::Closed;
+            self.tracker.close(&self.registered_segment);
 
-        // TODO: Probably need to tell the segment tracker to drop
+            self.file.set_len(new_size).map_err(|err| {
+                Error::new_io(
+                    err,
+                    format!("Error setting len of segment file {:?}", self.path),
+                )
+            })?;
+        }
 
-        self.file.set_len(new_size).map_err(|err| {
-            Error::new_io(
-                err,
-                format!("Error setting len of segment file {:?}", self.path),
-            )
-        })?;
-
-        *mmap =
-            unsafe {
-                SegmentMmap::Write(memmap2::MmapOptions::new().map_mut(&self.file).map_err(
-                    |err| Error::new_io(err, format!("Error mmaping segment file {:?}", self.path)),
-                )?)
-            };
-
+        self.maybe_mmap_write()?;
         self.current_size = new_size;
+
         Ok(())
     }
 }
@@ -564,12 +613,14 @@ mod tests {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
         let dir = tempfile::tempdir()?;
+        let tracker = SegmentTracker::new(1);
 
         let segment_id = 1234;
         let block = create_block(&cell, 1234);
 
         {
-            let segment = DirectorySegment::create(Default::default(), dir.path(), &block)?;
+            let segment =
+                DirectorySegment::create(Default::default(), dir.path(), &block, tracker.clone())?;
             assert_eq!(segment.first_block_offset, 1234);
             assert_eq!(segment.next_file_offset as usize, block.total_size());
             assert_eq!(
@@ -583,6 +634,7 @@ mod tests {
                 Default::default(),
                 dir.path(),
                 segment_id,
+                tracker,
             )?;
             assert_eq!(segment.first_block_offset, 1234);
             assert_eq!(segment.next_file_offset as usize, block.total_size());
@@ -599,17 +651,20 @@ mod tests {
     fn directory_segment_create_already_exist() -> anyhow::Result<()> {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
-
         let dir = tempfile::tempdir()?;
+        let tracker = SegmentTracker::new(1);
 
         {
             let block = create_block(&cell, 1234);
-            let _segment = DirectorySegment::create(Default::default(), dir.path(), &block)?;
+            let _segment =
+                DirectorySegment::create(Default::default(), dir.path(), &block, tracker.clone())?;
         }
 
         {
             let block = create_block(&cell, 1234);
-            assert!(DirectorySegment::create(Default::default(), dir.path(), &block).is_err());
+            assert!(
+                DirectorySegment::create(Default::default(), dir.path(), &block, tracker).is_err()
+            );
         }
 
         Ok(())
@@ -618,11 +673,14 @@ mod tests {
     #[test]
     fn directory_segment_open_invalid() -> anyhow::Result<()> {
         let dir = tempfile::tempdir()?;
+        let tracker = SegmentTracker::new(1);
 
         {
             let segment_path = dir.path().join("some_file");
             std::fs::write(&segment_path, "hello")?;
-            assert!(DirectorySegment::open(Default::default(), &segment_path).is_err());
+            assert!(
+                DirectorySegment::open(Default::default(), &segment_path, tracker.clone()).is_err()
+            );
         }
 
         {
@@ -632,6 +690,7 @@ mod tests {
                 Default::default(),
                 &segment_path,
                 100,
+                tracker,
             )
             .is_err());
         }
@@ -644,10 +703,12 @@ mod tests {
         let local_node = LocalNode::generate();
         let cell = FullCell::generate(local_node);
         let dir = tempfile::tempdir()?;
+        let tracker = SegmentTracker::new(1);
 
         let offset1 = 0;
         let block = create_block(&cell, offset1);
-        let mut segment = DirectorySegment::create(Default::default(), dir.path(), &block)?;
+        let mut segment =
+            DirectorySegment::create(Default::default(), dir.path(), &block, tracker)?;
         {
             let block = segment.get_block(offset1)?;
             assert_eq!(block.offset, offset1);
@@ -691,10 +752,12 @@ mod tests {
         let dir = tempfile::tempdir()?;
         let config = Default::default();
         let segment_first_block_offset = 1234;
+        let tracker = SegmentTracker::new(1);
 
         {
             let first_block = create_block(&cell, segment_first_block_offset);
-            let mut segment = DirectorySegment::create(config, dir.path(), &first_block)?;
+            let mut segment =
+                DirectorySegment::create(config, dir.path(), &first_block, tracker.clone())?;
             let next_block_offset = segment.next_block_offset;
             assert_eq!(
                 next_block_offset,
@@ -708,6 +771,7 @@ mod tests {
                 config,
                 dir.path(),
                 segment_first_block_offset,
+                tracker,
             )?;
             assert!(segment.get_block(0).is_err());
             assert!(segment.get_block(1234).is_ok());
@@ -731,12 +795,13 @@ mod tests {
             segment_over_allocate_size: 100_000,
             ..Default::default()
         };
+        let tracker = SegmentTracker::new(1);
 
         let dir = tempfile::tempdir()?;
         let mut next_offset = 0;
 
         let block = create_block(&cell, next_offset);
-        let mut segment = DirectorySegment::create(config, dir.path(), &block)?;
+        let mut segment = DirectorySegment::create(config, dir.path(), &block, tracker)?;
         next_offset += block.total_size() as u64;
         assert_eq!(segment.next_block_offset, next_offset);
         assert_eq!(segment.next_file_offset, block.total_size());
@@ -769,11 +834,12 @@ mod tests {
             segment_over_allocate_size: 100_000,
             ..Default::default()
         };
+        let tracker = SegmentTracker::new(1);
 
         let mut next_offset = 1000;
 
         let block = create_block(&cell, next_offset);
-        let mut segment = DirectorySegment::create(config, dir.path(), &block)?;
+        let mut segment = DirectorySegment::create(config, dir.path(), &block, tracker)?;
         next_offset += block.total_size() as u64;
         append_blocks_to_segment(&cell, &mut segment, next_offset, 999);
 
@@ -799,18 +865,29 @@ mod tests {
     fn segment_file_create() -> anyhow::Result<()> {
         let dir = tempfile::tempdir()?;
         let segment_path = dir.path().join("segment_0.seg");
+        let tracker = SegmentTracker::new(1);
 
-        let segment_file = SegmentFile::open(&segment_path, 1000)?;
+        let segment_file = SegmentFile::open(&segment_path, 1000, tracker.clone())?;
         assert_eq!(segment_file.current_size, 1000);
         drop(segment_file);
 
-        let mut segment_file = SegmentFile::open(&segment_path, 10)?;
+        let mut segment_file = SegmentFile::open(&segment_path, 10, tracker)?;
         assert_eq!(segment_file.current_size, 1000);
 
         segment_file.set_len(2000)?;
         assert_eq!(segment_file.current_size, 2000);
 
         Ok(())
+    }
+
+    #[test]
+    fn segment_file_reopen_mmap() {
+        // TODO:
+    }
+
+    #[test]
+    fn segment_file_write_only() {
+        // TODO:
     }
 
     fn append_blocks_to_segment(

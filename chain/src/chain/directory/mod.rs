@@ -19,6 +19,8 @@ mod segment;
 use segment::DirectorySegment;
 pub(self) mod tracker;
 
+use self::tracker::SegmentTracker;
+
 use super::{ChainData, Segments};
 
 const METADATA_FILE: &str = "metadata.json";
@@ -31,6 +33,7 @@ pub struct DirectoryChainStore {
     directory: PathBuf,
     metadata_store: JsonDiskStore<DirectoryChainMetadata>,
     segments: Vec<DirectorySegment>,
+    segment_tracker: SegmentTracker,
 
     // TODO: Optional because index needs the Store to be initialized to iterate
     // TODO: To be solved in https://github.com/appaquet/exocore/issues/34
@@ -105,6 +108,7 @@ impl DirectoryChainStore {
             directory: directory_path.to_path_buf(),
             metadata_store,
             segments: Vec::new(),
+            segment_tracker: SegmentTracker::new(config.segment_max_open),
             operations_index: Some(operations_index),
         })
     }
@@ -139,6 +143,7 @@ impl DirectoryChainStore {
             }
         }
 
+        let segment_tracker = SegmentTracker::new(config.segment_max_open);
         let mut segments = Vec::new();
         let paths = std::fs::read_dir(directory_path).map_err(|err| {
             Error::new_io(
@@ -156,20 +161,30 @@ impl DirectoryChainStore {
                 let filename = path.file_name().to_string_lossy().to_string();
 
                 let segment = if let Some(metadata) = segments_metadata.get(&filename) {
-                    DirectorySegment::open_with_metadata(config, &path.path(), metadata)?
+                    DirectorySegment::open_with_metadata(
+                        config,
+                        &path.path(),
+                        metadata,
+                        segment_tracker.clone(),
+                    )?
                 } else {
-                    DirectorySegment::open(config, &path.path())?
+                    DirectorySegment::open(config, &path.path(), segment_tracker.clone())?
                 };
                 segments.push(segment);
             }
         }
         segments.sort_by_key(|a| a.first_block_offset());
 
+        if let Some(segment) = segments.last() {
+            segment.open_write()?;
+        }
+
         let mut store = DirectoryChainStore {
             config,
             directory: directory_path.to_path_buf(),
             metadata_store,
             segments,
+            segment_tracker,
             operations_index: None,
         };
 
@@ -266,8 +281,19 @@ impl ChainStore for DirectoryChainStore {
             };
 
             if need_new_segment {
-                // TODO: Should close before-the-last segment
-                let segment = DirectorySegment::create(self.config, &self.directory, block)?;
+                if let Some(last_segment) = self.segments.last() {
+                    last_segment.close_write();
+                }
+
+                let segment = DirectorySegment::create(
+                    self.config,
+                    &self.directory,
+                    block,
+                    self.segment_tracker.clone(),
+                )?;
+
+                segment.open_write()?;
+
                 self.segments.push(segment);
                 self.save_metadata()?;
             }
@@ -426,6 +452,7 @@ impl Default for DirectoryChainMetadata {
 pub struct DirectoryChainStoreConfig {
     pub segment_over_allocate_size: u64,
     pub segment_max_size: u64,
+    pub segment_max_open: usize,
     pub operations_index_max_memory_items: usize,
 }
 
@@ -434,6 +461,7 @@ impl Default for DirectoryChainStoreConfig {
         DirectoryChainStoreConfig {
             segment_over_allocate_size: 20 * 1024 * 1024, // 20mb
             segment_max_size: 200 * 1024 * 1024,          // 200mb
+            segment_max_open: 20,
             operations_index_max_memory_items: 10000,
         }
     }
@@ -792,7 +820,8 @@ pub mod tests {
                     .blocks_iter(0)
                     .unwrap()
                     .nth(cutoff - 1)
-                    .unwrap();
+                    .unwrap()
+                    .to_owned();
                 let block_n_offset = block_n.offset;
                 let block_n_plus_offset = block_n.next_offset();
 
