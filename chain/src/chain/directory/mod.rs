@@ -450,9 +450,16 @@ impl Default for DirectoryChainMetadata {
 /// Configuration for directory based chain persistence.
 #[derive(Copy, Clone, Debug)]
 pub struct DirectoryChainStoreConfig {
+    /// Segment over allocation in bytes.
     pub segment_over_allocate_size: u64,
+
+    /// Maximum size in bytes per segment.
     pub segment_max_size: u64,
+
+    /// Maximum number of segments mmap open.
     pub segment_max_open: usize,
+
+    /// Maximum number of operations in memory.
     pub operations_index_max_memory_items: usize,
 }
 

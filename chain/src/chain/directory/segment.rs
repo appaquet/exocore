@@ -678,9 +678,9 @@ mod tests {
     #[test]
     fn directory_segment_open_invalid() -> anyhow::Result<()> {
         let dir = tempfile::tempdir()?;
-        let tracker = SegmentTracker::new(1);
 
         {
+            let tracker = SegmentTracker::new(1);
             let segment_path = dir.path().join("some_file");
             std::fs::write(&segment_path, "hello")?;
             assert!(
@@ -689,6 +689,7 @@ mod tests {
         }
 
         {
+            let tracker = SegmentTracker::new(1);
             let segment_path = dir.path().join("some_file");
             std::fs::write(&segment_path, "hello")?;
             assert!(DirectorySegment::open_with_first_offset(

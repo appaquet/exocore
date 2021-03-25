@@ -207,14 +207,15 @@ mod tests {
 
     #[test]
     fn simple_case() {
+        let dir = tempfile::tempdir().unwrap();
         let tracker = SegmentTracker::new(2);
 
         let segment1 = tracker.register("seg1".to_string());
         let segment2 = tracker.register("seg2".to_string());
         let segment3 = tracker.register("seg3".to_string());
 
-        let segment2_file = tempfile::tempfile().unwrap();
-        let segment3_file = tempfile::tempfile().unwrap();
+        let segment2_file = create_segment(&dir, "seg2");
+        let segment3_file = create_segment(&dir, "seg3");
 
         tracker.open_write(&segment1);
         tracker.open_read(&segment2, mmap(&segment2_file));
@@ -231,15 +232,16 @@ mod tests {
 
     #[test]
     fn sort_access_count() {
+        let dir = tempfile::tempdir().unwrap();
         let tracker = SegmentTracker::new(2);
 
         let segment1 = tracker.register("seg1".to_string());
         let segment2 = tracker.register("seg2".to_string());
         let segment3 = tracker.register("seg3".to_string());
 
-        let segment1_file = tempfile::tempfile().unwrap();
-        let segment2_file = tempfile::tempfile().unwrap();
-        let segment3_file = tempfile::tempfile().unwrap();
+        let segment1_file = create_segment(&dir, "seg1");
+        let segment2_file = create_segment(&dir, "seg2");
+        let segment3_file = create_segment(&dir, "seg3");
 
         tracker.open_read(&segment1, mmap(&segment1_file));
         tracker.open_read(&segment2, mmap(&segment2_file));
@@ -270,6 +272,15 @@ mod tests {
             let inner = tracker.inner.lock().unwrap();
             assert_eq!(inner.opened.len(), 0);
         }
+    }
+
+    fn create_segment(dir: &tempfile::TempDir, name: &str) -> File {
+        {
+            let file = File::create(dir.path().join(name)).unwrap();
+            file.set_len(1).unwrap();
+        }
+
+        File::open(dir.path().join(name)).unwrap()
     }
 
     fn mmap(file: &File) -> Arc<memmap2::Mmap> {
