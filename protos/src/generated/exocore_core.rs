@@ -38,6 +38,8 @@ pub struct LocalNodeConfig {
     #[prost(message, optional, tag = "8")]
     #[serde(default)]
     pub store: ::core::option::Option<NodeStoreConfig>,
+    #[prost(message, optional, tag = "9")]
+    pub chain: ::core::option::Option<ChainConfig>,
 }
 #[derive(Serialize, Deserialize, Clone, PartialEq, ::prost::Message)]
 pub struct NodeAddresses {
@@ -77,6 +79,22 @@ pub struct NodeStoreConfig {
     #[prost(message, optional, tag = "2")]
     #[serde(default)]
     pub query_parallelism: ::core::option::Option<u32>,
+}
+#[derive(Serialize, Deserialize, Clone, PartialEq, ::prost::Message)]
+pub struct ChainConfig {
+    /// Maximum size in bytes per segment. This is a soft limit since the last
+    /// block could overflow that maximum. This should be small enough so
+    /// that a few segments can fit in allocable virtual space on 32b
+    /// systems. See `segment_max_open` for maximum concurrently opened
+    /// segments.
+    #[prost(message, optional, tag = "1")]
+    pub segment_max_size: ::core::option::Option<u64>,
+    /// Maximum number of segments concurrently mmap. On 64b systems, where
+    /// virtual memory isn't a problem, this can be high. But on 32b
+    /// systems, one should aim to have maximum ~1-2gb of concurrently mmap
+    /// segments. See `segment_max_size` for maximum size per segment.
+    #[prost(message, optional, tag = "2")]
+    pub segment_max_open_mmap: ::core::option::Option<u32>,
 }
 /// Configuration of the entity index
 #[derive(Serialize, Deserialize, Clone, PartialEq, ::prost::Message)]
@@ -130,10 +148,10 @@ pub struct MutationIndexConfig {
 pub struct EntityGarbageCollectorConfig {
     /// How often the garbage collection process will run in seconds.
     ///
-    /// Since garbage collection doesn't happen on the whole index, but only on
-    /// entities that got flagged during search, it is better to run more
-    /// often than less. `GarbageCollectorConfig::queue_size` can be tweaked
-    /// to control rate of collection.
+    /// Since garbage collection doesn't happen on the whole index, but only on entities
+    /// that got flagged during search, it is better to run more often than
+    /// less. `GarbageCollectorConfig::queue_size` can be tweaked to control
+    /// rate of collection.
     #[prost(message, optional, tag = "1")]
     #[serde(default)]
     pub run_interval_secs: ::core::option::Option<u32>,

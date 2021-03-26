@@ -272,7 +272,7 @@ impl OperationsIndex {
     /// Checks the size of the in-memory index and flush it to disk if it
     /// exceeds configured maximum.
     fn maybe_flush_to_disk(&mut self) -> Result<(), Error> {
-        if self.memory_index.len() > self.config.operations_index_max_memory_items {
+        if self.memory_index.len() > self.config.operation_index_max_memory_items {
             debug!(
                 "Storing in-memory index of operations to disk ({} items)",
                 self.memory_index.len()
@@ -432,7 +432,7 @@ mod tests {
         let cell = FullCell::generate(local_node);
         let dir = tempfile::tempdir()?;
         let config = DirectoryChainStoreConfig {
-            operations_index_max_memory_items: 100,
+            operation_index_max_memory_items: 100,
             ..DirectoryChainStoreConfig::default()
         };
 
@@ -459,7 +459,7 @@ mod tests {
         let cell = FullCell::generate(local_node);
         let dir = tempfile::tempdir()?;
         let config = DirectoryChainStoreConfig {
-            operations_index_max_memory_items: 100,
+            operation_index_max_memory_items: 100,
             ..DirectoryChainStoreConfig::default()
         };
 
@@ -500,7 +500,7 @@ mod tests {
         let cell = FullCell::generate(local_node);
         let dir = tempfile::tempdir()?;
         let config = DirectoryChainStoreConfig {
-            operations_index_max_memory_items: 100,
+            operation_index_max_memory_items: 100,
             ..DirectoryChainStoreConfig::default()
         };
 
@@ -521,7 +521,7 @@ mod tests {
         let cell = FullCell::generate(local_node);
         let dir = tempfile::tempdir()?;
         let config = DirectoryChainStoreConfig {
-            operations_index_max_memory_items: 100,
+            operation_index_max_memory_items: 100,
             ..DirectoryChainStoreConfig::default()
         };
 

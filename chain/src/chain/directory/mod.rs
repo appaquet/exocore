@@ -17,8 +17,10 @@ mod operations_index;
 use operations_index::OperationsIndex;
 mod segment;
 use segment::DirectorySegment;
-pub(self) mod tracker;
+mod config;
+pub use config::DirectoryChainStoreConfig;
 
+pub(self) mod tracker;
 use self::tracker::SegmentTracker;
 
 use super::{ChainData, Segments};
@@ -108,7 +110,7 @@ impl DirectoryChainStore {
             directory: directory_path.to_path_buf(),
             metadata_store,
             segments: Vec::new(),
-            segment_tracker: SegmentTracker::new(config.segment_max_open),
+            segment_tracker: SegmentTracker::new(config.segment_max_open_mmap),
             operations_index: Some(operations_index),
         })
     }
@@ -143,7 +145,7 @@ impl DirectoryChainStore {
             }
         }
 
-        let segment_tracker = SegmentTracker::new(config.segment_max_open);
+        let segment_tracker = SegmentTracker::new(config.segment_max_open_mmap);
         let mut segments = Vec::new();
         let paths = std::fs::read_dir(directory_path).map_err(|err| {
             Error::new_io(
@@ -443,33 +445,6 @@ impl Default for DirectoryChainMetadata {
     fn default() -> Self {
         DirectoryChainMetadata {
             segments: Vec::new(),
-        }
-    }
-}
-
-/// Configuration for directory based chain persistence.
-#[derive(Copy, Clone, Debug)]
-pub struct DirectoryChainStoreConfig {
-    /// Segment over allocation in bytes.
-    pub segment_over_allocate_size: u64,
-
-    /// Maximum size in bytes per segment.
-    pub segment_max_size: u64,
-
-    /// Maximum number of segments mmap open.
-    pub segment_max_open: usize,
-
-    /// Maximum number of operations in memory.
-    pub operations_index_max_memory_items: usize,
-}
-
-impl Default for DirectoryChainStoreConfig {
-    fn default() -> Self {
-        DirectoryChainStoreConfig {
-            segment_over_allocate_size: 20 * 1024 * 1024, // 20mb
-            segment_max_size: 200 * 1024 * 1024,          // 200mb
-            segment_max_open: 20,
-            operations_index_max_memory_items: 10000,
         }
     }
 }

@@ -683,9 +683,7 @@ mod tests {
             let tracker = SegmentTracker::new(1);
             let segment_path = dir.path().join("some_file");
             std::fs::write(&segment_path, "hello")?;
-            assert!(
-                DirectorySegment::open(Default::default(), &segment_path, tracker.clone()).is_err()
-            );
+            assert!(DirectorySegment::open(Default::default(), &segment_path, tracker).is_err());
         }
 
         {
