@@ -3,7 +3,7 @@
 pub struct DirectoryChainStoreConfig {
     /// Segment over allocation, in bytes. When resizing a segment, this
     /// amount of bytes will be allocated over the required len to prevent
-    /// reopening the segment too often.
+    /// remapping the segment too often.
     pub segment_over_allocate_size: u64,
 
     /// Maximum size in bytes per segment. This is a soft limit since the last

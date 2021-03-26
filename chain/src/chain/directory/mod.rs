@@ -13,8 +13,8 @@ use crate::{
 
 use exocore_core::simple_store::{json_disk_store::JsonDiskStore, SimpleStore};
 
-mod operations_index;
-use operations_index::OperationsIndex;
+mod operation_index;
+use operation_index::OperationIndex;
 mod segment;
 use segment::DirectorySegment;
 mod config;
@@ -39,7 +39,7 @@ pub struct DirectoryChainStore {
 
     // TODO: Optional because index needs the Store to be initialized to iterate
     // TODO: To be solved in https://github.com/appaquet/exocore/issues/34
-    operations_index: Option<OperationsIndex>,
+    operation_index: Option<OperationIndex>,
 }
 
 impl DirectoryChainStore {
@@ -103,15 +103,16 @@ impl DirectoryChainStore {
             )
         })?;
 
-        let operations_index = OperationsIndex::create(config, directory_path)?;
+        let segment_tracker = SegmentTracker::new(config.segment_max_open_mmap);
+        let operation_index = OperationIndex::create(config, directory_path)?;
 
         Ok(DirectoryChainStore {
             config,
             directory: directory_path.to_path_buf(),
             metadata_store,
             segments: Vec::new(),
-            segment_tracker: SegmentTracker::new(config.segment_max_open_mmap),
-            operations_index: Some(operations_index),
+            segment_tracker,
+            operation_index: Some(operation_index),
         })
     }
 
@@ -187,17 +188,17 @@ impl DirectoryChainStore {
             metadata_store,
             segments,
             segment_tracker,
-            operations_index: None,
+            operation_index: None,
         };
 
-        let operations_index = {
-            let mut operations_index = OperationsIndex::open(config, directory_path)?;
-            let next_index_offset = operations_index.next_expected_block_offset();
+        let operation_index = {
+            let mut operation_index = OperationIndex::open(config, directory_path)?;
+            let next_index_offset = operation_index.next_expected_block_offset();
             let blocks_to_index = store.blocks_iter(next_index_offset);
-            operations_index.index_blocks(blocks_to_index)?;
-            operations_index
+            operation_index.index_blocks(blocks_to_index)?;
+            operation_index
         };
-        store.operations_index = Some(operations_index);
+        store.operation_index = Some(operation_index);
 
         store.save_metadata()?;
 
@@ -308,11 +309,11 @@ impl ChainStore for DirectoryChainStore {
             block_segment.write_block(block)?;
         }
 
-        let operations_index = self
-            .operations_index
+        let operation_index = self
+            .operation_index
             .as_mut()
-            .expect("Operations index was none, which shouldn't be possible");
-        operations_index.index_block(block)?;
+            .expect("Operation index was none, which shouldn't be possible");
+        operation_index.index_block(block)?;
 
         Ok(block_segment.next_block_offset())
     }
@@ -375,12 +376,12 @@ impl ChainStore for DirectoryChainStore {
         &self,
         operation_id: OperationId,
     ) -> Result<Option<DataBlock<ChainData>>, Error> {
-        let operations_index = self
-            .operations_index
+        let operation_index = self
+            .operation_index
             .as_ref()
-            .expect("Operations index was none, which shouldn't be possible");
+            .expect("Operation index was none, which shouldn't be possible");
 
-        if let Some(block_offset) = operations_index.get_operation_block(operation_id)? {
+        if let Some(block_offset) = operation_index.get_operation_block(operation_id)? {
             let block = self.get_block(block_offset)?;
             Ok(Some(block))
         } else {
@@ -417,14 +418,14 @@ impl ChainStore for DirectoryChainStore {
         //
         // TODO: To be solved in https://github.com/appaquet/exocore/issues/34
         let mut index = self
-            .operations_index
+            .operation_index
             .take()
-            .expect("Operations index was none, which shouldn't be possible");
+            .expect("Operation index was none, which shouldn't be possible");
         index.truncate_from_offset(offset)?;
         let next_index_offset = index.next_expected_block_offset();
         let blocks_to_index = self.blocks_iter(next_index_offset);
         index.index_blocks(blocks_to_index)?;
-        self.operations_index = Some(index);
+        self.operation_index = Some(index);
 
         Ok(())
     }
@@ -561,11 +562,11 @@ impl<'s> Iterator for DirectoryBlockReverseIterator<'s> {
 /// Directory chain store specific errors
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum DirectoryError {
-    #[error("Error building operations index: {0:?}")]
-    OperationsIndexBuild(Arc<extindex::BuilderError>),
+    #[error("Error building operation index: {0:?}")]
+    OperationIndexBuild(Arc<extindex::BuilderError>),
 
-    #[error("Error reading operations index: {0:?}")]
-    OperationsIndexRead(Arc<extindex::ReaderError>),
+    #[error("Error reading operation index: {0:?}")]
+    OperationIndexRead(Arc<extindex::ReaderError>),
 }
 
 #[cfg(test)]
@@ -750,7 +751,7 @@ pub mod tests {
 
             append_blocks(&cell, &mut directory_chain, 1000, 0);
             validate_directory(&directory_chain)?;
-            validate_directory_operations_index(&directory_chain)?;
+            validate_directory_operation_index(&directory_chain)?;
 
             directory_chain.segments()
         };
@@ -760,7 +761,7 @@ pub mod tests {
             assert_eq!(directory_chain.segments(), init_segments);
 
             validate_directory(&directory_chain)?;
-            validate_directory_operations_index(&directory_chain)?;
+            validate_directory_operation_index(&directory_chain)?;
         }
 
         Ok(())
@@ -820,7 +821,7 @@ pub mod tests {
                 let iter_reverse = directory_chain.blocks_iter_reverse(block_n_plus_offset);
                 validate_iterator(iter_reverse, cutoff, block_n_offset, 0, true);
 
-                validate_directory_operations_index(&directory_chain).unwrap();
+                validate_directory_operation_index(&directory_chain).unwrap();
 
                 (segments_before, block_n_offset, block_n_plus_offset)
             };
@@ -842,7 +843,7 @@ pub mod tests {
                 let iter_reverse = directory_chain.blocks_iter_reverse(block_n_plus_offset);
                 validate_iterator(iter_reverse, cutoff, block_n_offset, 0, true);
 
-                validate_directory_operations_index(&directory_chain).unwrap();
+                validate_directory_operation_index(&directory_chain).unwrap();
 
                 assert_eq!(
                     directory_chain.get_last_block().unwrap().unwrap().offset,
@@ -938,7 +939,7 @@ pub mod tests {
         assert_eq!(last_block_offset.unwrap(), expect_last_offset);
     }
 
-    fn validate_directory_operations_index(store: &DirectoryChainStore) -> anyhow::Result<()> {
+    fn validate_directory_operation_index(store: &DirectoryChainStore) -> anyhow::Result<()> {
         let all_blocks_offsets = store
             .blocks_iter(0)
             .map(|block| block.unwrap().offset)
