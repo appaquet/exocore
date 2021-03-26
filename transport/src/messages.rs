@@ -6,7 +6,7 @@ use exocore_core::{
 };
 use exocore_protos::generated::{common_capnp::envelope, MessageType};
 
-use crate::{transport::ConnectionID, Error, ServiceType};
+use crate::{transport::ConnectionId, Error, ServiceType};
 
 pub type RendezVousId = ConsistentTimestamp;
 
@@ -14,7 +14,7 @@ pub type RendezVousId = ConsistentTimestamp;
 pub struct OutMessage {
     pub to: Vec<Node>,
     pub expiration: Option<Instant>,
-    pub connection: Option<ConnectionID>,
+    pub connection: Option<ConnectionId>,
     pub envelope_builder: CapnpFrameBuilder<envelope::Owned>,
 }
 
@@ -65,7 +65,7 @@ impl OutMessage {
         self
     }
 
-    pub fn with_connection(mut self, connection: ConnectionID) -> Self {
+    pub fn with_connection(mut self, connection: ConnectionId) -> Self {
         self.connection = Some(connection);
         self
     }
@@ -89,7 +89,7 @@ pub struct InMessage {
     pub service_type: ServiceType,
     pub rendez_vous_id: Option<RendezVousId>,
     pub message_type: u16,
-    pub connection: Option<ConnectionID>,
+    pub connection: Option<ConnectionId>,
     pub envelope: TypedCapnpFrame<Bytes, envelope::Owned>,
 }
 
@@ -183,7 +183,7 @@ pub struct MessageReplyToken {
     from: Node,
     service_type: ServiceType,
     rendez_vous_id: RendezVousId,
-    connection: Option<ConnectionID>,
+    connection: Option<ConnectionId>,
 }
 
 impl MessageReplyToken {

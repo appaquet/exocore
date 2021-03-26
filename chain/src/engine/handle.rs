@@ -103,13 +103,16 @@ where
     ) -> Result<Option<(BlockOffset, BlockHeight)>, EngineError> {
         let inner = self.inner.upgrade().ok_or(EngineError::InnerUpgrade)?;
         let unlocked_inner = inner.read()?;
-        let block = unlocked_inner.chain_store.get_block(offset).ok();
-
-        if let Some(block) = block {
-            let height = block.get_height()?;
-            Ok(Some((block.offset, height)))
-        } else {
-            Ok(None)
+        match unlocked_inner.chain_store.get_block(offset) {
+            Ok(block) => {
+                let height = block.get_height()?;
+                Ok(Some((block.offset, height)))
+            }
+            Err(err) if err.is_fatal() => Err(err.into()),
+            Err(_err) => {
+                // non-fatal just mean we didn't find block
+                Ok(None)
+            }
         }
     }
 
@@ -119,9 +122,14 @@ where
     ) -> Result<Option<DataBlock<ChainData>>, EngineError> {
         let inner = self.inner.upgrade().ok_or(EngineError::InnerUpgrade)?;
         let unlocked_inner = inner.read()?;
-        let block = unlocked_inner.chain_store.get_block(offset).ok();
-
-        Ok(block)
+        match unlocked_inner.chain_store.get_block(offset) {
+            Ok(block) => Ok(Some(block)),
+            Err(err) if err.is_fatal() => Err(err.into()),
+            Err(_err) => {
+                // non-fatal just mean we didn't find block
+                Ok(None)
+            }
+        }
     }
 
     pub fn get_pending_operation(

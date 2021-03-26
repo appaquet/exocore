@@ -155,11 +155,12 @@ impl OperationsIndex {
     /// Indexes an iterator of blocks. There is no guarantee that they will be
     /// actually stored to disk if they can still fit in the in-memory
     /// index.
-    pub fn index_blocks<I: Iterator<Item = B>, B: Block>(
+    pub fn index_blocks<I: Iterator<Item = Result<B, Error>>, B: Block>(
         &mut self,
         iterator: I,
     ) -> Result<(), Error> {
         for block in iterator {
+            let block = block?;
             if block.offset() >= self.memory_offset_from {
                 self.index_block(&block)?;
             }
@@ -567,7 +568,7 @@ mod tests {
             generated_ops.insert(next_offset + 1, next_offset);
 
             next_offset = block.next_offset();
-            block
+            Ok(block)
         });
 
         index.index_blocks(blocks_iter)?;

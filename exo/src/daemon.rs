@@ -13,7 +13,7 @@ use exocore_store::{
 };
 use exocore_transport::{
     either::EitherTransportServiceHandle,
-    http::{HTTPTransportConfig, HTTPTransportServer},
+    http::{HttpTransportConfig, HttpTransportServer},
     p2p::Libp2pTransportConfig,
     Libp2pTransport, ServiceType, TransportServiceHandle,
 };
@@ -33,8 +33,8 @@ pub async fn cmd_daemon(ctx: &Context) -> anyhow::Result<()> {
     };
 
     let mut http_transport = {
-        let http_config = HTTPTransportConfig::default();
-        HTTPTransportServer::new(local_node, http_config, clock.clone())
+        let http_config = HttpTransportConfig::default();
+        HttpTransportServer::new(local_node, http_config, clock.clone())
     };
 
     let mut engine_handles = Vec::new();

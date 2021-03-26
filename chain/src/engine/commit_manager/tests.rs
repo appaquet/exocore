@@ -581,8 +581,8 @@ fn should_not_cleanup_operations_from_commit_refused_blocks() -> anyhow::Result<
     cluster.tick_chain_synchronizer(0)?;
 
     let preceding_valid_block = cluster.chains[0]
-        .blocks_iter(0)?
-        .map(|b| b.to_owned())
+        .blocks_iter(0)
+        .map(|b| b.unwrap().to_owned())
         .nth(2)
         .unwrap();
 

@@ -18,12 +18,9 @@ pub trait ChainStore: Send + Sync + 'static {
 
     fn write_block<B: Block>(&mut self, block: &B) -> Result<BlockOffset, Error>;
 
-    fn blocks_iter(&self, from_offset: BlockOffset) -> Result<StoredBlockIterator, Error>;
+    fn blocks_iter(&self, from_offset: BlockOffset) -> StoredBlockIterator;
 
-    fn blocks_iter_reverse(
-        &self,
-        from_next_offset: BlockOffset,
-    ) -> Result<StoredBlockIterator, Error>;
+    fn blocks_iter_reverse(&self, from_next_offset: BlockOffset) -> StoredBlockIterator;
 
     fn get_block(&self, offset: BlockOffset) -> Result<DataBlock<ChainData>, Error>;
 
@@ -61,9 +58,9 @@ impl From<Vec<Segment>> for Segments {
     }
 }
 
-impl Into<Vec<Segment>> for Segments {
-    fn into(self) -> Vec<Segment> {
-        self.0
+impl From<Segments> for Vec<Segment> {
+    fn from(s: Segments) -> Self {
+        s.0
     }
 }
 
@@ -110,7 +107,7 @@ impl std::iter::IntoIterator for Segments {
 }
 
 /// Iterator over stored blocks.
-type StoredBlockIterator<'pers> = Box<dyn Iterator<Item = DataBlock<ChainData>> + 'pers>;
+type StoredBlockIterator<'p> = Box<dyn Iterator<Item = Result<DataBlock<ChainData>, Error>> + 'p>;
 
 #[cfg(test)]
 mod tests {
