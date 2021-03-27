@@ -838,11 +838,19 @@ fn cmd_app_list(ctx: &Context, cell_opts: &CellOptions, _app_opts: &AppOptions) 
         let app = cell_app.application();
         rows.push(vec![
             app.name().to_string(),
+            app.version().to_string(),
             app.public_key().encode_base58_string(),
         ]);
     }
 
-    print_table(vec!["Name".to_string(), "Public key".to_string()], rows);
+    print_table(
+        vec![
+            "Name".to_string(),
+            "Version".to_string(),
+            "Public key".to_string(),
+        ],
+        rows,
+    );
 }
 
 async fn cmd_app_install(
@@ -858,17 +866,36 @@ async fn cmd_app_install(
     let mut cell_config =
         CellConfig::from_yaml_file(&config_path).expect("Couldn't read cell config");
 
-    let app = match (&install_opts.url, &install_opts.path) {
-        (Some(url), _) => fetch_package_url(url.clone()).await?,
-        (_, Some(file)) => read_package_path(file)?,
+    let pkg = match (&install_opts.url, &install_opts.path) {
+        (Some(url), _) => fetch_package_url(url.clone())
+            .await
+            .expect("Couldn't fetch app package"),
+        (_, Some(file)) => read_package_path(file).expect("Couldn't read app package"),
         _ => {
             panic!("Expected package URL or package path");
         }
     };
 
+    let app_dir = full_cell.cell().app_directory(pkg.app.manifest()).unwrap();
+    let cell_dir = full_cell.cell().cell_directory().unwrap();
+
+    if app_dir.exists() {
+        print_info(format!(
+            "Application already installed at '{:?}'. Overwriting it.",
+            app_dir
+        ));
+        std::fs::remove_dir_all(&app_dir).expect("Couldn't remove existing app dir");
+    }
+
+    std::fs::rename(pkg.dir, &app_dir).expect("Couldn't move temp app dir");
+
     cell_config.add_application(CellApplicationConfig {
-        location: Some(cell_application_config::Location::Inline(
-            app.manifest().clone(),
+        location: Some(cell_application_config::Location::Path(
+            app_dir
+                .strip_prefix(cell_dir)
+                .unwrap()
+                .to_string_lossy()
+                .into(),
         )),
     });
 
@@ -880,7 +907,7 @@ async fn cmd_app_install(
         .to_yaml_file(&config_path)
         .expect("Couldn't write cell config");
 
-    let manifest = app.manifest();
+    let manifest = pkg.app.manifest();
     print_success(format!(
         "Application {} version {} got installed into cell.",
         style_value(&manifest.name),

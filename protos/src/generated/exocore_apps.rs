@@ -40,8 +40,9 @@ pub mod manifest_schema {
 #[derive(Serialize, Deserialize, Clone, PartialEq, ::prost::Message)]
 pub struct ManifestModule {
     #[prost(string, tag = "1")]
-    pub url: ::prost::alloc::string::String,
+    pub file: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
+    #[serde(default)]
     pub multihash: ::prost::alloc::string::String,
 }
 /// Message sent to application running in WASM from runtime.

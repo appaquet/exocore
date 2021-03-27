@@ -1,4 +1,8 @@
-use std::{fs::File, path::Path, sync::Arc};
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use exocore_protos::{
     generated::exocore_apps::{manifest_schema::Source, Manifest},
@@ -99,12 +103,23 @@ impl Application {
         &self.identity.manifest.name
     }
 
+    pub fn version(&self) -> &str {
+        &self.identity.manifest.version
+    }
+
     pub fn manifest(&self) -> &Manifest {
         &self.identity.manifest
     }
 
     pub fn schemas(&self) -> &[FileDescriptorSet] {
         self.schemas.as_ref()
+    }
+
+    pub fn module_path(&self) -> Option<PathBuf> {
+        let module = self.manifest().module.as_ref()?;
+
+        let app_path = PathBuf::from(&self.manifest().path);
+        Some(app_path.join(&module.file))
     }
 }
 
@@ -162,7 +177,7 @@ fn read_file_descriptor_set_file<P: AsRef<Path>>(
         )
     })?;
 
-    let fdset = FileDescriptorSet::parse_from_reader(&mut file).map_err(|err| {
+    let fd_set = FileDescriptorSet::parse_from_reader(&mut file).map_err(|err| {
         Error::Application(
             app_name.to_string(),
             anyhow!(
@@ -172,5 +187,5 @@ fn read_file_descriptor_set_file<P: AsRef<Path>>(
         )
     })?;
 
-    Ok(fdset)
+    Ok(fd_set)
 }

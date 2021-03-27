@@ -1,10 +1,10 @@
-use std::{fs::File, io::Write, path::PathBuf, sync::Arc, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::anyhow;
 use exocore_core::{
     cell::Cell,
     futures::{block_on, owned_spawn, sleep, spawn_blocking, spawn_future, BatchingStream},
-    sec::hash::{multihash_decode_bs58, MultihashDigestExt, MultihashExt, Sha3_256},
+    sec::hash::{multihash_decode_bs58, multihash_sha3_256_file, MultihashExt},
     time::Clock,
     utils::backoff::BackoffCalculator,
 };
@@ -47,10 +47,6 @@ impl<S: Store> Applications<S> {
         cell: Cell,
         store: S,
     ) -> Result<Applications<S>, Error> {
-        let apps_directory = cell
-            .apps_directory()
-            .ok_or_else(|| anyhow!("Cell {}: No apps directory configured", cell))?;
-
         let mut apps = Vec::new();
         for app in cell.applications().applications() {
             let cell_app = app.application();
@@ -62,16 +58,17 @@ impl<S: Store> Applications<S> {
                 continue;
             };
 
+            let module_path = cell_app
+                .module_path()
+                .ok_or_else(|| anyhow!("Couldn't find module path"))?;
+
             let app = Application {
                 cell: cell.clone(),
                 cell_app: cell_app.clone(),
                 module_manifest,
-                module_path: apps_directory.join(format!(
-                    "{}_{}/module.wasm",
-                    app_manifest.name, app_manifest.version
-                )),
+                module_path,
             };
-            app.ensure_downloaded().await?;
+            app.validate_module()?;
 
             apps.push(app);
         }
@@ -299,122 +296,33 @@ struct Application {
 }
 
 impl Application {
-    async fn ensure_downloaded(&self) -> Result<(), Error> {
-        if self.is_module_downloaded() {
-            return Ok(());
-        }
-
-        if let Some(parent) = self.module_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|err| {
-                anyhow!(
-                    "{}: Couldn't create module directory '{:?}': {}",
-                    self,
-                    parent,
-                    err
-                )
-            })?;
-        }
-
-        if self.module_manifest.url.starts_with("file://") {
-            let source_path = self.module_manifest.url.strip_prefix("file://").unwrap();
-            std::fs::copy(source_path, &self.module_path).map_err(|err| {
-                anyhow!(
-                    "{}: Couldn't copy app module from '{:?}' to path '{:?}': {}",
-                    self,
-                    source_path,
-                    self.module_path,
-                    err
-                )
-            })?;
-        } else {
-            let body = reqwest::get(&self.module_manifest.url)
-                .await
-                .map_err(|err| {
-                    anyhow!(
-                        "{}: Couldn't download app module from {}: {}",
-                        self,
-                        self.module_manifest.url,
-                        err
-                    )
-                })?
-                .bytes()
-                .await
-                .map_err(|err| {
-                    anyhow!(
-                        "{}: Couldn't download app module from {}: {}",
-                        self,
-                        self.module_manifest.url,
-                        err
-                    )
-                })?;
-
-            let mut file = File::create(&self.module_path)
-                .map_err(|err| anyhow!("Couldn't create module app file: {}", err))?;
-            file.write_all(body.as_ref())
-                .map_err(|err| anyhow!("Couldn't write app file: {}", err))?;
-        }
-
-        if !self.is_module_downloaded() {
-            return Err(anyhow!(
-                "{}: Module file not downloaded or not matching multihash",
-                self
+    fn validate_module(&self) -> Result<(), Error> {
+        let module_multihash = multihash_sha3_256_file(&self.module_path).map_err(|err| {
+            anyhow!(
+                "Couldn't multihash module file at {:?}: {}",
+                self.module_path,
+                err
             )
-            .into());
-        }
+        })?;
 
-        Ok(())
-    }
-
-    fn is_module_downloaded(&self) -> bool {
-        let module_exists = std::fs::metadata(&self.module_path).is_ok();
-        if !module_exists {
-            debug!("{}: Module doesn't exist at {:?}", self, self.module_path);
-            return false;
-        }
-
-        let file = match File::open(&self.module_path) {
-            Ok(file) => file,
-            Err(err) => {
-                debug!(
-                    "{}: Couldn't open module from disk at {:?}: {}",
-                    self, self.module_path, err
-                );
-                return false;
-            }
-        };
-
-        let expected_multihash = match multihash_decode_bs58(&self.module_manifest.multihash) {
-            Ok(mh) => mh,
-            Err(err) => {
-                warn!(
+        let expected_multihash =
+            multihash_decode_bs58(&self.module_manifest.multihash).map_err(|err| {
+                anyhow!(
                     "{}: Couldn't decode expected module multihash in manifest: {}",
-                    self, err
-                );
-                return false;
-            }
-        };
+                    self,
+                    err
+                )
+            })?;
 
-        let mut hasher = Sha3_256::default();
-        match hasher.update_from_reader(file) {
-            Ok(mh) if mh == expected_multihash => true,
-            Ok(mh) => {
-                let mh_bs58 = mh.encode_bs58();
-
-                warn!(
+        if expected_multihash != module_multihash {
+            Ok(())
+        } else {
+            Err(anyhow!(
                     "{}: Module multihash in manifest doesn't match module file (expected={} module={})",
                     self,
                     self.module_manifest.multihash,
-                    mh_bs58,
-                );
-                false
-            }
-            Err(err) => {
-                warn!(
-                    "{}: Couldn't compute multihash of {:?}: {}",
-                    self, self.module_path, err
-                );
-                false
-            }
+                    module_multihash.encode_bs58(),
+                ).into())
         }
     }
 }

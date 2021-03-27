@@ -31,7 +31,7 @@ tempfile = "3.2"
 thiserror = "1.0"
 tokio = {version = "1.4", features = ["macros"], default-features = false}
 url = "2.2"
-zip = "0.5"
+zip = "0.5.11"
 
 [target."cfg(any( all(target_arch = \"x86_64\", any(target_os = \"linux\", target_os = \"darwin\", target_os = \"windows\")), all(target_arch = \"x86_64\", target_os = \"linux\") ))".dependencies]
 exocore-apps-runtime = {version = "0.1.4", path = "../apps/runtime"}
