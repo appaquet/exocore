@@ -134,6 +134,9 @@ impl PendingBlocks {
             let has_expired = proposal.has_expired(config, now);
 
             let status = match chain_store.get_block(proposal.offset) {
+                Err(err) if err.is_fatal() => {
+                    return Err(err.into());
+                }
                 Ok(block) => {
                     if block.get_proposed_operation_id()? == *group_id {
                         // we found the block and it has the same operation id, so it's valid past
@@ -147,9 +150,6 @@ impl PendingBlocks {
                         // another proposal for the same block offset was made, but not accepted
                         BlockStatus::PastRefused
                     }
-                }
-                Err(err) if err.is_fatal() => {
-                    return Err(err.into());
                 }
                 _ => {
                     let expected_next_offset = last_stored_block.next_offset();

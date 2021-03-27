@@ -83,7 +83,9 @@ impl<'s> FrameReader for RefData<'s> {
     }
 
     fn to_owned_frame(&self) -> Self::OwnedType {
-        panic!("Cannot do to_owned_frame since it could copy unbounded amount of referenced bytes")
+        panic!(
+            "Cannot call to_owned_frame since it could copy unbounded amount of referenced bytes"
+        )
     }
 }
 
@@ -149,7 +151,7 @@ mod mmap {
         }
 
         fn to_owned_frame(&self) -> Self::OwnedType {
-            panic!("Cannot do to_owned_frame since it could be a whole mmap file")
+            panic!("Cannot call to_owned_frame since it could be a whole mmap file")
         }
     }
 }

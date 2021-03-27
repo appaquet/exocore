@@ -51,6 +51,6 @@ impl FrameReader for ChainData {
     }
 
     fn to_owned_frame(&self) -> Self::OwnedType {
-        panic!("Cannot do to_owned_frame since it could be from an unbounded source")
+        panic!("Cannot call to_owned_frame since it could be from an unbounded source")
     }
 }

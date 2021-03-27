@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use exocore_core::{
     cell::{Cell, CellNodeRole, FullCell, NodeId},
     framing::{
@@ -83,14 +83,15 @@ pub trait Block {
             .expect("Couldn't write signatures into given buffer");
     }
 
-    fn as_data_vec(&self) -> Vec<u8> {
-        // TODO: Should be to bytes
-        vec![
-            self.header().whole_data(),
-            self.operations_data(),
-            self.signatures().whole_data(),
-        ]
-        .concat()
+    fn as_data_vec(&self) -> Bytes {
+        Bytes::from(
+            vec![
+                self.header().whole_data(),
+                self.operations_data(),
+                self.signatures().whole_data(),
+            ]
+            .concat(),
+        )
     }
 
     fn to_owned(&self) -> BlockOwned {
@@ -591,7 +592,7 @@ impl BlockOperations {
     {
         let mut hasher = Sha3_256::default();
         let mut headers = Vec::new();
-        let mut data = Vec::new();
+        let mut data = BytesMut::new();
 
         for operation in sorted_operations {
             let operation = operation.borrow();
@@ -611,7 +612,7 @@ impl BlockOperations {
         Ok(BlockOperations {
             hash: hasher.to_multihash(),
             headers,
-            data: Bytes::from(data),
+            data: data.into(),
         })
     }
 

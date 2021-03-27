@@ -6,7 +6,6 @@ use std::{
     sync::{Arc, RwLock, Weak},
 };
 
-use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -400,7 +399,7 @@ impl SegmentFile {
             let mmap = self.mmap.read().unwrap();
             match &*mmap {
                 SegmentMmap::Read(mmap) => {
-                    // make sure mmap was still open
+                    // make sure mmap is still open
                     if let Some(mmap) = mmap.upgrade() {
                         return Ok(Some(mmap));
                     }
@@ -444,7 +443,7 @@ impl SegmentFile {
                         self.tracker.close(&self.registered_segment);
                     }
 
-                    // then, if it's still open, we're still reading
+                    // then, if it's still open, we're still reading and should bail out
                     if mmap.upgrade().is_some() {
                         return Err(Error::UnexpectedState(
                             "Segment is in read-only".to_string(),
@@ -485,7 +484,7 @@ impl SegmentFile {
             SegmentMmap::Write(mmap) => {
                 let data = RefData::new(&mmap[offset..]);
                 let block = DataBlock::new(data)?;
-                let bytes = Bytes::from(block.as_data_vec());
+                let bytes = block.as_data_vec();
                 let data = ChainData::Bytes(bytes);
                 Ok(DataBlock::new(data)?)
             }
@@ -509,7 +508,7 @@ impl SegmentFile {
             SegmentMmap::Write(mmap) => {
                 let data = RefData::new(mmap);
                 let block = DataBlock::new_from_next_offset(data, next_offset)?;
-                let bytes = Bytes::from(block.as_data_vec());
+                let bytes = block.as_data_vec();
                 let data = ChainData::Bytes(bytes);
                 Ok(DataBlock::new(data)?)
             }
