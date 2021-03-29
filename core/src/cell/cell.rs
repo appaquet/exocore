@@ -245,7 +245,10 @@ impl Cell {
 
     pub fn app_directory(&self, app_manifest: &Manifest) -> Option<PathBuf> {
         let app_dir = self.apps_directory()?;
-        Some(app_dir.join(format!("{}_{}", app_manifest.name, app_manifest.version)))
+        Some(app_dir.join(format!(
+            "{}_{}",
+            app_manifest.public_key, app_manifest.version
+        )))
     }
 }
 

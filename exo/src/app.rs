@@ -7,14 +7,17 @@ use std::{
 use clap::Clap;
 use exocore_core::{
     cell::{Application, ManifestExt},
-    sec::hash::{multihash_sha3_256_file, MultihashExt},
+    sec::{
+        hash::{multihash_sha3_256_file, MultihashExt},
+        keys::Keypair,
+    },
 };
 use exocore_protos::apps::Manifest;
 use tempfile::{tempdir, TempDir};
 use zip::write::FileOptions;
 
 use crate::{
-    term::{print_success, style_value},
+    term::{print_success, print_warning, style_value},
     utils::expand_tild,
     Context,
 };
@@ -27,8 +30,17 @@ pub struct AppOptions {
 
 #[derive(Clap)]
 pub enum AppCommand {
+    /// Generate an application structure in current directory.
+    Generate(GenerateOptions),
+
     /// Package an application.
     Package(PackageOptions),
+}
+
+#[derive(Clap)]
+pub struct GenerateOptions {
+    /// Application name
+    name: String,
 }
 
 #[derive(Clap)]
@@ -38,8 +50,39 @@ pub struct PackageOptions {
 
 pub async fn handle_cmd(ctx: &Context, app_opts: &AppOptions) {
     match &app_opts.command {
+        AppCommand::Generate(gen_opts) => cmd_generate(ctx, app_opts, gen_opts),
         AppCommand::Package(pkg_opts) => cmd_package(ctx, app_opts, pkg_opts),
     }
+}
+
+fn cmd_generate(_ctx: &Context, _app_opts: &AppOptions, gen_opts: &GenerateOptions) {
+    let cur_dir = std::env::current_dir().expect("Couldn't get current directory");
+
+    let kp = Keypair::generate_ed25519();
+
+    let manifest = Manifest {
+        name: gen_opts.name.clone(),
+        version: "0.0.1".to_string(),
+        public_key: kp.public().encode_base58_string(),
+        path: String::new(),
+        schemas: Vec::new(),
+        module: None,
+    };
+
+    let manifest_path = cur_dir.join("app.yaml");
+    let manifest_file = File::create(manifest_path).expect("Couldn't create manifest file");
+    manifest
+        .to_yaml_writer(manifest_file)
+        .expect("Couldn't write manifest");
+
+    print_success(format!(
+        "Application {} generated.",
+        style_value(&gen_opts.name)
+    ));
+    print_warning(format!(
+        "Application keypair (to be saved securely!): {}",
+        style_value(kp.encode_base58_string())
+    ));
 }
 
 fn cmd_package(_ctx: &Context, _app_opts: &AppOptions, pkg_opts: &PackageOptions) {
@@ -109,8 +152,13 @@ fn cmd_package(_ctx: &Context, _app_opts: &AppOptions, pkg_opts: &PackageOptions
     ));
 }
 
-pub async fn fetch_package_url<U: Into<url::Url>>(url: U) -> anyhow::Result<AppPackage> {
-    let fetch_resp = reqwest::get(url.into())
+pub async fn fetch_package_url<U: Into<String>>(url: U) -> anyhow::Result<AppPackage> {
+    let url: String = url.into();
+    if let Some(path) = url.strip_prefix("file://") {
+        return read_package_path(path);
+    }
+
+    let fetch_resp = reqwest::get(url)
         .await
         .map_err(|err| anyhow!("Couldn't fetch package: {}", err))?;
 

@@ -2,18 +2,18 @@
 pub struct Manifest {
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
-    #[prost(string, tag = "5")]
-    pub version: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
-    pub public_key: ::prost::alloc::string::String,
+    pub version: ::prost::alloc::string::String,
     #[prost(string, tag = "3")]
-    #[serde(default)]
-    pub path: ::prost::alloc::string::String,
+    pub public_key: ::prost::alloc::string::String,
     #[prost(message, repeated, tag = "4")]
     #[serde(default)]
     pub schemas: ::prost::alloc::vec::Vec<ManifestSchema>,
-    #[prost(message, optional, tag = "6")]
+    #[prost(message, optional, tag = "5")]
     pub module: ::core::option::Option<ManifestModule>,
+    #[prost(string, tag = "6")]
+    #[serde(default)]
+    pub path: ::prost::alloc::string::String,
 }
 #[derive(Serialize, Deserialize, Clone, PartialEq, ::prost::Message)]
 pub struct ManifestSchema {

@@ -4,7 +4,6 @@ use anyhow::anyhow;
 use exocore_core::{
     cell::Cell,
     futures::{block_on, owned_spawn, sleep, spawn_blocking, spawn_future, BatchingStream},
-    sec::hash::{multihash_decode_bs58, multihash_sha3_256_file, MultihashExt},
     time::Clock,
     utils::backoff::BackoffCalculator,
 };
@@ -50,11 +49,9 @@ impl<S: Store> Applications<S> {
         let mut apps = Vec::new();
         for app in cell.applications().applications() {
             let cell_app = app.application();
-            let app_manifest = cell_app.manifest();
 
-            let module_manifest = if let Some(module) = &app_manifest.module {
-                module.clone()
-            } else {
+            let app_manifest = cell_app.manifest();
+            if app_manifest.module.is_none() {
                 continue;
             };
 
@@ -65,10 +62,11 @@ impl<S: Store> Applications<S> {
             let app = Application {
                 cell: cell.clone(),
                 cell_app: cell_app.clone(),
-                module_manifest,
                 module_path,
             };
-            app.validate_module()?;
+            app.cell_app
+                .validate()
+                .map_err(|err| anyhow!("Couldn't validate module: {}", err))?;
 
             apps.push(app);
         }
@@ -291,40 +289,7 @@ impl crate::runtime::HostEnvironment for WiredEnvironment {
 struct Application {
     cell: Cell,
     cell_app: exocore_core::cell::Application,
-    module_manifest: exocore_protos::apps::ManifestModule,
     module_path: PathBuf,
-}
-
-impl Application {
-    fn validate_module(&self) -> Result<(), Error> {
-        let module_multihash = multihash_sha3_256_file(&self.module_path).map_err(|err| {
-            anyhow!(
-                "Couldn't multihash module file at {:?}: {}",
-                self.module_path,
-                err
-            )
-        })?;
-
-        let expected_multihash =
-            multihash_decode_bs58(&self.module_manifest.multihash).map_err(|err| {
-                anyhow!(
-                    "{}: Couldn't decode expected module multihash in manifest: {}",
-                    self,
-                    err
-                )
-            })?;
-
-        if expected_multihash != module_multihash {
-            Ok(())
-        } else {
-            Err(anyhow!(
-                    "{}: Module multihash in manifest doesn't match module file (expected={} module={})",
-                    self,
-                    self.module_manifest.multihash,
-                    module_multihash.encode_bs58(),
-                ).into())
-        }
-    }
 }
 
 impl std::fmt::Display for Application {

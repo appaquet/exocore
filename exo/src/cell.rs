@@ -10,8 +10,8 @@ use exocore_chain::{
 };
 use exocore_core::{
     cell::{
-        Cell, CellConfigExt, CellId, EitherCell, FullCell, LocalNode, LocalNodeConfigExt,
-        NodeConfigExt,
+        Cell, CellApplicationConfigExt, CellConfigExt, CellId, EitherCell, FullCell, LocalNode,
+        LocalNodeConfigExt, NodeConfigExt,
     },
     framing::{sized::SizedFrameReaderIterator, FrameReader},
     sec::{auth_token::AuthToken, keys::Keypair},
@@ -26,7 +26,7 @@ use exocore_protos::{
 };
 
 use crate::{
-    app::{fetch_package_url, read_package_path},
+    app::fetch_package_url,
     disco::prompt_discovery_pin,
     term::*,
     utils::{edit_file, edit_string},
@@ -188,12 +188,11 @@ enum AppCommand {
 #[derive(Clap)]
 struct AppInstallOptions {
     /// URL to application package to install.
-    #[clap(long)]
-    url: Option<url::Url>,
+    url: String,
 
-    /// Path to application package to install.
+    /// If application already exists, overwrite it.
     #[clap(long)]
-    path: Option<PathBuf>,
+    overwrite: bool,
 }
 
 pub async fn handle_cmd(ctx: &Context, cell_opts: &CellOptions) -> anyhow::Result<()> {
@@ -866,38 +865,48 @@ async fn cmd_app_install(
     let mut cell_config =
         CellConfig::from_yaml_file(&config_path).expect("Couldn't read cell config");
 
-    let pkg = match (&install_opts.url, &install_opts.path) {
-        (Some(url), _) => fetch_package_url(url.clone())
-            .await
-            .expect("Couldn't fetch app package"),
-        (_, Some(file)) => read_package_path(file).expect("Couldn't read app package"),
-        _ => {
-            panic!("Expected package URL or package path");
-        }
-    };
+    let pkg = fetch_package_url(&install_opts.url)
+        .await
+        .expect("Couldn't fetch app package");
 
     let app_dir = full_cell.cell().app_directory(pkg.app.manifest()).unwrap();
     let cell_dir = full_cell.cell().cell_directory().unwrap();
 
     if app_dir.exists() {
-        print_info(format!(
-            "Application already installed at '{:?}'. Overwriting it.",
-            app_dir
-        ));
-        std::fs::remove_dir_all(&app_dir).expect("Couldn't remove existing app dir");
+        if install_opts.overwrite {
+            print_info(format!(
+                "Application already installed at '{}'. Overwriting it.",
+                style_value(&app_dir)
+            ));
+            std::fs::remove_dir_all(&app_dir).expect("Couldn't remove existing app dir");
+        } else {
+            print_error(format!(
+                "Application already installed at '{}'. Use {} to overwrite it.",
+                style_value(&app_dir),
+                style_value("--force"),
+            ));
+            return Ok(());
+        }
     }
+
+    // TODO: Download + install logic should be in `apps` so that we can do it on
+    // other nodes when it's not installed.
 
     std::fs::rename(pkg.dir, &app_dir).expect("Couldn't move temp app dir");
 
-    cell_config.add_application(CellApplicationConfig {
-        location: Some(cell_application_config::Location::Path(
-            app_dir
-                .strip_prefix(cell_dir)
-                .unwrap()
-                .to_string_lossy()
-                .into(),
-        )),
-    });
+    let mut cell_app_config = CellApplicationConfig::from_manifest(pkg.app.manifest().clone());
+    cell_app_config.location = Some(cell_application_config::Location::Path(
+        app_dir
+            .strip_prefix(cell_dir)
+            .unwrap()
+            .to_string_lossy()
+            .into(),
+    ));
+    cell_app_config.package_url = install_opts.url.clone();
+
+    // TODO: Validation
+
+    cell_config.add_application(cell_app_config);
 
     print_action(format!(
         "Writing cell config to {}",
