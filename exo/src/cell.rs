@@ -10,8 +10,8 @@ use exocore_chain::{
 };
 use exocore_core::{
     cell::{
-        Cell, CellApplicationConfigExt, CellConfigExt, CellId, EitherCell, FullCell, LocalNode,
-        LocalNodeConfigExt, NodeConfigExt,
+        Application, Cell, CellApplicationConfigExt, CellConfigExt, CellId, EitherCell, FullCell,
+        LocalNode, LocalNodeConfigExt, NodeConfigExt,
     },
     framing::{sized::SizedFrameReaderIterator, FrameReader},
     sec::{auth_token::AuthToken, keys::Keypair},
@@ -872,6 +872,11 @@ async fn cmd_app_install(
     let app_dir = full_cell.cell().app_directory(pkg.app.manifest()).unwrap();
     let cell_dir = full_cell.cell().cell_directory().unwrap();
 
+    let application = Application::new_from_directory(pkg.dir.path())?;
+    application
+        .validate()
+        .expect_err("Failed to validate the application");
+
     if app_dir.exists() {
         if install_opts.overwrite {
             print_info(format!(
@@ -889,8 +894,7 @@ async fn cmd_app_install(
         }
     }
 
-    // TODO: Download + install logic should be in `apps` so that we can do it on
-    // other nodes when it's not installed.
+    // TODO: Download + install logic should be in `apps` so that we can do it on other nodes when it's not installed.
 
     std::fs::rename(pkg.dir, &app_dir).expect("Couldn't move temp app dir");
 
@@ -903,8 +907,6 @@ async fn cmd_app_install(
             .into(),
     ));
     cell_app_config.package_url = install_opts.url.clone();
-
-    // TODO: Validation
 
     cell_config.add_application(cell_app_config);
 

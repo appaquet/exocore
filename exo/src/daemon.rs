@@ -180,7 +180,7 @@ pub async fn cmd_daemon(ctx: &Context) -> anyhow::Result<()> {
         target_arch = "x86_64",
         any(target_os = "linux", target_os = "darwin", target_os = "windows")
     ),
-    all(target_arch = "x86_64", target_os = "linux")
+    all(target_arch = "aarch64", target_os = "linux")
 ))]
 async fn create_app_host(
     clock: Clock,
@@ -212,7 +212,7 @@ async fn create_app_host(
         target_arch = "x86_64",
         any(target_os = "linux", target_os = "darwin", target_os = "windows")
     ),
-    all(target_arch = "x86_64", target_os = "linux")
+    all(target_arch = "aarch64", target_os = "linux")
 )))]
 async fn create_app_host(
     _clock: Clock,
