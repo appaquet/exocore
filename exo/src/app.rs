@@ -6,18 +6,21 @@ use std::{
 
 use clap::Clap;
 use exocore_core::{
-    cell::{Application, ManifestExt},
+    cell::{Application, Cell, CellApplicationConfigExt, CellConfigExt, ManifestExt},
     sec::{
         hash::{multihash_sha3_256_file, MultihashExt},
         keys::Keypair,
     },
 };
-use exocore_protos::apps::Manifest;
+use exocore_protos::{
+    apps::Manifest,
+    core::{cell_application_config, CellApplicationConfig, CellConfig},
+};
 use tempfile::{tempdir, TempDir};
 use zip::write::FileOptions;
 
 use crate::{
-    term::{print_success, print_warning, style_value},
+    term::{print_error, print_info, print_success, print_warning, style_value},
     utils::expand_tild,
     Context,
 };
@@ -152,6 +155,61 @@ fn cmd_package(_ctx: &Context, _app_opts: &AppOptions, pkg_opts: &PackageOptions
     ));
 }
 
+pub async fn app_install(
+    cell: &Cell,
+    cell_config: &mut CellConfig,
+    url: &str,
+    overwrite: bool,
+) -> anyhow::Result<AppPackage> {
+    let pkg = fetch_package_url(url)
+        .await
+        .expect("Couldn't fetch app package");
+
+    let apps_dir = cell.apps_directory().expect("No apps directory");
+    std::fs::create_dir_all(apps_dir).expect("Couldn't create app dir");
+
+    let app_dir = cell.app_directory(pkg.app.manifest()).unwrap();
+    let cell_dir = cell.cell_directory().unwrap();
+
+    let application = Application::new_from_directory(pkg.temp_dir.path())?;
+    application
+        .validate()
+        .expect("Failed to validate the application");
+
+    if app_dir.exists() {
+        if overwrite {
+            print_info(format!(
+                "Application already installed at '{}'. Overwriting it.",
+                style_value(&app_dir)
+            ));
+            std::fs::remove_dir_all(&app_dir).expect("Couldn't remove existing app dir");
+        } else {
+            print_error(format!(
+                "Application already installed at '{}'. Use {} to overwrite it.",
+                style_value(&app_dir),
+                style_value("--force"),
+            ));
+            return Ok(pkg);
+        }
+    }
+
+    std::fs::rename(&pkg.temp_dir, &app_dir).expect("Couldn't move temp app dir");
+
+    let mut cell_app_config = CellApplicationConfig::from_manifest(pkg.app.manifest().clone());
+    cell_app_config.location = Some(cell_application_config::Location::Path(
+        app_dir
+            .strip_prefix(cell_dir)
+            .unwrap()
+            .to_string_lossy()
+            .into(),
+    ));
+    cell_app_config.package_url = url.to_string();
+
+    cell_config.add_application(cell_app_config);
+
+    Ok(pkg)
+}
+
 pub async fn fetch_package_url<U: Into<String>>(url: U) -> anyhow::Result<AppPackage> {
     let url: String = url.into();
     if let Some(path) = url.strip_prefix("file://") {
@@ -180,7 +238,7 @@ pub fn read_package_path<P: AsRef<Path>>(path: P) -> anyhow::Result<AppPackage> 
 
 pub struct AppPackage {
     pub app: Application,
-    pub dir: TempDir,
+    pub temp_dir: TempDir,
 }
 
 pub fn read_package<R: Read + Seek>(reader: R) -> anyhow::Result<AppPackage> {
@@ -199,5 +257,5 @@ pub fn read_package<R: Read + Seek>(reader: R) -> anyhow::Result<AppPackage> {
     let app = Application::new_from_manifest(manifest)
         .map_err(|err| anyhow!("Couldn't create app from manifest: {}", err))?;
 
-    Ok(AppPackage { app, dir })
+    Ok(AppPackage { app, temp_dir: dir })
 }
