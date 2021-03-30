@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate log;
 
-mod apps;
 mod config;
 mod error;
 mod package;
@@ -13,7 +12,7 @@ mod package;
     ),
     all(target_arch = "aarch64", target_os = "linux")
 ))]
-mod runtime;
+pub(crate) mod runtime;
 
 #[cfg(any(
     all(
@@ -22,7 +21,7 @@ mod runtime;
     ),
     all(target_arch = "aarch64", target_os = "linux")
 ))]
-pub use apps::Applications;
+pub mod apps;
 
 pub use config::Config;
 pub use error::Error;
