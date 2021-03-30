@@ -26,7 +26,7 @@ use exocore_protos::{
 };
 
 use crate::{
-    app::app_install,
+    app::AppPackage,
     disco::prompt_discovery_pin,
     term::*,
     utils::{edit_file, edit_string},
@@ -882,13 +882,11 @@ async fn cmd_app_install(
     let mut cell_config =
         CellConfig::from_yaml_file(&config_path).expect("Couldn't read cell config");
 
-    let pkg = app_install(
-        cell,
-        &mut cell_config,
-        install_opts.url.as_str(),
-        install_opts.overwrite,
-    )
-    .await?;
+    let pkg = AppPackage::fetch_package_url(&install_opts.url)
+        .await
+        .expect("Couldn't fetch app package");
+    pkg.install(cell, &mut cell_config, install_opts.overwrite)
+        .await?;
 
     let manifest = pkg.app.manifest();
     print_success(format!(
@@ -936,7 +934,13 @@ async fn cmd_app_unpack(
                     style_value(app.version)
                 ));
 
-                let pkg = app_install(cell, &mut cell_config, &app.package_url, false).await?;
+                let pkg = AppPackage::fetch_package_url(&app.package_url)
+                    .await
+                    .expect("Couldn't fetch package");
+
+                pkg.install(cell, &mut cell_config, false)
+                    .await
+                    .expect("Couldn't install app");
 
                 let manifest = pkg.app.manifest();
                 print_info(format!(
