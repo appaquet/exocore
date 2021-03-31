@@ -31,19 +31,3 @@ pub enum Error {
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
-
-#[cfg(any(
-    all(
-        target_arch = "x86_64",
-        any(target_os = "linux", target_os = "darwin", target_os = "windows")
-    ),
-    all(target_arch = "aarch64", target_os = "linux")
-))]
-impl From<Error> for wasmtime::Trap {
-    fn from(err: Error) -> Self {
-        match err {
-            Error::Trap(t) => t,
-            other => wasmtime::Trap::new(other.to_string()),
-        }
-    }
-}

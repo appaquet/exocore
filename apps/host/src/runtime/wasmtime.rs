@@ -259,6 +259,15 @@ fn unix_timestamp() -> u64 {
         .as_nanos() as u64
 }
 
+impl From<Error> for wasmtime::Trap {
+    fn from(err: Error) -> Self {
+        match err {
+            Error::Trap(t) => t,
+            other => wasmtime::Trap::new(other.to_string()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{sync::Mutex, thread::sleep};
