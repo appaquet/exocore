@@ -1135,7 +1135,7 @@ dependencies = [
  "console",
  "dialoguer",
  "dirs-next",
- "exocore-apps-runtime",
+ "exocore-apps-host",
  "exocore-chain",
  "exocore-core",
  "exocore-discovery",
@@ -1177,19 +1177,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "exocore-apps-macros"
-version = "0.1.4"
-dependencies = [
- "anyhow",
- "futures",
- "log",
- "quote",
- "syn",
- "thiserror",
-]
-
-[[package]]
-name = "exocore-apps-runtime"
+name = "exocore-apps-host"
 version = "0.1.4"
 dependencies = [
  "anyhow",
@@ -1201,6 +1189,18 @@ dependencies = [
  "reqwest",
  "thiserror",
  "wasmtime",
+]
+
+[[package]]
+name = "exocore-apps-macros"
+version = "0.1.4"
+dependencies = [
+ "anyhow",
+ "futures",
+ "log",
+ "quote",
+ "syn",
+ "thiserror",
 ]
 
 [[package]]

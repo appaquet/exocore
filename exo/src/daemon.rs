@@ -188,7 +188,7 @@ async fn create_app_host(
     store_handle: impl exocore_store::store::Store,
     services_completion: &mut Vec<Pin<Box<dyn Future<Output = ()>>>>,
 ) -> anyhow::Result<()> {
-    use exocore_apps_runtime::{apps::Applications, Config as ApplicationsConfig};
+    use exocore_apps_host::{runtime::Applications, Config as ApplicationsConfig};
 
     let apps_config = ApplicationsConfig::default();
     let apps = Applications::new(apps_config, clock.clone(), cell.clone(), store_handle).await?;

@@ -115,7 +115,7 @@ pub enum Commands {
     Discovery(disco::DiscoveryCommand),
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
     let mut options: Options = Options::parse();
     options.validate()?;

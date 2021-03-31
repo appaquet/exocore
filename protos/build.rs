@@ -26,7 +26,7 @@ fn main() {
                 "./protobuf/exocore/core/auth.proto",
                 "./protobuf/exocore/core/config.proto",
                 "./protobuf/exocore/apps/manifest.proto",
-                "./protobuf/exocore/apps/runtime.proto",
+                "./protobuf/exocore/apps/host.proto",
             ];
 
             let mut config = prost_build::Config::new();

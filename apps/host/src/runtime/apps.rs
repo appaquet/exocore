@@ -20,7 +20,8 @@ use futures::{
     Future, SinkExt, StreamExt,
 };
 
-use crate::{runtime::AppRuntime, Config, Error};
+use super::wasmtime::WasmTimeRuntime;
+use crate::{Config, Error};
 
 const MSG_BUFFER_SIZE: usize = 5000;
 const RUNTIME_MSG_BATCH_SIZE: usize = 1000;
@@ -137,7 +138,7 @@ impl<S: Store> Applications<S> {
             let app_module_path = app.module_path.clone();
             let app_prefix = app.to_string();
             spawn_blocking(move || -> Result<(), Error> {
-                let app_runtime = AppRuntime::from_file(app_module_path, env)?;
+                let app_runtime = WasmTimeRuntime::from_file(app_module_path, env)?;
                 let mut batch_receiver = BatchingStream::new(in_receiver, RUNTIME_MSG_BATCH_SIZE);
 
                 let mut next_tick = sleep(APP_MIN_TICK_TIME);
@@ -273,7 +274,7 @@ struct WiredEnvironment {
     sender: std::sync::Mutex<mpsc::Sender<exocore_protos::apps::OutMessage>>,
 }
 
-impl crate::runtime::HostEnvironment for WiredEnvironment {
+impl super::wasmtime::HostEnvironment for WiredEnvironment {
     fn handle_message(&self, msg: exocore_protos::apps::OutMessage) {
         let mut sender = self.sender.lock().unwrap();
         if let Err(err) = sender.try_send(msg) {
