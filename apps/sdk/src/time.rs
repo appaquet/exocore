@@ -39,7 +39,7 @@ impl From<u64> for Timestamp {
 }
 
 impl From<Timestamp> for u64 {
-fn from(ts: Timestamp) -> Self {
+    fn from(ts: Timestamp) -> Self {
         ts.0
     }
 }

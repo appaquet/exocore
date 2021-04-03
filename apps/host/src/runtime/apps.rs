@@ -108,7 +108,11 @@ impl<S: Store> Applications<S> {
     async fn start_app_loop(clock: Clock, config: Config, app: Application, store: S) {
         let mut backoff = BackoffCalculator::new(clock, config.restart_backoff);
         loop {
-            info!("{}: Starting application (version {})", app, app.cell_app.version());
+            info!(
+                "{}: Starting application (version {})",
+                app,
+                app.cell_app.version()
+            );
 
             let store = store.clone();
             Self::start_app(&app, store).await;
