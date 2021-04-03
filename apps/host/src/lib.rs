@@ -3,7 +3,6 @@ extern crate log;
 
 mod config;
 mod error;
-mod package;
 
 #[cfg(any(
     all(
