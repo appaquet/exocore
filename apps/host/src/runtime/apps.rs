@@ -10,7 +10,7 @@ use exocore_core::{
 use exocore_protos::{
     apps::{in_message::InMessageType, out_message::OutMessageType, InMessage, OutMessage},
     prost::{Message, ProstMessageExt},
-    store::{EntityMutation, EntityQuery},
+    store::{EntityQuery, MutationRequest},
 };
 use exocore_store::store::Store;
 use futures::{
@@ -272,7 +272,7 @@ async fn handle_entity_mutation<S: Store>(
     out_message: OutMessage,
     store: S,
 ) -> Result<Vec<u8>, Error> {
-    let mutation = EntityMutation::decode(out_message.data.as_ref())?;
+    let mutation = MutationRequest::decode(out_message.data.as_ref())?;
     let res = store.mutate(mutation);
     let res = res.await?;
 
