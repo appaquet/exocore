@@ -164,6 +164,7 @@ impl<S: Store> Applications<S> {
                         );
                         return Ok(());
                     };
+                    let in_messages_count = in_messages.len();
 
                     for in_message in in_messages {
                         app_runtime.send_message(in_message)?;
@@ -171,6 +172,11 @@ impl<S: Store> Applications<S> {
 
                     let next_tick_duration = app_runtime.tick()?.unwrap_or(APP_MIN_TICK_TIME);
                     next_tick = sleep(next_tick_duration);
+
+                    debug!(
+                        "{}: App ticked. {} incoming message, next tick in {:?}",
+                        app_prefix, in_messages_count, next_tick_duration
+                    );
 
                     if !started {
                         info!("{}: Application started", app_prefix);
