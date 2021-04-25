@@ -76,6 +76,3 @@ members = [
 #[profile.release]
 #codegen-units = 1
 #lto = "thin"
-
-[patch.crates-io]
-libp2p = {path = "../rust-libp2p"}
