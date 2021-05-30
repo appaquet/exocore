@@ -641,7 +641,7 @@ where
             }
         }
 
-        let re_indexing_all = last_indexed_block.is_none();
+        let pending_index_empty = self.pending_index.highest_indexed_block()?.is_none();
 
         let mut pending_index_mutations = Vec::new();
         let mut new_highest_block_offset: Option<BlockOffset> = None;
@@ -667,9 +667,8 @@ where
                     && last_chain_block_height.saturating_sub(*height) >= chain_index_min_depth
             })
             .flat_map(|(offset, _height, engine_operation)| {
-                if !re_indexing_all {
-                    // if were aren't re-indexing everything, for every mutation we index in the
-                    // chain index, we delete it from the pending index
+                if !pending_index_empty {
+                    // delete from pending index if it's not already empty
                     pending_index_mutations.push(IndexOperation::DeleteOperation(
                         engine_operation.operation_id,
                     ));
