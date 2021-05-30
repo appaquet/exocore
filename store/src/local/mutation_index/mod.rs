@@ -1132,7 +1132,10 @@ mod unit_tests {
         approx_eq!(1.0, boost_recent_chrono(now, now - Duration::days(15))); // within 15 days of now should be 1.0
 
         // at 365d from now should equal decay
-        approx_eq!(0.2136757, boost_recent_chrono(now, now - Duration::days(365)));
+        approx_eq!(
+            0.2136757,
+            boost_recent_chrono(now, now - Duration::days(365))
+        );
 
         // at 730d from now, should be still decreasing
         approx_eq!(

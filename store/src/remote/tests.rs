@@ -264,7 +264,10 @@ async fn watched_query_re_register_remote_dropped() -> anyhow::Result<()> {
         if watched_queries.is_empty() {
             false
         } else {
-            test_remote_store.local_store.store_handle.clear_watched_queries();
+            test_remote_store
+                .local_store
+                .store_handle
+                .clear_watched_queries();
             true
         }
     });
