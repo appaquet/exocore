@@ -302,6 +302,12 @@ impl Inner {
                     ).into());
                 }
             }
+            Err(Error::Remote(err)) if err.contains("unregistered") => {
+                if let Some(watched_query) = inner.watched_queries.get_mut(&request_id) {
+                    debug!("Query got unregistered by remote. Re-registering...");
+                    watched_query.force_register();
+                }
+            }
             Err(err) => {
                 if let Some(pending_request) = inner.pending_mutations.remove(&request_id) {
                     let _ = pending_request.result_sender.send(Err(err));
@@ -534,6 +540,12 @@ struct WatchedQueryRequest {
     query: EntityQuery,
     result_sender: mpsc::Sender<Result<EntityResults, Error>>,
     last_register: Instant,
+}
+
+impl WatchedQueryRequest {
+    fn force_register(&mut self) {
+        self.last_register = Instant::now() - Duration::from_secs(86400);
+    }
 }
 
 /// Async handle to the store.
