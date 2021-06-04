@@ -51,6 +51,7 @@ impl Node {
         };
 
         let node = Self::build(public_key, name);
+
         {
             let mut addresses = node.addresses.write().unwrap();
             *addresses = Addresses::parse(&config.addresses.unwrap_or_default())?;
@@ -114,22 +115,22 @@ impl Node {
     }
 
     pub fn p2p_addresses(&self) -> Vec<Multiaddr> {
-        let addresses = self.addresses.read().expect("Couldn't get inner lock");
+        let addresses = self.addresses.read().expect("Couldn't get addresses lock");
         addresses.p2p.iter().cloned().collect()
     }
 
     pub fn add_p2p_address(&self, address: Multiaddr) {
-        let mut addresses = self.addresses.write().expect("Couldn't get inner lock");
+        let mut addresses = self.addresses.write().expect("Couldn't get addresses lock");
         addresses.p2p.insert(address);
     }
 
     pub fn http_addresses(&self) -> Vec<Url> {
-        let addresses = self.addresses.read().expect("Couldn't get inner lock");
+        let addresses = self.addresses.read().expect("Couldn't get addresses lock");
         addresses.http.iter().cloned().collect()
     }
 
     pub fn add_http_address(&self, address: Url) {
-        let mut addresses = self.addresses.write().expect("Couldn't get inner lock");
+        let mut addresses = self.addresses.write().expect("Couldn't get addresses lock");
         addresses.http.insert(address);
     }
 }
@@ -144,7 +145,7 @@ impl Eq for Node {}
 
 impl Debug for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let addresses = self.addresses.read().expect("Couldn't get inner lock");
+        let addresses = self.addresses.read().expect("Couldn't get addresses lock");
         f.debug_struct("Node")
             .field("name", &self.identity.name)
             .field("node_id", &self.identity.node_id)
