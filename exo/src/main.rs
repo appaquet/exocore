@@ -115,7 +115,7 @@ pub enum Commands {
     Discovery(disco::DiscoveryCommand),
 
     /// Print version.
-    Version
+    Version,
 }
 
 #[tokio::main(flavor = "multi_thread")]
