@@ -31,6 +31,9 @@ pub struct LocalNodeConfig {
     #[prost(string, tag = "5")]
     #[serde(default)]
     pub path: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "10")]
+    #[serde(default)]
+    pub listen_addresses: ::core::option::Option<NodeAddresses>,
     #[prost(message, optional, tag = "6")]
     pub addresses: ::core::option::Option<NodeAddresses>,
     #[prost(message, repeated, tag = "7")]
@@ -75,7 +78,7 @@ pub struct NodeStoreConfig {
     #[prost(message, optional, tag = "1")]
     #[serde(default)]
     pub index: ::core::option::Option<EntityIndexConfig>,
-    /// Maximum number fo queries to execute in parallel.
+    /// Maximum number of queries to execute in parallel.
     #[prost(message, optional, tag = "2")]
     #[serde(default)]
     pub query_parallelism: ::core::option::Option<u32>,
@@ -148,10 +151,10 @@ pub struct MutationIndexConfig {
 pub struct EntityGarbageCollectorConfig {
     /// How often the garbage collection process will run in seconds.
     ///
-    /// Since garbage collection doesn't happen on the whole index, but only on
-    /// entities that got flagged during search, it is better to run more
-    /// often than less. `GarbageCollectorConfig::queue_size` can be tweaked
-    /// to control rate of collection.
+    /// Since garbage collection doesn't happen on the whole index, but only on entities
+    /// that got flagged during search, it is better to run more often than
+    /// less. `GarbageCollectorConfig::queue_size` can be tweaked to control
+    /// rate of collection.
     #[prost(message, optional, tag = "1")]
     #[serde(default)]
     pub run_interval_secs: ::core::option::Option<u32>,

@@ -1090,6 +1090,7 @@ dependencies = [
  "indicatif",
  "log",
  "log4rs",
+ "rand 0.8.3",
  "reqwest",
  "tempfile",
  "thiserror",
