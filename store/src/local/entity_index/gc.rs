@@ -84,12 +84,14 @@ impl GarbageCollector {
     /// Checks if an entity for which we collected its mutation metadata from
     /// the index should be added to the garbage collection queue.
     pub fn maybe_flag_for_collection(&self, entity_id: &str, aggregator: &EntityAggregator) {
-        let last_block_offset = if let Some(offset) = aggregator.last_block_offset {
-            offset
-        } else {
-            // we don't collect if operations are only in pending
+        if aggregator.any_in_pending {
+            // we don't collect if any of the operations are still in pending store
             return;
-        };
+        }
+
+        let last_block_offset = aggregator
+            .last_block_offset
+            .expect("No last_block_offset, but no operations in pending");
 
         let now = self.clock.now_chrono();
 
@@ -616,6 +618,39 @@ mod tests {
         });
         assert_eq!(deletions.len(), 1);
         assert_eq!(extract_ops(deletions), vec![put1_op, put2_op]);
+    }
+
+    #[test]
+    fn cannot_collect_if_any_operations_in_pending() {
+        let node = LocalNode::generate();
+        let now = Instant::now() - Duration::from_secs(60);
+        let clock = Clock::new_fixed_mocked(now);
+
+        let put1_op: u64 = clock.consistent_time(node.node()).into();
+        let put2_op: u64 = put1_op + 1;
+        let put3_op: u64 = put2_op + 1;
+        let put4_op: u64 = put3_op + 1;
+        let put5_op: u64 = put4_op + 1;
+        let mutations = vec![
+            mock_put_trait("trt1", "typ", Some(2), put1_op, None, None),
+            mock_put_trait("trt1", "typ", Some(3), put2_op, None, None),
+            mock_put_trait("trt1", "typ", Some(4), put3_op, None, None),
+            mock_put_trait("trt1", "typ", Some(5), put4_op, None, None),
+            mock_put_trait("trt1", "typ", None /*in pending*/, put5_op, None, None),
+        ];
+        let aggregator = EntityAggregator::new(mutations.into_iter()).unwrap();
+
+        // should be collecting, but one operation in pending, so won't collect
+        let gc = GarbageCollector::new(
+            GarbageCollectorConfig {
+                trait_versions_max: 2,
+                trait_versions_leeway: 3,
+                ..Default::default()
+            },
+            clock,
+        );
+        gc.maybe_flag_for_collection("et1", &aggregator);
+        assert_queue_len(&gc, 0);
     }
 
     fn assert_queue_len(gc: &GarbageCollector, len: usize) {
