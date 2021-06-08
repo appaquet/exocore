@@ -23,7 +23,9 @@ use exocore_protos::{
         cell_application_config, cell_node_config, node_cell_config, CellConfig, CellNodeConfig,
         LocalNodeConfig, NodeCellConfig, NodeConfig,
     },
-    generated::data_chain_capnp::block_header,
+    generated::data_chain_capnp::{block_header, chain_operation},
+    prost::Message,
+    store::EntityMutation,
 };
 
 use crate::{
@@ -747,13 +749,25 @@ fn cmd_export_chain(
             .expect("Couldn't iterate operations from block");
         for operation in operations {
             {
-                // only export entry operations (actual data, not chain maintenance related
-                // operations)
                 let reader = operation
                     .get_reader()
                     .expect("Couldn't get reader on operation");
-                if !reader.get_operation().has_entry() {
-                    continue;
+
+                // only export entry operations (actual data, not chain maintenance related
+                // operations)
+                let data = match reader.get_operation().which()? {
+                    chain_operation::operation::Entry(entry) => entry?.get_data()?,
+                    _ => continue,
+                };
+
+                let mutation = EntityMutation::decode(data)?;
+
+                // don't keep deleted operations since they were part of the index management
+                use exocore_protos::store::entity_mutation::Mutation;
+                match mutation.mutation {
+                    Some(Mutation::DeleteOperations(_del)) => continue,
+                    None => continue,
+                    _ => {}
                 }
             }
 
@@ -832,6 +846,10 @@ fn cmd_import_chain(
 
     let mut flush_buffer =
         |block_op_id: OperationId, operations_buffer: &mut Vec<OperationFrame<Bytes>>| {
+            operations_buffer.sort_by_key(|operation| {
+                let operation_reader = operation.get_reader().unwrap();
+                operation_reader.get_operation_id()
+            });
             let operations = BlockOperations::from_operations(operations_buffer.iter())
                 .expect("Couldn't create BlockOperations from operations buffer");
             let block = BlockBuilder::build_with_prev_block(
