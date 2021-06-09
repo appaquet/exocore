@@ -89,7 +89,9 @@ impl GarbageCollector {
     /// Checks if an entity for which we collected its mutation metadata from
     /// the index should be added to the garbage collection queue.
     pub fn maybe_flag_for_collection(&self, entity_id: &str, aggregator: &EntityAggregator) {
+        info!("YAH");
         if aggregator.any_in_pending {
+            info!("One in pending");
             // we don't collect if any of the operations are still in pending store
             return;
         }
@@ -103,7 +105,7 @@ impl GarbageCollector {
         if let Some(deletion_date) = &aggregator.deletion_date {
             let elapsed = now.signed_duration_since(*deletion_date);
             if elapsed >= self.max_entity_deleted_duration {
-                trace!("Collecting entity {} since got deleted since", entity_id);
+                info!("Collecting entity {} since got deleted since", entity_id);
                 let mut inner = self.inner.write().expect("Fail to acquire inner lock");
                 inner.maybe_enqueue(Operation::DeleteEntity(
                     last_block_offset,
@@ -117,10 +119,9 @@ impl GarbageCollector {
             if let Some(deletion_date) = &trait_aggr.deletion_date {
                 let elapsed = now.signed_duration_since(*deletion_date);
                 if elapsed >= self.max_trait_deleted_duration {
-                    trace!(
+                    info!(
                         "Collecting entity {} trait {} since it got deleted",
-                        entity_id,
-                        trait_id
+                        entity_id, trait_id
                     );
                     let mut inner = self.inner.write().expect("Fail to acquire inner lock");
                     inner.maybe_enqueue(Operation::DeleteTrait(
@@ -134,11 +135,9 @@ impl GarbageCollector {
 
             if trait_aggr.mutation_count > self.config.trait_versions_leeway {
                 let mut inner = self.inner.write().expect("Fail to acquire inner lock");
-                trace!(
+                info!(
                     "Collecting entity {} trait {} since it has too many versions ({})",
-                    entity_id,
-                    trait_id,
-                    trait_aggr.mutation_count,
+                    entity_id, trait_id, trait_aggr.mutation_count,
                 );
                 inner.maybe_enqueue(Operation::CompactTrait(
                     last_block_offset,

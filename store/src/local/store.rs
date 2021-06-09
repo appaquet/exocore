@@ -782,7 +782,7 @@ pub mod tests {
             chain_index_in_memory: false,
             garbage_collector: GarbageCollectorConfig {
                 deleted_entity_collection: Duration::from_millis(100),
-                min_operation_age: Duration::from_millis(1),
+                min_operation_age: Duration::from_nanos(1),
                 ..Default::default()
             },
             ..TestStore::test_index_config()
@@ -807,10 +807,19 @@ pub mod tests {
                 .wait_operation_committed(0, resp.operation_ids[0]);
         }
 
+        {
+            // make sure deletion is in the chain by committing something after
+            let mutation = test_store.create_put_contact_mutation("entry2", "trt1", "Hello World");
+            let result = test_store.mutate(mutation).await?;
+            test_store
+                .cluster
+                .wait_operation_committed(0, result.operation_ids[0]);
+        }
+
         // entity should eventually be completely deleted
         let store_handle = test_store.store_handle.clone();
         async_expect_eventually(|| async {
-            let query = QueryBuilder::all().include_deleted().build();
+            let query = QueryBuilder::with_id("entity1").include_deleted().build();
             let res = store_handle.query(query).await.unwrap();
             res.entities.is_empty()
         })
