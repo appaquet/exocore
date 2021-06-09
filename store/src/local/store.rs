@@ -217,17 +217,18 @@ where
             loop {
                 gc_interval.tick().await;
 
-                let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
-                let inner = inner.read()?;
-                match inner.index.run_garbage_collector() {
+                let deletions = {
+                    let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
+                    let inner = inner.read()?;
+                    inner.index.run_garbage_collector()
+                };
+                match deletions {
+                    Ok(deletions) if deletions.is_empty() => {}
                     Ok(deletions) => {
-                        let deletion_request = MutationRequest {
-                            mutations: deletions,
-                            ..Default::default()
-                        };
-
-                        if let Err(err) = inner.handle_mutation_request(deletion_request) {
-                            error!("Error executing mutations from garbage collection: {}", err);
+                        let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
+                        let mut inner = inner.write()?;
+                        if let Err(err) = inner.index.delete_garbage_collected(deletions) {
+                            error!("Error running garbage collection: {}", err);
                         }
                     }
                     Err(err) => {
@@ -781,6 +782,7 @@ pub mod tests {
             chain_index_in_memory: false,
             garbage_collector: GarbageCollectorConfig {
                 deleted_entity_collection: Duration::from_millis(100),
+                min_operation_age: Duration::from_millis(1),
                 ..Default::default()
             },
             ..TestStore::test_index_config()

@@ -121,6 +121,16 @@ impl IndexOperation {
             return smallvec![];
         };
 
+        Self::from_chain_entity_mutation(entity_mutation, operation.operation_id, block_offset)
+    }
+
+    /// Creates an index operation from an entity mutation that will target the
+    /// chain index.
+    pub fn from_chain_entity_mutation(
+        entity_mutation: EntityMutation,
+        operation_id: OperationId,
+        block_offset: BlockOffset,
+    ) -> SmallVec<[IndexOperation; 1]> {
         let mutation = if let Some(mutation) = entity_mutation.mutation {
             mutation
         } else {
@@ -137,7 +147,7 @@ impl IndexOperation {
 
                 smallvec![IndexOperation::PutTrait(PutTraitMutation {
                     block_offset: Some(block_offset),
-                    operation_id: operation.operation_id,
+                    operation_id,
                     entity_id: entity_mutation.entity_id,
                     trt,
                 })]
@@ -145,7 +155,7 @@ impl IndexOperation {
             Mutation::DeleteTrait(trt_del) => smallvec![IndexOperation::PutTraitTombstone(
                 PutTraitTombstoneMutation {
                     block_offset: Some(block_offset),
-                    operation_id: operation.operation_id,
+                    operation_id,
                     entity_id: entity_mutation.entity_id,
                     trait_id: trt_del.trait_id,
                 }
@@ -153,7 +163,7 @@ impl IndexOperation {
             Mutation::DeleteEntity(_) => smallvec![IndexOperation::PutEntityTombstone(
                 PutEntityTombstoneMutation {
                     block_offset: Some(block_offset),
-                    operation_id: operation.operation_id,
+                    operation_id,
                     entity_id: entity_mutation.entity_id,
                 }
             )],

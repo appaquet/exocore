@@ -456,7 +456,7 @@ where
     }
 
     /// Calls the garbage collector to run a pass on entities that got flagged
-    /// to be collector.
+    /// and generate deletion mutations.
     pub fn run_garbage_collector(&self) -> Result<Vec<EntityMutation>, Error> {
         let last_chain_indexed_block = self
             .last_chain_indexed_block()
@@ -489,15 +489,30 @@ where
             return Ok(Vec::new());
         }
 
-        let mutations = self
+        let deletions = self
             .gc
             .run(|entity_id| self.chain_index.fetch_entity_mutations(entity_id));
-        if !mutations.is_empty() {
+        if !deletions.is_empty() {
             self.gc_last_run_block_height
                 .store(last_chain_index_height, Ordering::Release);
         }
 
-        Ok(mutations)
+        Ok(deletions)
+    }
+
+    /// Deletes garbage collected mutations resulting from
+    /// `run_garbage_collector` from the chain index.
+    pub fn delete_garbage_collected(
+        &mut self,
+        mutations: Vec<EntityMutation>,
+    ) -> Result<(), Error> {
+        let operations = mutations
+            .into_iter()
+            .flat_map(|mutation| IndexOperation::from_chain_entity_mutation(mutation, 0, 0));
+
+        self.chain_index.apply_operations(operations)?;
+
+        Ok(())
     }
 
     /// Creates the chain index based on configuration.

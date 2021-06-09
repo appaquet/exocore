@@ -5,7 +5,7 @@ use std::{
 };
 
 use exocore_chain::{block::BlockOffset, operation::OperationId};
-use exocore_core::time::Clock;
+use exocore_core::time::{Clock, ConsistentTimestamp};
 use exocore_protos::{core::EntityGarbageCollectorConfig, store::EntityMutation};
 
 use super::{sort_mutations_commit_time, EntityAggregator};
@@ -52,6 +52,7 @@ pub struct GarbageCollector {
     config: GarbageCollectorConfig,
     max_entity_deleted_duration: chrono::Duration,
     max_trait_deleted_duration: chrono::Duration,
+    trait_versions_min_age: chrono::Duration,
     clock: Clock,
     inner: Arc<RwLock<Inner>>,
 }
@@ -66,6 +67,9 @@ impl GarbageCollector {
             chrono::Duration::from_std(config.deleted_trait_collection)
                 .expect("Couldn't convert `deleted_trait_collection` to chrono::Duration");
 
+        let trait_versions_min_age = chrono::Duration::from_std(config.min_operation_age)
+            .expect("Couldn't convert `trait_versions_min_age` to chrono::Duration");
+
         let inner = Arc::new(RwLock::new(Inner {
             config,
             operations: Vec::with_capacity(config.queue_size),
@@ -76,6 +80,7 @@ impl GarbageCollector {
             config,
             max_entity_deleted_duration,
             max_trait_deleted_duration,
+            trait_versions_min_age,
             clock,
             inner,
         }
@@ -164,6 +169,8 @@ impl GarbageCollector {
             return Vec::new();
         }
 
+        let min_op_time = self.clock.now_chrono() - self.trait_versions_min_age;
+
         debug!(
             "Starting a garbage collection pass with {} operations for {} entities...",
             operations.len(),
@@ -175,13 +182,16 @@ impl GarbageCollector {
             let entity_id = op.entity_id();
 
             // get all mutations for entity until block offset where we deemed the entity to
-            // be collectable
+            // be collectable and until minimum operation age.
             let mutations = if let Ok(mut_res) = entity_fetcher(entity_id) {
-                let mutations =
-                    mut_res
-                        .mutations
-                        .into_iter()
-                        .filter(|mutation| matches!(mutation.block_offset, Some(offset) if offset <= until_block_offset));
+                let mutations = mut_res.mutations.into_iter().filter(|mutation| {
+                    let op_time = ConsistentTimestamp::from(mutation.operation_id).to_datetime();
+                    if op_time > min_op_time {
+                        return false;
+                    }
+
+                    matches!(mutation.block_offset, Some(offset) if offset <= until_block_offset)
+                });
 
                 sort_mutations_commit_time(mutations)
             } else {
@@ -233,6 +243,9 @@ pub struct GarbageCollectorConfig {
     /// After how many versions for a trait a compaction is triggered.
     pub trait_versions_leeway: usize,
 
+    /// Operations can only be collected / deleted if they are older than this.
+    pub min_operation_age: Duration,
+
     /// Size of the queue of entities to be collected.
     pub queue_size: usize,
 }
@@ -244,7 +257,8 @@ impl Default for GarbageCollectorConfig {
             deleted_trait_collection: Duration::from_secs(14 * DAY_SECS),
             trait_versions_max: 5,
             trait_versions_leeway: 7,
-            queue_size: 100,
+            min_operation_age: Duration::from_secs(2 * DAY_SECS),
+            queue_size: 1000,
         }
     }
 }
@@ -440,6 +454,7 @@ mod tests {
 
         let config = GarbageCollectorConfig {
             deleted_entity_collection: Duration::from_secs(1),
+            min_operation_age: Duration::from_secs(1),
             ..Default::default()
         };
         let gc = GarbageCollector::new(config, clock.clone());
@@ -503,6 +518,7 @@ mod tests {
 
         let config = GarbageCollectorConfig {
             deleted_trait_collection: Duration::from_secs(1),
+            min_operation_age: Duration::from_secs(1),
             ..Default::default()
         };
         let gc = GarbageCollector::new(config, clock.clone());
@@ -580,11 +596,15 @@ mod tests {
         ];
         let aggregator = EntityAggregator::new(mutations.into_iter()).unwrap();
 
+        // move time a second later
+        clock.add_fixed_instant_duration(Duration::from_secs(2));
+
         // not enough versions to be collected
         let gc = GarbageCollector::new(
             GarbageCollectorConfig {
                 trait_versions_max: 3,
                 trait_versions_leeway: 6,
+                min_operation_age: Duration::from_secs(1),
                 ..Default::default()
             },
             clock.clone(),
@@ -597,6 +617,7 @@ mod tests {
             GarbageCollectorConfig {
                 trait_versions_max: 3,
                 trait_versions_leeway: 4,
+                min_operation_age: Duration::from_secs(1),
                 ..Default::default()
             },
             clock,
@@ -636,7 +657,10 @@ mod tests {
             mock_put_trait("trt1", "typ", Some(3), put2_op, None, None),
             mock_put_trait("trt1", "typ", Some(4), put3_op, None, None),
             mock_put_trait("trt1", "typ", Some(5), put4_op, None, None),
-            mock_put_trait("trt1", "typ", None /*in pending*/, put5_op, None, None),
+            mock_put_trait(
+                "trt1", "typ", None, /* in pending */
+                put5_op, None, None,
+            ),
         ];
         let aggregator = EntityAggregator::new(mutations.into_iter()).unwrap();
 
@@ -645,6 +669,7 @@ mod tests {
             GarbageCollectorConfig {
                 trait_versions_max: 2,
                 trait_versions_leeway: 3,
+                min_operation_age: Duration::from_secs(1),
                 ..Default::default()
             },
             clock,
