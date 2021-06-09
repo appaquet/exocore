@@ -411,10 +411,7 @@ pub struct DeleteTraitMutation {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DeleteEntityMutation {}
 /// Deletes mutations of an entity that have an operation id specified in the
-/// given list. This mutation is used for index management purpose only since
-/// the mutations are not actually deleted from the chain. Since the chain
-/// indices are built in a semi-versioned way, this actually delete the
-/// mutations from the indices.
+/// given list.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DeleteOperationsMutation {
     #[prost(uint64, repeated, tag = "1")]
