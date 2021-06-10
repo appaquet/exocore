@@ -217,18 +217,17 @@ where
             loop {
                 gc_interval.tick().await;
 
-                let deletions = {
-                    let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
-                    let inner = inner.read()?;
-                    inner.index.run_garbage_collector()
-                };
-                match deletions {
-                    Ok(deletions) if deletions.is_empty() => {}
+                let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
+                let inner = inner.read()?;
+                match inner.index.run_garbage_collector() {
                     Ok(deletions) => {
-                        let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
-                        let mut inner = inner.write()?;
-                        if let Err(err) = inner.index.delete_garbage_collected(deletions) {
-                            error!("Error running garbage collection: {}", err);
+                        let deletion_request = MutationRequest {
+                            mutations: deletions,
+                            ..Default::default()
+                        };
+
+                        if let Err(err) = inner.handle_mutation_request(deletion_request) {
+                            error!("Error executing mutations from garbage collection: {}", err);
                         }
                     }
                     Err(err) => {
