@@ -257,8 +257,8 @@ impl Default for GarbageCollectorConfig {
             deleted_trait_collection: Duration::from_secs(14 * DAY_SECS),
             trait_versions_max: 5,
             trait_versions_leeway: 7,
-            min_operation_age: Duration::from_secs(2 * DAY_SECS),
-            queue_size: 100,
+            min_operation_age: Duration::from_secs(7 * DAY_SECS),
+            queue_size: 300,
         }
     }
 }
