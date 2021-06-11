@@ -173,20 +173,20 @@ struct ChainExportOptions {
     /// File in which chain will be exported.
     file: PathBuf,
 
-    /// Drop index operation deletion used in index garbage collection.
+    /// Drop index operation deletions used for index garbage collection.
     #[clap(long)]
     drop_operation_deletions: bool,
 }
 
 #[derive(Clap, Clone)]
 struct ChainImportOptions {
+    /// Files from which chain will be imported.
+    files: Vec<PathBuf>,
+
     /// Create blocks with a fixed number of operations instead of using
     /// exported block delimiter.
     #[clap(long)]
     operations_per_block: Option<usize>,
-
-    /// Files from which chain will be imported.
-    files: Vec<PathBuf>,
 }
 
 #[derive(Clap, Clone)]

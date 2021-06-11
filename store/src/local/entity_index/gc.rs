@@ -243,7 +243,7 @@ pub struct GarbageCollectorConfig {
     /// After how many versions for a trait a compaction is triggered.
     pub trait_versions_leeway: usize,
 
-    /// Operations can only be collected / deleted if they are older than this.
+    /// Minimum age an operation needs to have in order to be collected / deleted.
     pub min_operation_age: Duration,
 
     /// Size of the queue of entities to be collected.

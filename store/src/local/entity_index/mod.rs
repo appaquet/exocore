@@ -456,7 +456,7 @@ where
     }
 
     /// Calls the garbage collector to run a pass on entities that got flagged
-    /// and generate deletion mutations.
+    /// and generates deletion mutations.
     pub fn run_garbage_collector(&self) -> Result<Vec<EntityMutation>, Error> {
         let last_chain_indexed_block = self
             .last_chain_indexed_block()
