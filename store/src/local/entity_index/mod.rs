@@ -667,10 +667,15 @@ where
                     && last_chain_block_height.saturating_sub(*height) >= chain_index_min_depth
             })
             .flat_map(|(offset, _height, engine_operation)| {
+                let operation_id = engine_operation.operation_id;
+                let (index_ops, entity_id) =
+                    IndexOperation::from_chain_engine_operation(engine_operation, offset);
+
                 if !pending_index_empty {
                     // delete from pending index if it's not already empty
-                    pending_index_mutations.push(IndexOperation::DeleteOperation(
-                        engine_operation.operation_id,
+                    pending_index_mutations.push(IndexOperation::DeleteEntityOperation(
+                        entity_id,
+                        operation_id,
                     ));
                 }
 
@@ -679,7 +684,7 @@ where
                     new_highest_block_offset = Some(offset);
                 }
 
-                IndexOperation::from_chain_engine_operation(engine_operation, offset)
+                index_ops
             });
 
         self.chain_index.apply_operations(chain_index_mutations)?;

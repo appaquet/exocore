@@ -772,13 +772,13 @@ pub mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn garbage_collection() -> anyhow::Result<()> {
         let store_config = StoreConfig {
-            garbage_collect_interval: Duration::from_millis(50),
+            garbage_collect_interval: Duration::from_millis(300),
             ..Default::default()
         };
         let index_config = EntityIndexConfig {
             chain_index_min_depth: 0, // index in chain as soon as a block is committed
             chain_index_depth_leeway: 0, // for tests, we want to index as soon as possible
-            chain_index_in_memory: false,
+            chain_index_in_memory: true,
             garbage_collector: GarbageCollectorConfig {
                 deleted_entity_collection: Duration::from_millis(100),
                 min_operation_age: Duration::from_nanos(1),
@@ -804,15 +804,6 @@ pub mod tests {
             test_store
                 .cluster
                 .wait_operation_committed(0, resp.operation_ids[0]);
-        }
-
-        {
-            // make sure deletion is in the chain by committing something after
-            let mutation = test_store.create_put_contact_mutation("entry2", "trt1", "Hello World");
-            let result = test_store.mutate(mutation).await?;
-            test_store
-                .cluster
-                .wait_operation_committed(0, result.operation_ids[0]);
         }
 
         // entity should eventually be completely deleted

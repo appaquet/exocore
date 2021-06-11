@@ -23,9 +23,6 @@ pub enum IndexOperation {
     /// Mutation that marks an entity has being deleted without deleting it.
     PutEntityTombstone(PutEntityTombstoneMutation),
 
-    /// Delete an indexed mutation by its operation id.
-    DeleteOperation(OperationId),
-
     /// Delete an indexed mutation for specified entity id by its operation id.
     /// Independent from `DeleteOperation` so that we can indicate flush entity
     /// cache.
@@ -110,18 +107,23 @@ impl IndexOperation {
     }
 
     /// Creates an index operation from an engine operation store in the chain
-    /// of the chain layer
+    /// of the chain layer.
     pub fn from_chain_engine_operation(
         operation: EngineOperation,
         block_offset: BlockOffset,
-    ) -> SmallVec<[IndexOperation; 1]> {
+    ) -> (SmallVec<[IndexOperation; 1]>, EntityId) {
         let entity_mutation = if let Some(mutation) = Self::extract_entity_mutation(&operation) {
             mutation
         } else {
-            return smallvec![];
+            return (smallvec![], String::new());
         };
 
-        Self::from_chain_entity_mutation(entity_mutation, operation.operation_id, block_offset)
+        let entity_id = entity_mutation.entity_id.clone();
+
+        (
+            Self::from_chain_entity_mutation(entity_mutation, operation.operation_id, block_offset),
+            entity_id,
+        )
     }
 
     /// Creates an index operation from an entity mutation that will target the
