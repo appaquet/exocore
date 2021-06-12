@@ -15,13 +15,13 @@ type FuncTick = TypedFunc<(), u64>;
 /// Runtime for an application WASM module.
 pub struct WasmTimeRuntime<E: HostEnvironment> {
     instance: Instance,
-    func_send_message: FuncSendMessage,
-    func_tick: FuncTick,
-    store: Store<StoreStore>,
+    send_message_func: FuncSendMessage,
+    tick_func: FuncTick,
+    store: Store<RuntimeState>,
     _phantom: std::marker::PhantomData<E>,
 }
 
-struct StoreStore;
+struct RuntimeState;
 
 impl<E: HostEnvironment> WasmTimeRuntime<E> {
     pub fn from_file<P>(file: P, env: Arc<E>) -> Result<WasmTimeRuntime<E>, Error>
@@ -29,20 +29,20 @@ impl<E: HostEnvironment> WasmTimeRuntime<E> {
         P: AsRef<Path>,
     {
         let engine = Engine::default();
-        let mut store = Store::new(&engine, StoreStore);
+        let mut store = Store::new(&engine, RuntimeState);
 
         let mut linker = Linker::new(&engine);
         Self::setup_host_module(&mut linker, &env)?;
 
         let module = Module::from_file(&engine, file)?;
-        let instance = linker.instantiate(&mut store, &module)?;
 
-        let (func_tick, func_send_message) = bootstrap_module(&mut store, &instance)?;
+        let instance = linker.instantiate(&mut store, &module)?;
+        let (tick_func, send_message_func) = bootstrap_instance(&mut store, &instance)?;
 
         Ok(WasmTimeRuntime {
             instance,
-            func_send_message,
-            func_tick,
+            send_message_func,
+            tick_func,
             store,
             _phantom: std::marker::PhantomData,
         })
@@ -51,7 +51,7 @@ impl<E: HostEnvironment> WasmTimeRuntime<E> {
     // Runs an iteration on the WASM module.
     pub fn tick(&mut self) -> Result<Option<Duration>, Error> {
         let now = unix_timestamp();
-        let next_tick_time = self.func_tick.call(&mut self.store, ())?;
+        let next_tick_time = self.tick_func.call(&mut self.store, ())?;
 
         if next_tick_time > now {
             Ok(Some(Duration::from_nanos(next_tick_time - now)))
@@ -67,7 +67,7 @@ impl<E: HostEnvironment> WasmTimeRuntime<E> {
         let (message_ptr, message_size) =
             wasm_alloc(&mut self.store, &self.instance, &message_bytes)?;
         let res = self
-            .func_send_message
+            .send_message_func
             .call(&mut self.store, (message_ptr, message_size));
         wasm_free(&mut self.store, &self.instance, message_ptr, message_size)?;
 
@@ -79,13 +79,13 @@ impl<E: HostEnvironment> WasmTimeRuntime<E> {
         Ok(())
     }
 
-    fn setup_host_module(linker: &mut Linker<StoreStore>, env: &Arc<E>) -> Result<(), Error> {
+    fn setup_host_module(linker: &mut Linker<RuntimeState>, env: &Arc<E>) -> Result<(), Error> {
         let env_clone = env.clone();
 
         linker.func_wrap(
             "exocore",
             "__exocore_host_log",
-            move |mut caller: Caller<'_, StoreStore>, level: i32, ptr: i32, len: i32| {
+            move |mut caller: Caller<'_, RuntimeState>, level: i32, ptr: i32, len: i32| {
                 let log_level = log_level_from_i32(level);
                 read_wasm_str(&mut caller, ptr, len, |msg| {
                     env_clone.handle_log(log_level, msg);
@@ -98,14 +98,14 @@ impl<E: HostEnvironment> WasmTimeRuntime<E> {
         linker.func_wrap(
             "exocore",
             "__exocore_host_now",
-            |_caller: Caller<'_, StoreStore>| -> u64 { unix_timestamp() },
+            |_caller: Caller<'_, RuntimeState>| -> u64 { unix_timestamp() },
         )?;
 
         let env = env.clone();
         linker.func_wrap(
             "exocore",
             "__exocore_host_out_message",
-            move |mut caller: Caller<'_, StoreStore>, ptr: i32, len: i32| -> u32 {
+            move |mut caller: Caller<'_, RuntimeState>, ptr: i32, len: i32| -> u32 {
                 let status = match read_wasm_message::<OutMessage>(&mut caller, ptr, len) {
                     Ok(msg) => {
                         env.as_ref().handle_message(msg);
@@ -142,8 +142,8 @@ pub trait HostEnvironment: Send + Sync + 'static {
     fn handle_log(&self, level: log::Level, msg: &str);
 }
 
-fn bootstrap_module(
-    mut store: &mut Store<StoreStore>,
+fn bootstrap_instance(
+    mut store: &mut Store<RuntimeState>,
     instance: &Instance,
 ) -> Result<(FuncTick, FuncSendMessage), Error> {
     // Initialize environment
@@ -179,7 +179,7 @@ fn bootstrap_module(
 ///
 /// Mostly copied from wasmtime::Func comments.
 fn read_wasm_message<M: prost::Message + Default>(
-    caller: &mut Caller<'_, StoreStore>,
+    caller: &mut Caller<'_, RuntimeState>,
     ptr: i32,
     len: i32,
 ) -> Result<M, Error> {
@@ -203,7 +203,7 @@ fn read_wasm_message<M: prost::Message + Default>(
 ///
 /// Mostly copied from wasmtime::Func comments.
 fn read_wasm_str<F: FnOnce(&str)>(
-    caller: &mut Caller<'_, StoreStore>,
+    caller: &mut Caller<'_, RuntimeState>,
     ptr: i32,
     len: i32,
     f: F,
@@ -230,7 +230,7 @@ fn read_wasm_str<F: FnOnce(&str)>(
 
 // Inspired from https://radu-matei.com/blog/practical-guide-to-wasm-memory/#passing-arrays-to-modules-using-wasmtime
 fn wasm_alloc(
-    mut store: &mut Store<StoreStore>,
+    mut store: &mut Store<RuntimeState>,
     instance: &Instance,
     bytes: &[u8],
 ) -> Result<(i32, i32), Error> {
@@ -244,16 +244,15 @@ fn wasm_alloc(
         .map_err(|err| Error::MissingFunction(err, "__exocore_alloc"))?;
     let ptr = alloc.call(&mut store, bytes.len() as i32)?;
 
-    unsafe {
-        let raw = mem.data_ptr(store).offset(ptr as isize);
-        raw.copy_from(bytes.as_ptr(), bytes.len());
-    }
+    let data = mem.data_mut(store);
+    let ptr_usize = ptr as usize;
+    (&mut data[ptr_usize..ptr_usize + bytes.len()]).copy_from_slice(bytes);
 
     Ok((ptr, bytes.len() as i32))
 }
 
 fn wasm_free(
-    mut store: &mut Store<StoreStore>,
+    mut store: &mut Store<RuntimeState>,
     instance: &Instance,
     ptr: i32,
     size: i32,
