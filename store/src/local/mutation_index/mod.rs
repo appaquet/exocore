@@ -85,7 +85,7 @@ impl MutationIndex {
         let directory = MmapDirectory::open(directory)?;
         let index = TantivyIndex::builder()
             .schema(tantivy_schema)
-            .settings(index_settings())
+            // .settings(index_settings())
             .open_or_create(directory)?;
         fields.register_tokenizers(&index);
 
@@ -124,7 +124,7 @@ impl MutationIndex {
 
         let index = TantivyIndex::builder()
             .schema(tantivy_schema)
-            .settings(index_settings())
+            // .settings(index_settings())
             .create_in_ram()?;
         fields.register_tokenizers(&index);
 
