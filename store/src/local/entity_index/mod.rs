@@ -844,7 +844,7 @@ where
 
                 if mutation.entity_id != entity_mutations.entity_id {
                     error!(
-                        "Fetched from chain operation {} that didn't belonged to entity {}, but {}",
+                        "Fetched from chain operation {} that didn't belong to entity {}, but entity {}",
                         mut_metadata.operation_id, entity_mutations.entity_id, mutation.entity_id
                     );
                     return None;
