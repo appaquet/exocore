@@ -476,7 +476,11 @@ impl Inner {
 
         let mut sent_queries = Vec::new();
         for (token, query) in &self.watched_queries {
-            if force || query.last_register.map_or(true, |i| i.elapsed() > register_interval) {
+            if force
+                || query
+                    .last_register
+                    .map_or(true, |i| i.elapsed() > register_interval)
+            {
                 if let Err(err) = self.send_watch_query(query) {
                     error!("Couldn't send watch query: {}", err);
                 }

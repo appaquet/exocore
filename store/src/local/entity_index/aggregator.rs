@@ -121,7 +121,10 @@ impl EntityAggregator {
                     active_operation_ids.insert(current_operation_id);
 
                     update_if_older(&mut entity_creation_date, agg.creation_date);
-                    update_if_newer(&mut entity_modification_date, agg.modification_date.or(agg.creation_date));
+                    update_if_newer(
+                        &mut entity_modification_date,
+                        agg.modification_date.or(agg.creation_date),
+                    );
                     entity_deletion_date = None;
                 }
                 MutationType::TraitTombstone(trait_id) => {
