@@ -13,7 +13,7 @@ use futures::{channel::mpsc, prelude::*, FutureExt, SinkExt, StreamExt};
 use libp2p::{
     core::PeerId,
     ping::{Ping, PingEvent, PingSuccess},
-    swarm::{ExpandedSwarm, NetworkBehaviourEventProcess, Swarm},
+    swarm::{NetworkBehaviourEventProcess, Swarm},
     NetworkBehaviour, Transport,
 };
 
