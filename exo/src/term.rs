@@ -2,6 +2,8 @@ use std::fmt::{Debug, Display};
 
 use console::{measure_text_width, style};
 
+use crate::Context;
+
 pub fn print_spacer() {
     println!();
 }
@@ -79,4 +81,11 @@ pub fn print_table(columns: Vec<String>, rows: Vec<Vec<String>>) {
         }
         println!();
     }
+}
+
+pub fn confirm<S: Into<String>>(ctx: &Context, text: S) -> bool {
+    dialoguer::Confirm::with_theme(ctx.dialog_theme.as_ref())
+        .with_prompt(text)
+        .interact()
+        .expect("Couldn't get prompt answer")
 }

@@ -4,7 +4,12 @@ use exocore_protos::core::{
     cell_application_config, node_cell_config, LocalNodeConfig, NodeConfig,
 };
 
-use crate::{Context, cell::copy_node_addresses_to_cells, term::print_spacer, utils::edit_file};
+use crate::{
+    cell::copy_node_addresses_to_cells,
+    term::{confirm, print_spacer},
+    utils::edit_file,
+    Context,
+};
 
 #[derive(Clap)]
 pub struct ConfigOptions {
@@ -76,11 +81,7 @@ fn cmd_edit(ctx: &Context, _conf_opts: &ConfigOptions) {
     }
 
     print_spacer();
-    if dialoguer::Confirm::new()
-        .with_prompt("Copy new addresses to cell configurations?")
-        .interact()
-        .unwrap()
-    {
+    if confirm(ctx, "Copy new addresses to cell configurations?") {
         copy_node_addresses_to_cells(ctx, node_config_after);
     }
 }

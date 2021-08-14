@@ -851,12 +851,7 @@ fn cmd_import_chain(
         ));
 
         print_spacer();
-        let over = dialoguer::Confirm::with_theme(ctx.dialog_theme.as_ref())
-            .with_prompt("Do you want to wipe the chain?")
-            .interact()
-            .expect("Couldn't get prompt answer");
-
-        if over {
+        if confirm(ctx, "Do you want to wipe the chain?") {
             chain_store.truncate_from_offset(0)?;
         } else {
             panic!("Chain is already initialized");
