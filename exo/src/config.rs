@@ -4,7 +4,7 @@ use exocore_protos::core::{
     cell_application_config, node_cell_config, LocalNodeConfig, NodeConfig,
 };
 
-use crate::{utils::edit_file, Context};
+use crate::{Context, cell::copy_node_addresses_to_cells, term::print_spacer, utils::edit_file};
 
 #[derive(Clap)]
 pub struct ConfigOptions {
@@ -62,10 +62,27 @@ pub fn handle_cmd(ctx: &Context, config_opts: &ConfigOptions) -> anyhow::Result<
 fn cmd_edit(ctx: &Context, _conf_opts: &ConfigOptions) {
     let config_path = ctx.options.conf_path();
 
+    let node_config_before = ctx.options.read_configuration();
+
     edit_file(config_path, |temp_path| {
         LocalNodeConfig::from_yaml_file(temp_path)?;
         Ok(())
     });
+
+    let node_config_after = ctx.options.read_configuration();
+
+    if node_config_before.addresses == node_config_after.addresses {
+        return;
+    }
+
+    print_spacer();
+    if dialoguer::Confirm::new()
+        .with_prompt("Copy new addresses to cell configurations?")
+        .interact()
+        .unwrap()
+    {
+        copy_node_addresses_to_cells(ctx, node_config_after);
+    }
 }
 
 fn cmd_validate(ctx: &Context, _conf_opts: &ConfigOptions) -> anyhow::Result<()> {

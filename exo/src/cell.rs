@@ -1163,7 +1163,7 @@ fn extract_cell_by_name(either_cells: Vec<EitherCell>, name: &str) -> Option<Eit
     either_cells.into_iter().find(|c| c.cell().name() == name)
 }
 
-fn cell_config_path(cell: &Cell) -> PathBuf {
+pub fn cell_config_path(cell: &Cell) -> PathBuf {
     let cell_directory = cell.cell_directory().expect("Couldn't find cell directory");
     cell_directory.join("cell.yaml")
 }
@@ -1199,7 +1199,7 @@ fn create_genesis_block(cell: FullCell) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn write_cell_config(ctx: &Context, config: &CellConfig) {
+pub fn write_cell_config(ctx: &Context, config: &CellConfig) {
     if config.public_key.is_empty() {
         panic!("Expected cell to have a public key");
     }
@@ -1243,4 +1243,29 @@ fn add_node_config_cell(ctx: &Context, node_config: &LocalNodeConfig, cell_confi
     node_config
         .to_yaml_file(ctx.options.conf_path())
         .expect("Couldn't write node config");
+}
+
+pub fn copy_node_addresses_to_cells(ctx: &Context, node_config: LocalNodeConfig) {
+    let (either_cells, _local_node) = Cell::from_local_node_config(node_config.clone())
+        .expect("Couldn't create cell from config");
+
+    for cell in either_cells {
+        let config_path = cell_config_path(cell.cell());
+        let mut cell_config =
+            CellConfig::from_yaml_file(config_path).expect("Couldn't read cell config");
+
+        let changed = if let Some(cell_node_config) = cell_config
+            .find_node(&node_config.public_key)
+            .and_then(|c| c.node.as_mut())
+        {
+            cell_node_config.addresses = node_config.addresses.clone();
+            true
+        } else {
+            false
+        };
+
+        if changed {
+            write_cell_config(ctx, &cell_config);
+        }
+    }
 }

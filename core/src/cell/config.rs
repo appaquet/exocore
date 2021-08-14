@@ -245,6 +245,8 @@ pub trait CellConfigExt {
 
     fn make_relative_paths<P: AsRef<Path>>(&mut self, directory: P);
 
+    fn find_node(&mut self, node_pk: &str) -> Option<&mut CellNodeConfig>;
+
     fn add_node(&mut self, node: CellNodeConfig);
 
     fn add_application(&mut self, cell_app: CellApplicationConfig);
@@ -394,20 +396,27 @@ impl CellConfigExt for CellConfig {
         }
     }
 
+    fn find_node(&mut self, node_pk: &str) -> Option<&mut CellNodeConfig> {
+        for cell_node in &mut self.nodes {
+            if cell_node.node.as_ref().map_or(false, |n| n.public_key == node_pk) {
+                return Some(cell_node);
+            }
+        }
+
+        None
+    }
+
     fn add_node(&mut self, node: CellNodeConfig) {
-        let new_node_pk = node.node.as_ref().map(|n| n.public_key.as_str());
+        let node_pk = if let Some(node_pk) = node.node.as_ref().map(|n| n.public_key.as_str()) {
+            node_pk
+        } else {
+            return
+        };
 
         // check if node exists first
-        for cell_node in &mut self.nodes {
-            let is_node = {
-                let node_pk = cell_node.node.as_ref().map(|n| n.public_key.as_str());
-                new_node_pk == node_pk
-            };
-
-            if is_node {
-                *cell_node = node;
-                return;
-            }
+        if let Some(cell_node) = self.find_node(node_pk) {
+            *cell_node = node;
+            return;
         }
 
         // otherwise it doesn't exist, we just add it
