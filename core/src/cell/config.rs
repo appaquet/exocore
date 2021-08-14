@@ -398,7 +398,11 @@ impl CellConfigExt for CellConfig {
 
     fn find_node(&mut self, node_pk: &str) -> Option<&mut CellNodeConfig> {
         for cell_node in &mut self.nodes {
-            if cell_node.node.as_ref().map_or(false, |n| n.public_key == node_pk) {
+            if cell_node
+                .node
+                .as_ref()
+                .map_or(false, |n| n.public_key == node_pk)
+            {
                 return Some(cell_node);
             }
         }
@@ -410,7 +414,7 @@ impl CellConfigExt for CellConfig {
         let node_pk = if let Some(node_pk) = node.node.as_ref().map(|n| n.public_key.as_str()) {
             node_pk
         } else {
-            return
+            return;
         };
 
         // check if node exists first
