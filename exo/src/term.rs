@@ -90,3 +90,14 @@ pub fn confirm<S: Into<String>>(ctx: &Context, text: S) -> bool {
         .interact()
         .expect("Couldn't get prompt answer")
 }
+
+pub fn read_line() -> String {
+    let mut line = String::new();
+    std::io::stdin().read_line(&mut line).unwrap();
+    line
+}
+
+pub fn wait_press_enter() {
+    print_info("Press enter to continue...");
+    read_line();
+}

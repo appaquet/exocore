@@ -31,9 +31,8 @@ use exocore_protos::{
 use crate::{
     app::AppPackage,
     disco::prompt_discovery_pin,
-    term::*,
     utils::{edit_file, edit_string},
-    Context,
+    Context, *,
 };
 
 #[derive(Clap, Clone)]
@@ -54,10 +53,10 @@ pub struct CellOptions {
 
 #[derive(Clap, Clone)]
 enum CellCommand {
-    /// Initialize a new cell.
+    /// Initializes a new cell.
     Init(InitOptions),
 
-    /// List cells of the node.
+    /// Lists cells of the node.
     List,
 
     /// Edit cell configuration.
@@ -69,26 +68,38 @@ enum CellCommand {
     /// Cell nodes related commands.
     Node(NodeOptions),
 
-    /// Print cell configuration.
+    /// Prints cell configuration.
     Print(PrintOptions),
 
     /// Cell apps related commands.
     App(AppOptions),
 
-    /// Check the cell's chain integrity.
-    CheckChain,
+    /// Cell chain related commands.
+    Chain(CellChainOptions),
 
-    /// Export the chain's data.
-    ExportChain(ChainExportOptions),
-
-    /// Import the chain's data.
-    ImportChain(ChainImportOptions),
-
-    /// Generate an auth token.
+    /// Generates an auth token.
     GenerateAuthToken(GenerateAuthTokenOptions),
+}
 
-    /// Create genesis block of the chain.
-    CreateGenesisBlock,
+#[derive(Clap, Clone)]
+struct CellChainOptions {
+    #[clap(subcommand)]
+    command: CellChainCommand,
+}
+
+#[derive(Clap, Clone)]
+enum CellChainCommand {
+    /// Initializes a chain with a genesis block.
+    Init,
+
+    /// Checks the cell's chain integrity.
+    Check,
+
+    /// Exports the chain's data.
+    Export(ChainExportOptions),
+
+    /// Imports the chain's data.
+    Import(ChainImportOptions),
 }
 
 #[derive(Clap, Clone)]
@@ -110,7 +121,7 @@ struct InitOptions {
     #[clap(long)]
     no_app_host: bool,
 
-    /// Don't create genesis block.
+    /// Don't initialize the chain with a genesis block.
     #[clap(long)]
     no_genesis: bool,
 }
@@ -271,14 +282,16 @@ pub async fn handle_cmd(ctx: &Context, cell_opts: &CellOptions) -> anyhow::Resul
             cmd_print(ctx, cell_opts, opts);
             Ok(())
         }
-        CellCommand::CheckChain => cmd_check_chain(ctx, cell_opts),
-        CellCommand::ExportChain(export_opts) => cmd_export_chain(ctx, cell_opts, export_opts),
-        CellCommand::ImportChain(import_opts) => cmd_import_chain(ctx, cell_opts, import_opts),
+        CellCommand::Chain(chain_opts) => match &chain_opts.command {
+            CellChainCommand::Init => cmd_create_genesis_block(ctx, cell_opts),
+            CellChainCommand::Check => cmd_check_chain(ctx, cell_opts),
+            CellChainCommand::Export(export_opts) => cmd_export_chain(ctx, cell_opts, export_opts),
+            CellChainCommand::Import(import_opts) => cmd_import_chain(ctx, cell_opts, import_opts),
+        },
         CellCommand::GenerateAuthToken(gen_opts) => {
             cmd_generate_auth_token(ctx, cell_opts, gen_opts);
             Ok(())
         }
-        CellCommand::CreateGenesisBlock => cmd_create_genesis_block(ctx, cell_opts),
     }
 }
 
@@ -396,7 +409,7 @@ async fn cmd_node_add(
 
     let (cell_node, reply_pin, reply_token) = if add_opts.manual {
         let cell_node_ = edit_string(
-            "# Paste joining node's public info (result of `exo config print --cell` on joining node)",
+            "# Paste joining node's public info (result of `exo cell join --manual [--role, [--role, ...]]` on joining node)",
             |config| {
                 let config = CellNodeConfig::from_yaml(config.as_bytes())?;
                 Ok(config)
@@ -475,13 +488,13 @@ async fn cmd_node_add(
         .to_yaml_file(&config_path)
         .expect("Couldn't write cell config");
 
-    if !add_opts.manual {
-        let cell_config_inlined = cell_config
-            .inlined()
-            .expect("Couldn't inline cell config")
-            .to_yaml()
-            .expect("Couldn't convert cell config to yaml");
+    let cell_config_inlined = cell_config
+        .inlined()
+        .expect("Couldn't inline cell config")
+        .to_yaml()
+        .expect("Couldn't convert cell config to yaml");
 
+    if !add_opts.manual {
         disco_client
             .reply(
                 reply_pin.expect("Expected reply pin, but didn't find one"),
@@ -496,6 +509,8 @@ async fn cmd_node_add(
             "Node {} has been added to the cell",
             style_value(node_config.name)
         ));
+    } else if confirm(ctx, "Do you want to print cell configuration?") {
+        print!("{}", cell_config_inlined);
     }
 
     Ok(())
@@ -600,6 +615,11 @@ async fn cmd_join(
         CellConfig::from_yaml(cell_config_yml.as_slice())
             .expect("Couldn't parse cell config from host node")
     } else {
+        print_info("Paste node cell information on host node:");
+        println!("{}", cell_node_yaml);
+
+        wait_press_enter();
+
         edit_string(
             "# Paste config of the cell to join (result of `exo cell print --inline` on host node)",
             |config| {
@@ -987,10 +1007,9 @@ fn cmd_generate_auth_token(
         "Expiration: {}",
         style_value(expiration.to_datetime())
     ));
-    print_info(format!(
-        "Token: {}",
-        style_value(token.encode_base58_string())
-    ));
+
+    print_info("Token:");
+    println!("{}", token.encode_base58_string());
 }
 
 fn cmd_create_genesis_block(ctx: &Context, cell_opts: &CellOptions) -> anyhow::Result<()> {

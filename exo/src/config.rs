@@ -22,10 +22,10 @@ pub enum ConfigCommand {
     /// Edit node configuration.
     Edit,
 
-    /// Print node configuration.
+    /// Prints node configuration.
     Print(PrintOptions),
 
-    /// Validate node configuration.
+    /// Validates node configuration.
     Validate,
 }
 
