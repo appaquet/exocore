@@ -5,8 +5,8 @@ use exocore_protos::core::{
 };
 
 use crate::{
-    cell::copy_node_addresses_to_cells,
-    term::{confirm, print_spacer},
+    cell::copy_local_node_to_cells,
+    term::{confirm, print_info},
     utils::edit_file,
     Context,
 };
@@ -76,13 +76,15 @@ fn cmd_edit(ctx: &Context, _conf_opts: &ConfigOptions) {
 
     let node_config_after = ctx.options.read_configuration();
 
-    if node_config_before.addresses == node_config_after.addresses {
+    if node_config_before.addresses == node_config_after.addresses
+        && node_config_before.name == node_config_after.name
+    {
+        print_info("Node name or addresses didn't change. Not copying to cell.");
         return;
     }
 
-    print_spacer();
-    if confirm(ctx, "Copy new addresses to cell configurations?") {
-        copy_node_addresses_to_cells(ctx, node_config_after);
+    if confirm(ctx, "Copy configuration to cells?") {
+        copy_local_node_to_cells(ctx, node_config_after);
     }
 }
 

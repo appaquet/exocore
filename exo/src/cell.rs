@@ -11,8 +11,8 @@ use exocore_chain::{
 };
 use exocore_core::{
     cell::{
-        Cell, CellConfigExt, CellId, CellNode, CellNodeRole, EitherCell, FullCell, LocalNode,
-        LocalNodeConfigExt, NodeConfigExt,
+        Cell, CellConfigExt, CellId, CellNode, CellNodeConfigExt, CellNodeRole, EitherCell,
+        FullCell, LocalNode, LocalNodeConfigExt,
     },
     framing::{sized::SizedFrameReaderIterator, FrameReader},
     sec::{auth_token::AuthToken, keys::Keypair},
@@ -21,7 +21,7 @@ use exocore_core::{
 use exocore_protos::{
     core::{
         cell_application_config, cell_node_config, node_cell_config, CellConfig, CellNodeConfig,
-        LocalNodeConfig, NodeCellConfig, NodeConfig,
+        LocalNodeConfig, NodeCellConfig,
     },
     generated::data_chain_capnp::{block_header, chain_operation},
     prost::Message,
@@ -118,6 +118,18 @@ struct InitOptions {
 /// Cell join related options
 #[derive(Clap, Clone)]
 struct JoinOptions {
+    /// The node will host the chain locally.
+    #[clap(long)]
+    chain: bool,
+
+    /// The node will host entities store.
+    #[clap(long)]
+    store: bool,
+
+    /// The node will host applications.
+    #[clap(long)]
+    app_host: bool,
+
     /// Manually join a cell using its cell configuration yaml.
     #[clap(long)]
     manual: bool,
@@ -151,18 +163,6 @@ enum NodeCommand {
 
 #[derive(Clap, Clone)]
 struct NodeAddOptions {
-    /// The node will host the chain locally.
-    #[clap(long)]
-    chain: bool,
-
-    /// The node will host entities store.
-    #[clap(long)]
-    store: bool,
-
-    /// The node will host applications.
-    #[clap(long)]
-    app_host: bool,
-
     /// Manually add the node using its node configuration yaml.
     #[clap(long)]
     manual: bool,
@@ -308,26 +308,15 @@ fn cmd_init(
             .interact_text()?;
     }
 
+    // Create a configuration for the node in the cell
     let cell_node = {
-        // Create a configuration for the node in the cell
-        let mut cell_node = CellNodeConfig {
-            node: Some(NodeConfig {
-                public_key: node.public_key().encode_base58_string(),
-                id: node.id().to_string(),
-                name: node.name().to_string(),
-                addresses: node_config.addresses.clone(),
-            }),
-            ..Default::default()
-        };
-
+        let mut roles = Vec::new();
         if !init_opts.no_chain {
             print_action(format!(
                 "The node will have {} role",
                 style_emphasis("chain")
             ));
-            cell_node
-                .roles
-                .push(cell_node_config::Role::ChainRole.into());
+            roles.push(cell_node_config::Role::ChainRole);
         }
 
         if !init_opts.no_store {
@@ -335,9 +324,7 @@ fn cmd_init(
                 "The node will have {} role",
                 style_emphasis("store")
             ));
-            cell_node
-                .roles
-                .push(cell_node_config::Role::StoreRole.into());
+            roles.push(cell_node_config::Role::StoreRole);
         }
 
         if !init_opts.no_app_host {
@@ -345,12 +332,10 @@ fn cmd_init(
                 "The node will have {} role",
                 style_emphasis("app host")
             ));
-            cell_node
-                .roles
-                .push(cell_node_config::Role::AppHostRole.into());
+            roles.push(cell_node_config::Role::AppHostRole);
         }
 
-        cell_node
+        node_config.create_cell_node_config(roles)
     };
 
     let cell_config = {
@@ -409,15 +394,15 @@ async fn cmd_node_add(
 
     let disco_client = ctx.get_discovery_client();
 
-    let (new_node_config, reply_pin, reply_token) = if add_opts.manual {
-        let node_config = edit_string(
+    let (cell_node, reply_pin, reply_token) = if add_opts.manual {
+        let cell_node_ = edit_string(
             "# Paste joining node's public info (result of `exo config print --cell` on joining node)",
             |config| {
-                let config = NodeConfig::from_yaml(config.as_bytes())?;
+                let config = CellNodeConfig::from_yaml(config.as_bytes())?;
                 Ok(config)
             },
         );
-        (node_config, None, None)
+        (cell_node_, None, None)
     } else {
         print_spacer();
         let pin = prompt_discovery_pin(ctx, "Enter the joining node discovery PIN");
@@ -426,48 +411,58 @@ async fn cmd_node_add(
             .await
             .expect("Couldn't find joining node using the given discovery pin");
 
-        let node_config_yml = payload
+        let cell_node_yml = payload
             .decode_payload()
             .expect("Couldn't decode node payload");
-        let node_config = NodeConfig::from_yaml(node_config_yml.as_slice())
+        let cell_node = CellNodeConfig::from_yaml(cell_node_yml.as_slice())
             .expect("Couldn't parse joining node config");
 
-        (node_config, payload.reply_pin, payload.reply_token)
+        (cell_node, payload.reply_pin, payload.reply_token)
     };
 
-    let mut cell_node = CellNodeConfig {
-        node: Some(new_node_config.clone()),
-        roles: vec![],
+    let node_config = cell_node.node.clone().unwrap();
+
+    let has_role = |role: cell_node_config::Role| -> bool {
+        let role_i32: i32 = role.into();
+        for another_role in &cell_node.roles {
+            if role_i32 == *another_role {
+                return true;
+            }
+        }
+        false
     };
 
-    if add_opts.chain {
-        print_action(format!(
-            "The node will have {} role",
-            style_emphasis("chain")
-        ));
-        cell_node
-            .roles
-            .push(cell_node_config::Role::ChainRole.into());
+    print_step("New node found !");
+
+    print_info(format!("Node name: {}", style_value(&node_config.name)));
+    print_info(format!(
+        "Public key: {}",
+        style_value(&node_config.public_key)
+    ));
+    print_info(format!(
+        "Addresses: {}",
+        style_value(&node_config.addresses.clone().unwrap_or_default())
+    ));
+
+    if !cell_node.roles.is_empty() {
+        print_info("Roles:");
+        if has_role(cell_node_config::Role::ChainRole) {
+            print_action(style_emphasis("chain"));
+        }
+
+        if has_role(cell_node_config::Role::StoreRole) {
+            print_action(style_emphasis("store"));
+        }
+
+        if has_role(cell_node_config::Role::AppHostRole) {
+            print_action(style_emphasis("application host"));
+        }
+    } else {
+        print_info("The node will have no roles");
     }
 
-    if add_opts.store {
-        print_action(format!(
-            "The node will have {} role",
-            style_emphasis("store")
-        ));
-        cell_node
-            .roles
-            .push(cell_node_config::Role::StoreRole.into());
-    }
-
-    if add_opts.app_host {
-        print_action(format!(
-            "The node will have {} role",
-            style_emphasis("application host")
-        ));
-        cell_node
-            .roles
-            .push(cell_node_config::Role::AppHostRole.into());
+    if !confirm(ctx, "Do you want to add the node to the cell?") {
+        return Err(anyhow!("Operation aborted"));
     }
 
     cell_config.add_node(cell_node);
@@ -499,7 +494,7 @@ async fn cmd_node_add(
 
         print_success(format!(
             "Node {} has been added to the cell",
-            style_value(new_node_config.name)
+            style_value(node_config.name)
         ));
     }
 
@@ -551,12 +546,33 @@ async fn cmd_join(
     let node_config = ctx.options.read_configuration();
     let disco_client = ctx.get_discovery_client();
 
-    let cell_node = NodeConfig {
-        id: node_config.id.clone(),
-        name: node_config.name.clone(),
-        public_key: node_config.public_key.clone(),
-        addresses: node_config.addresses.clone(),
-    };
+    let mut roles = Vec::new();
+
+    if join_opts.chain {
+        print_action(format!(
+            "The node will have {} role",
+            style_emphasis("chain")
+        ));
+        roles.push(cell_node_config::Role::ChainRole);
+    }
+
+    if join_opts.store {
+        print_action(format!(
+            "The node will have {} role",
+            style_emphasis("store")
+        ));
+        roles.push(cell_node_config::Role::StoreRole);
+    }
+
+    if join_opts.app_host {
+        print_action(format!(
+            "The node will have {} role",
+            style_emphasis("app host")
+        ));
+        roles.push(cell_node_config::Role::AppHostRole);
+    }
+
+    let cell_node = node_config.create_cell_node_config(roles);
     let cell_node_yaml = cell_node
         .to_yaml()
         .expect("Couldn't convert cell node config to yaml");
@@ -571,6 +587,7 @@ async fn cmd_join(
             "On the host node, enter this discovery pin:\n\n\t\t{}",
             style_value(create_resp.pin.to_formatted_string())
         ));
+        print_spacer();
 
         let payload = disco_client
             .get_loop(create_resp.reply_pin.unwrap(), Duration::from_secs(60))
@@ -850,7 +867,6 @@ fn cmd_import_chain(
             style_value(last_block.get_height()),
         ));
 
-        print_spacer();
         if confirm(ctx, "Do you want to wipe the chain?") {
             chain_store.truncate_from_offset(0)?;
         } else {
@@ -1240,7 +1256,7 @@ fn add_node_config_cell(ctx: &Context, node_config: &LocalNodeConfig, cell_confi
         .expect("Couldn't write node config");
 }
 
-pub fn copy_node_addresses_to_cells(ctx: &Context, node_config: LocalNodeConfig) {
+pub fn copy_local_node_to_cells(ctx: &Context, node_config: LocalNodeConfig) {
     let (either_cells, _local_node) = Cell::from_local_node_config(node_config.clone())
         .expect("Couldn't create cell from config");
 
@@ -1253,6 +1269,7 @@ pub fn copy_node_addresses_to_cells(ctx: &Context, node_config: LocalNodeConfig)
             .find_node(&node_config.public_key)
             .and_then(|c| c.node.as_mut())
         {
+            cell_node_config.name = node_config.name.clone();
             cell_node_config.addresses = node_config.addresses.clone();
             true
         } else {

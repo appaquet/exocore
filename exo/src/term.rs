@@ -84,6 +84,7 @@ pub fn print_table(columns: Vec<String>, rows: Vec<Vec<String>>) {
 }
 
 pub fn confirm<S: Into<String>>(ctx: &Context, text: S) -> bool {
+    print_spacer();
     dialoguer::Confirm::with_theme(ctx.dialog_theme.as_ref())
         .with_prompt(text)
         .interact()
