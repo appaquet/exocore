@@ -58,15 +58,6 @@ where
         clock: Clock,
         transport_handle: T,
     ) -> Result<Client<T>, Error> {
-        // // pick the first node that has store role for now, we'll be switching over to
-        // // the first node that connects once transport established connection
-        // let store_node = {
-        //     let cell_nodes = cell.nodes();
-        //     let cell_nodes_iter = cell_nodes.iter();
-        //     let first_store_node = cell_nodes_iter.with_role(CellNodeRole::Store).next();
-        //     first_store_node.map(|n| n.node()).cloned()
-        // };
-
         let inner = Arc::new(RwLock::new(Inner {
             config,
             cell,

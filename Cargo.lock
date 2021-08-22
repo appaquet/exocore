@@ -1302,7 +1302,6 @@ dependencies = [
  "anyhow",
  "byteorder",
  "bytes 1.0.1",
- "capnp",
  "exocore-core",
  "exocore-protos",
  "futures",
