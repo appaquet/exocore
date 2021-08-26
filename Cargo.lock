@@ -1262,7 +1262,7 @@ dependencies = [
  "capnp",
  "capnpc",
  "chrono",
- "prost 0.7.0",
+ "prost 0.8.0",
  "prost-build 0.7.0",
  "prost-types 0.7.0",
  "protobuf",
