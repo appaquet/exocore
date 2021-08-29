@@ -286,14 +286,16 @@ fn search_query_matches_recent_boost() -> anyhow::Result<()> {
     index.apply_operations(vec![trait1, trait2, trait3].into_iter())?;
 
     // with recency boost
-    let query = Q::matches("foo").order_by_score(false, true).build();
+    let query = Q::matches("foo").order_by_score(false, true, false).build();
     let res = index.search(query)?;
     assert_eq!(res.mutations[0].entity_id, "entity_id1");
     assert_eq!(res.mutations[1].entity_id, "entity_id3");
     assert_eq!(res.mutations[2].entity_id, "entity_id2");
 
     // without recency boost
-    let query = Q::matches("foo").order_by_score(false, false).build();
+    let query = Q::matches("foo")
+        .order_by_score(false, false, false)
+        .build();
     let res = index.search(query)?;
     assert_eq!(res.mutations[0].entity_id, "entity_id3"); // operation id is score breaker
     assert_eq!(res.mutations[1].entity_id, "entity_id2");

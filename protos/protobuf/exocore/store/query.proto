@@ -162,8 +162,8 @@ message Ordering {
     // If match score used, don't boost recent documents
     bool no_recency_boost = 5;
 
-    // If match score used, don't penalizes results that don't have any reference.
-    bool no_reference_penalty = 6;
+    // If match score used, don't boost results that have references.
+    bool no_reference_boost = 6;
 }
 
 message OrderingValue {

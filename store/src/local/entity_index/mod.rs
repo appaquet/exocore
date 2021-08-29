@@ -246,6 +246,11 @@ where
             .unwrap_or_else(crate::query::default_paging);
         crate::query::fill_default_paging(&mut query_page);
 
+        let reference_boost = query
+            .ordering
+            .as_ref()
+            .map_or(false, |o| !o.no_reference_boost);
+
         // query pending & chain mutation index without original query paging since we
         // need to do our own paging here since we are re-ranking results and
         // that we may have more than one mutation match for each entity.
@@ -271,12 +276,9 @@ where
         let mut digest = hasher.digest();
         let mut entity_mutations_cache = HashMap::<EntityId, Rc<EntityAggregator>>::new();
         let mut matched_entities = HashSet::new();
-        let mut at_least_one_result = false;
-        let early_exit = std::cell::Cell::new(false);
 
         // iterate through results and returning the first N entities
         let mut entity_results = combined_results
-            .take_while(|(_matched_mutation, _index_source)| !early_exit.get())
             // iterate through results, starting with best scores
             .flat_map(|(matched_mutation, index_source)| {
                 let entity_id = matched_mutation.entity_id.clone();
@@ -315,16 +317,15 @@ where
                 }
                 matched_entities.insert(matched_mutation.entity_id.clone());
 
-                // TODO: Support for negative re-scoring https://github.com/appaquet/exocore/issues/143
+                // Unless disabled, penalizes the entity score if it doesn't have a reference to
+                // another object
                 let mut ordering_value = matched_mutation.sort_value.clone();
                 let original_ordering_value = ordering_value.clone();
-                if ordering_value.is_score() && !entity_mutations.has_reference {
-                    ordering_value.boost(0.1);
+                if reference_boost && ordering_value.is_score() && !entity_mutations.has_reference {
+                    ordering_value.boost(0.5);
                 };
 
                 if ordering_value.value.is_within_page_bound(&query_page) {
-                    at_least_one_result = true;
-
                     let result = EntityResult {
                         matched_mutation,
                         ordering_value: ordering_value.clone(),
@@ -349,16 +350,6 @@ where
 
                     Some(result)
                 } else {
-                    // if at_least_one_result && ordering_value == original_ordering_value {
-                    //     // If we are here, it means that we found results within the page we were
-                    // looking for, and then suddenly a new     // result
-                    // doesn't fit in the page. This means that we are passed the page, and we can
-                    // early exit since we won't find     // any new results
-                    // passed this.     //
-                    //     // This is only valid if we haven't penalized the score.
-                    //     early_exit.set(true);
-                    // }
-
                     None
                 }
             })
