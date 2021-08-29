@@ -12,7 +12,7 @@ use itertools::Itertools;
 
 use super::*;
 use crate::{
-    ordering::{value_from_f32, value_from_u64, OrderingValueExt},
+    ordering::{value_from_f32, OrderingValueExt},
     query::{QueryBuilder as Q, TraitQueryBuilder as TQ},
 };
 
@@ -166,34 +166,6 @@ fn search_query_matches() -> anyhow::Result<()> {
     assert_eq!(res.mutations.len(), 1);
     assert_eq!(res.remaining, 1);
     assert_eq!(res.total, 2);
-
-    // // only results from given score
-    // let paging = Paging {
-    //     after_ordering_value: Some(value_from_f32(0.30, 0)),
-    //     before_ordering_value: None,
-    //     count: 10,
-    //     offset: 0,
-    // };
-    // let query = Q::matches("bar").with_paging(paging).build();
-    // let res = index.search(query)?;
-    // assert_eq!(res.mutations.len(), 1);
-    // assert_eq!(res.remaining, 0);
-    // assert_eq!(res.total, 2);
-    // assert_eq!(res.mutations[0].entity_id.as_str(), "entity_id2");
-
-    // // only results before given score
-    // let paging = Paging {
-    //     after_ordering_value: None,
-    //     before_ordering_value: Some(value_from_f32(0.30, 0)),
-    //     count: 10,
-    //     offset: 0,
-    // };
-    // let query = Q::matches("bar").with_paging(paging).build();
-    // let res = index.search(query)?;
-    // assert_eq!(res.mutations.len(), 1);
-    // assert_eq!(res.remaining, 0);
-    // assert_eq!(res.total, 2);
-    // assert_eq!(res.mutations[0].entity_id.as_str(), "entity_id1");
 
     Ok(())
 }
@@ -516,28 +488,6 @@ fn search_query_by_trait_type() -> anyhow::Result<()> {
     let query = Q::with_trait::<TestMessage2>().count(1).build();
     let res = index.search(query)?;
     assert_eq!(res.mutations.len(), 1);
-
-    // // only results after given modification date
-    // let paging = Paging {
-    //     after_ordering_value: Some(value_from_u64(2, u64::max_value())),
-    //     before_ordering_value: None,
-    //     count: 10,
-    //     offset: 0,
-    // };
-    // let query = Q::with_trait::<TestMessage2>().with_paging(paging).build();
-    // let res = index.search(query)?;
-    // assert_eq!(extract_traits_id(&res), vec!["trait4", "trait3"]);
-
-    // // only results before given modification date
-    // let paging = Paging {
-    //     after_ordering_value: None,
-    //     before_ordering_value: Some(value_from_u64(3, 0)),
-    //     count: 10,
-    //     offset: 0,
-    // };
-    // let query = Q::with_trait::<TestMessage2>().with_paging(paging).build();
-    // let res = index.search(query)?;
-    // assert_eq!(extract_traits_id(&res), vec!["trait2"]);
 
     Ok(())
 }

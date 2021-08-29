@@ -841,7 +841,6 @@ impl MutationIndex {
         });
 
         let total_count = Arc::new(AtomicUsize::new(0));
-        let match_count = Arc::new(AtomicUsize::new(0));
 
         let ordering_value = ordering
             .value
@@ -850,7 +849,6 @@ impl MutationIndex {
             ordering::Value::Score(_) => {
                 let collector = self.match_score_collector(
                     total_count.clone(),
-                    match_count.clone(),
                     &paging,
                     ordering.ascending,
                     ordering.no_recency_boost,
@@ -861,7 +859,6 @@ impl MutationIndex {
                 let sort_field = self.fields.operation_id;
                 let collector = self.sorted_field_collector(
                     total_count.clone(),
-                    match_count.clone(),
                     &paging,
                     sort_field,
                     ordering.ascending,
@@ -886,7 +883,6 @@ impl MutationIndex {
 
                 let collector = self.sorted_field_collector(
                     total_count.clone(),
-                    match_count.clone(),
                     &paging,
                     sort_field.field,
                     ordering.ascending,
@@ -895,18 +891,12 @@ impl MutationIndex {
             }
         };
 
-        let total_results = total_count.load(atomic::Ordering::Relaxed);
-        let remaining_results = match_count
-            .load(atomic::Ordering::Relaxed)
-            .saturating_sub(mutations.len());
-
-        let next_page = if remaining_results > 0 && !mutations.is_empty() {
+        let next_page = if mutations.len() >= paging.count as usize {
             let last_result = mutations.last().expect("Should had results, but got none");
             let mut next_page = Paging {
-                before_ordering_value: None,
-                after_ordering_value: None,
                 count: paging.count,
                 offset: paging.offset + mutations.len() as u32,
+                ..Default::default()
             };
 
             if ordering.ascending {
@@ -920,10 +910,12 @@ impl MutationIndex {
             None
         };
 
+        let total = total_count.load(atomic::Ordering::Relaxed);
+        let remaining = total - paging.offset as usize - mutations.len();
         Ok(MutationResults {
             mutations,
-            total: total_results,
-            remaining: remaining_results - paging.offset as usize,
+            total,
+            remaining,
             next_page,
         })
     }
@@ -986,32 +978,15 @@ impl MutationIndex {
     fn sorted_field_collector(
         &self,
         total_count: Arc<AtomicUsize>,
-        matching_count: Arc<AtomicUsize>,
         paging: &Paging,
         sort_field: Field,
         ascending: bool,
     ) -> impl Collector<Fruit = Vec<(OrderingValueWrapper, DocAddress)>> {
-        let after_ordering_value = Arc::new(paging.after_ordering_value.clone().unwrap_or(
-            OrderingValue {
-                value: Some(ordering_value::Value::Min(true)),
-                operation_id: 0,
-            },
-        ));
-        let before_ordering_value = Arc::new(paging.before_ordering_value.clone().unwrap_or(
-            OrderingValue {
-                value: Some(ordering_value::Value::Max(true)),
-                operation_id: 0,
-            },
-        ));
-
         let operation_id_field = self.fields.operation_id;
         TopDocs::with_limit(paging.count as usize)
             .and_offset(paging.offset as usize)
             .custom_score(move |segment_reader: &SegmentReader| {
-                let after_ordering_value = after_ordering_value.clone();
-                let before_ordering_value = before_ordering_value.clone();
                 let total_docs = total_count.clone();
-                let remaining_count = matching_count.clone();
 
                 let operation_id_reader = segment_reader
                     .fast_fields()
@@ -1025,25 +1000,14 @@ impl MutationIndex {
                 move |doc_id| {
                     total_docs.fetch_add(1, atomic::Ordering::SeqCst);
 
-                    let mut ordering_value_wrapper = OrderingValueWrapper {
+                    OrderingValueWrapper {
                         value: OrderingValue {
                             value: Some(ordering_value::Value::Uint64(sort_fast_field.get(doc_id))),
                             operation_id: operation_id_reader.get(doc_id),
                         },
                         reverse: ascending,
                         ignore: false,
-                    };
-
-                    // // we ignore the result if it's out of the requested pages
-                    // if ordering_value_wrapper
-                    //     .is_within_bound(&after_ordering_value, &before_ordering_value)
-                    // {
-                    remaining_count.fetch_add(1, atomic::Ordering::SeqCst);
-                    // } else {
-                    //     ordering_value_wrapper.ignore = true;
-                    // }
-
-                    ordering_value_wrapper
+                    }
                 }
             })
     }
@@ -1053,27 +1017,10 @@ impl MutationIndex {
     fn match_score_collector(
         &self,
         total_count: Arc<AtomicUsize>,
-        matching_count: Arc<AtomicUsize>,
         paging: &Paging,
         ascending: bool,
         no_recency_boost: bool,
     ) -> impl Collector<Fruit = Vec<(OrderingValueWrapper, DocAddress)>> {
-        let after_score = Arc::new(
-            paging
-                .after_ordering_value
-                .clone()
-                .unwrap_or(OrderingValue {
-                    value: Some(ordering_value::Value::Min(true)),
-                    operation_id: 0,
-                }),
-        );
-        let before_score = Arc::new(paging.before_ordering_value.clone().unwrap_or(
-            OrderingValue {
-                value: Some(ordering_value::Value::Max(true)),
-                operation_id: 0,
-            },
-        ));
-
         let now = Utc::now().timestamp_nanos() as u64;
         let operation_id_field = self.fields.operation_id;
         let modification_date_field = self.fields.modification_date;
@@ -1081,10 +1028,7 @@ impl MutationIndex {
         TopDocs::with_limit(paging.count as usize)
             .and_offset(paging.offset as usize)
             .tweak_score(move |segment_reader: &SegmentReader| {
-                let after_score = after_score.clone();
-                let before_score = before_score.clone();
                 let total_docs = total_count.clone();
-                let remaining_count = matching_count.clone();
 
                 let operation_id_reader = segment_reader
                     .fast_fields()
@@ -1112,23 +1056,14 @@ impl MutationIndex {
                         score
                     };
 
-                    let mut ordering_value_wrapper = OrderingValueWrapper {
+                    OrderingValueWrapper {
                         value: OrderingValue {
                             value: Some(ordering_value::Value::Float(score)),
                             operation_id,
                         },
                         reverse: ascending,
                         ignore: false,
-                    };
-
-                    // we ignore the result if it's out of the requested pages
-                    // if ordering_value_wrapper.is_within_bound(&after_score, &before_score) {
-                    remaining_count.fetch_add(1, atomic::Ordering::SeqCst);
-                    // } else {
-                    //     ordering_value_wrapper.ignore = true;
-                    // }
-
-                    ordering_value_wrapper
+                    }
                 }
             })
     }

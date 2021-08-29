@@ -231,6 +231,7 @@ pub struct Paging {
     /// Desired results count. Default if 0.
     #[prost(uint32, tag = "3")]
     pub count: u32,
+    /// Mutation index use only, no effect on entity query.
     #[prost(uint32, tag = "4")]
     pub offset: u32,
 }
