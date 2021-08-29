@@ -240,6 +240,9 @@ pub struct Ordering {
     /// If match score used, don't boost recent documents
     #[prost(bool, tag = "5")]
     pub no_recency_boost: bool,
+    /// If match score used, penalizes results that don't have any reference.
+    #[prost(bool, tag = "6")]
+    pub no_reference_penalty: bool,
     /// Value by which we want results to be ordered.
     #[prost(oneof = "ordering::Value", tags = "1, 2, 3")]
     pub value: ::core::option::Option<ordering::Value>,

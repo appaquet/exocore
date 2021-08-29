@@ -436,7 +436,7 @@ pub fn default_paging() -> Paging {
     }
 }
 
-pub fn validate_paging(paging: &mut Paging) {
+pub fn fill_default_paging(paging: &mut Paging) {
     if paging.count == 0 {
         paging.count = 10;
     }

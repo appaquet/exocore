@@ -91,6 +91,7 @@ pub struct PutTraitMetadata {
     pub trait_type: Option<String>,
     pub creation_date: Option<DateTime<Utc>>,
     pub modification_date: Option<DateTime<Utc>>,
+    pub has_reference: bool,
 }
 
 impl MutationType {
@@ -110,6 +111,7 @@ impl MutationType {
                 trait_type: None,
                 creation_date: None,
                 modification_date: None,
+                has_reference: false,
             })),
             Self::ENTITY_TOMBSTONE_ID => Ok(MutationType::EntityTombstone),
             Self::PENDING_DELETION_ID => Ok(MutationType::PendingDeletion),

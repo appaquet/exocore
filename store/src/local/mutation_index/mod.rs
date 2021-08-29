@@ -598,7 +598,7 @@ impl MutationIndex {
         };
 
         let message_mappings = self.fields.dynamic_mappings.get(message_dyn.full_name());
-
+        let mut has_reference = false;
         for (field_id, field) in message_dyn.fields() {
             let field_value = match message_dyn.get_field_value(*field_id) {
                 Ok(fv) => fv,
@@ -628,6 +628,7 @@ impl MutationIndex {
                     let ref_value = format!("entity{} trait{}", value.entity_id, value.trait_id);
                     doc.add_text(field_mapping.field, &ref_value);
                     doc.add_text(self.fields.all_refs, &ref_value);
+                    has_reference = true;
                 }
                 FieldValue::DateTime(value) if field.indexed_flag || field.sorted_flag => {
                     doc.add_u64(field_mapping.field, value.timestamp_nanos() as u64);
@@ -651,6 +652,13 @@ impl MutationIndex {
                     );
                 }
             }
+        }
+
+        if has_reference {
+            doc.add_u64(
+                self.fields.has_reference,
+                schema::bool_to_u64(has_reference),
+            );
         }
     }
 
@@ -951,7 +959,10 @@ impl MutationIndex {
                         schema::get_doc_opt_u64_value(&doc, self.fields.modification_date)
                             .map(|ts| Utc.timestamp_nanos(ts as i64));
                     put_trait.trait_type =
-                        schema::get_doc_opt_string_value(&doc, self.fields.trait_type)
+                        schema::get_doc_opt_string_value(&doc, self.fields.trait_type);
+                    put_trait.has_reference =
+                        schema::get_doc_opt_bool_value(&doc, self.fields.has_reference)
+                            .unwrap_or(false);
                 }
 
                 let result = MutationMetadata {
