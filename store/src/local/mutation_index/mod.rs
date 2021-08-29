@@ -837,6 +837,7 @@ impl MutationIndex {
             after_ordering_value: None,
             before_ordering_value: None,
             count: self.config.iterator_page_size,
+            offset: 0,
         });
 
         let total_count = Arc::new(AtomicUsize::new(0));
@@ -899,12 +900,13 @@ impl MutationIndex {
             .load(atomic::Ordering::Relaxed)
             .saturating_sub(mutations.len());
 
-        let next_page = if remaining_results > 0 {
+        let next_page = if remaining_results > 0 && !mutations.is_empty() {
             let last_result = mutations.last().expect("Should had results, but got none");
             let mut next_page = Paging {
                 before_ordering_value: None,
                 after_ordering_value: None,
                 count: paging.count,
+                offset: paging.offset + mutations.len() as u32,
             };
 
             if ordering.ascending {
@@ -921,7 +923,7 @@ impl MutationIndex {
         Ok(MutationResults {
             mutations,
             total: total_results,
-            remaining: remaining_results,
+            remaining: remaining_results - paging.offset as usize,
             next_page,
         })
     }
@@ -1003,8 +1005,9 @@ impl MutationIndex {
         ));
 
         let operation_id_field = self.fields.operation_id;
-        TopDocs::with_limit(paging.count as usize).custom_score(
-            move |segment_reader: &SegmentReader| {
+        TopDocs::with_limit(paging.count as usize)
+            .and_offset(paging.offset as usize)
+            .custom_score(move |segment_reader: &SegmentReader| {
                 let after_ordering_value = after_ordering_value.clone();
                 let before_ordering_value = before_ordering_value.clone();
                 let total_docs = total_count.clone();
@@ -1031,19 +1034,18 @@ impl MutationIndex {
                         ignore: false,
                     };
 
-                    // we ignore the result if it's out of the requested pages
-                    if ordering_value_wrapper
-                        .is_within_bound(&after_ordering_value, &before_ordering_value)
-                    {
-                        remaining_count.fetch_add(1, atomic::Ordering::SeqCst);
-                    } else {
-                        ordering_value_wrapper.ignore = true;
-                    }
+                    // // we ignore the result if it's out of the requested pages
+                    // if ordering_value_wrapper
+                    //     .is_within_bound(&after_ordering_value, &before_ordering_value)
+                    // {
+                    remaining_count.fetch_add(1, atomic::Ordering::SeqCst);
+                    // } else {
+                    //     ordering_value_wrapper.ignore = true;
+                    // }
 
                     ordering_value_wrapper
                 }
-            },
-        )
+            })
     }
 
     /// Creates a Tantivy top document collectors that sort by full text
@@ -1076,8 +1078,9 @@ impl MutationIndex {
         let operation_id_field = self.fields.operation_id;
         let modification_date_field = self.fields.modification_date;
         let boost = self.full_text_boost;
-        TopDocs::with_limit(paging.count as usize).tweak_score(
-            move |segment_reader: &SegmentReader| {
+        TopDocs::with_limit(paging.count as usize)
+            .and_offset(paging.offset as usize)
+            .tweak_score(move |segment_reader: &SegmentReader| {
                 let after_score = after_score.clone();
                 let before_score = before_score.clone();
                 let total_docs = total_count.clone();
@@ -1119,16 +1122,15 @@ impl MutationIndex {
                     };
 
                     // we ignore the result if it's out of the requested pages
-                    if ordering_value_wrapper.is_within_bound(&after_score, &before_score) {
-                        remaining_count.fetch_add(1, atomic::Ordering::SeqCst);
-                    } else {
-                        ordering_value_wrapper.ignore = true;
-                    }
+                    // if ordering_value_wrapper.is_within_bound(&after_score, &before_score) {
+                    remaining_count.fetch_add(1, atomic::Ordering::SeqCst);
+                    // } else {
+                    //     ordering_value_wrapper.ignore = true;
+                    // }
 
                     ordering_value_wrapper
                 }
-            },
-        )
+            })
     }
 }
 

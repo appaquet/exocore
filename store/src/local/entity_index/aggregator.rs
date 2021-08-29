@@ -66,7 +66,8 @@ pub struct EntityAggregator {
     /// index
     pub pending_deletion: bool,
 
-    /// indicates that one of the traits of the entity has a reference to another entity / trait
+    /// indicates that one of the traits of the entity has a reference to
+    /// another entity / trait
     pub has_reference: bool,
 }
 
@@ -194,7 +195,9 @@ impl EntityAggregator {
             entity_modification_date = None;
         }
 
-        let has_reference = traits.values().any(|t| t.deletion_date.is_none() && t.has_reference);
+        let has_reference = traits
+            .values()
+            .any(|t| t.deletion_date.is_none() && t.has_reference);
 
         Ok(EntityAggregator {
             entity_id,

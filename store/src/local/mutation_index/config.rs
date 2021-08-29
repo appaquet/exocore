@@ -31,7 +31,7 @@ impl Default for MutationIndexConfig {
         MutationIndexConfig {
             indexer_num_threads: Some(2),
             indexer_heap_size_bytes: 30_000_000,
-            iterator_page_size: 200,
+            iterator_page_size: 500,
             iterator_max_pages: 10,
             entity_mutations_cache_size: 5000,
 

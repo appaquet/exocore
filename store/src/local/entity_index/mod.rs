@@ -299,12 +299,14 @@ where
                     .active_operations
                     .contains(&matched_mutation.operation_id);
                 if entity_mutations.deletion_date.is_some() || !operation_still_present {
-                    // we are here if the entity has been deleted (ex: explicitly or no traits remaining)
-                    // or if the mutation metadata that was returned by the mutation index is not active anymore,
-                    // which means that it got overridden by a subsequent operation.
+                    // we are here if the entity has been deleted (ex: explicitly or no traits
+                    // remaining) or if the mutation metadata that was returned
+                    // by the mutation index is not active anymore, which means
+                    // that it got overridden by a subsequent operation.
                     //
-                    // We let the garbage collector know that the entity may need to be garbage collected. The
-                    // actual garbage collection will be done asynchronously at later time.
+                    // We let the garbage collector know that the entity may need to be garbage
+                    // collected. The actual garbage collection will be done
+                    // asynchronously at later time.
                     self.gc.maybe_flag_for_collection(&entity_mutations);
 
                     if !query_include_deleted {
@@ -317,8 +319,7 @@ where
                 let mut ordering_value = matched_mutation.sort_value.clone();
                 let original_ordering_value = ordering_value.clone();
                 if ordering_value.is_score() && !entity_mutations.has_reference {
-                    let (before, after) = ordering_value.boost(0.1);
-                    println!("{} from {} -> {}", &entity_id, before, after);
+                    ordering_value.boost(0.1);
                 };
 
                 if ordering_value.value.is_within_page_bound(&query_page) {
@@ -349,10 +350,11 @@ where
                     Some(result)
                 } else {
                     // if at_least_one_result && ordering_value == original_ordering_value {
-                    //     // If we are here, it means that we found results within the page we were looking for, and then suddenly a new
-                    //     // result doesn't fit in the page. This means that we are passed the page, and we can early exit since we won't find
-                    //     // any new results passed this.
-                    //     //
+                    //     // If we are here, it means that we found results within the page we were
+                    // looking for, and then suddenly a new     // result
+                    // doesn't fit in the page. This means that we are passed the page, and we can
+                    // early exit since we won't find     // any new results
+                    // passed this.     //
                     //     // This is only valid if we haven't penalized the score.
                     //     early_exit.set(true);
                     // }

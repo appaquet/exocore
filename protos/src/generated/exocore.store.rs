@@ -231,6 +231,8 @@ pub struct Paging {
     /// Desired results count. Default if 0.
     #[prost(uint32, tag = "3")]
     pub count: u32,
+    #[prost(uint32, tag = "4")]
+    pub offset: u32,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Ordering {
@@ -240,7 +242,8 @@ pub struct Ordering {
     /// If match score used, don't boost recent documents
     #[prost(bool, tag = "5")]
     pub no_recency_boost: bool,
-    /// If match score used, penalizes results that don't have any reference.
+    /// If match score used, don't penalizes results that don't have any
+    /// reference.
     #[prost(bool, tag = "6")]
     pub no_reference_penalty: bool,
     /// Value by which we want results to be ordered.

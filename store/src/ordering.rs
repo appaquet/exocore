@@ -62,7 +62,11 @@ impl OrderingValueWrapper {
     pub fn boost(&mut self, multiplier: f32) -> (f32, f32) {
         if let Some(ordering_value::Value::Float(score)) = self.value.value.as_mut() {
             let before = *score;
-            *score *= multiplier;
+            if !self.reverse {
+                *score *= multiplier;
+            } else {
+                *score /= multiplier;
+            }
             (before, *score)
         } else {
             (0.0, 0.0)
