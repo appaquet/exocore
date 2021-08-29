@@ -322,7 +322,7 @@ where
                 let mut ordering_value = matched_mutation.sort_value.clone();
                 let original_ordering_value = ordering_value.clone();
                 if reference_boost && ordering_value.is_score() && !entity_mutations.has_reference {
-                    ordering_value.boost(0.3);
+                    ordering_value.boost_score(0.3);
                 };
 
                 if ordering_value.value.is_within_page_bound(&query_page) {

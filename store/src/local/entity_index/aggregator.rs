@@ -921,7 +921,7 @@ pub(crate) mod tests {
                 trait_type: Some(trait_type.into()),
                 creation_date,
                 modification_date,
-                has_reference: false, // TODO:
+                has_reference: false,
             }),
             sort_value: OrderingValueWrapper {
                 value: OrderingValue::default(),

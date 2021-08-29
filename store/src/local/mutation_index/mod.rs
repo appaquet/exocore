@@ -3,7 +3,7 @@ use std::{
     ops::Deref,
     path::Path,
     result::Result,
-    sync::{atomic, atomic::AtomicUsize, Arc, Mutex},
+    sync::{Arc, Mutex},
     time::Instant,
 };
 
@@ -27,7 +27,7 @@ use exocore_protos::{
 pub use operations::*;
 pub use results::*;
 use tantivy::{
-    collector::{Collector, TopDocs},
+    collector::{Collector, Count, MultiCollector, TopDocs},
     directory::MmapDirectory,
     fastfield::FastFieldReader,
     query::{AllQuery, BooleanQuery, FuzzyTermQuery, Occur, PhraseQuery, Query, TermQuery},
@@ -840,30 +840,23 @@ impl MutationIndex {
             offset: 0,
         });
 
-        let total_count = Arc::new(AtomicUsize::new(0));
-
         let ordering_value = ordering
             .value
             .ok_or(Error::ProtoFieldExpected("ordering.value"))?;
-        let mutations = match ordering_value {
+        let (mutations, total) = match ordering_value {
             ordering::Value::Score(_) => {
                 let collector = self.match_score_collector(
-                    total_count.clone(),
                     &paging,
                     ordering.ascending,
                     ordering.no_recency_boost,
                 );
-                self.execute_tantity_query_with_collector(searcher, query, &collector)?
+                self.execute_tantity_query_with_collector(searcher, query, collector)?
             }
             ordering::Value::OperationId(_) => {
                 let sort_field = self.fields.operation_id;
-                let collector = self.sorted_field_collector(
-                    total_count.clone(),
-                    &paging,
-                    sort_field,
-                    ordering.ascending,
-                );
-                self.execute_tantity_query_with_collector(searcher, query, &collector)?
+                let collector =
+                    self.sorted_field_collector(&paging, sort_field, ordering.ascending);
+                self.execute_tantity_query_with_collector(searcher, query, collector)?
             }
             ordering::Value::Field(field_name) => {
                 let trait_name = trait_name.ok_or_else(|| {
@@ -881,36 +874,22 @@ impl MutationIndex {
                     )));
                 }
 
-                let collector = self.sorted_field_collector(
-                    total_count.clone(),
-                    &paging,
-                    sort_field.field,
-                    ordering.ascending,
-                );
-                self.execute_tantity_query_with_collector(searcher, query, &collector)?
+                let collector =
+                    self.sorted_field_collector(&paging, sort_field.field, ordering.ascending);
+                self.execute_tantity_query_with_collector(searcher, query, collector)?
             }
         };
 
         let next_page = if mutations.len() >= paging.count as usize {
-            let last_result = mutations.last().expect("Should had results, but got none");
-            let mut next_page = Paging {
+            Some(Paging {
                 count: paging.count,
                 offset: paging.offset + mutations.len() as u32,
                 ..Default::default()
-            };
-
-            if ordering.ascending {
-                next_page.after_ordering_value = Some(last_result.sort_value.value.clone());
-            } else {
-                next_page.before_ordering_value = Some(last_result.sort_value.value.clone());
-            }
-
-            Some(next_page)
+            })
         } else {
             None
         };
 
-        let total = total_count.load(atomic::Ordering::Relaxed);
         let remaining = total - paging.offset as usize - mutations.len();
         Ok(MutationResults {
             mutations,
@@ -925,16 +904,20 @@ impl MutationIndex {
         &self,
         searcher: S,
         query: &dyn tantivy::query::Query,
-        top_collector: &C,
-    ) -> Result<Vec<MutationMetadata>, Error>
+        top_collector: C,
+    ) -> Result<(Vec<MutationMetadata>, usize), Error>
     where
         S: Deref<Target = Searcher>,
         C: Collector<Fruit = Vec<(OrderingValueWrapper, DocAddress)>>,
     {
-        let search_results = searcher.search(query, top_collector)?;
+        let mut multi_collector = MultiCollector::new();
+        let top_collector = multi_collector.add_collector(top_collector);
+        let count_collector = multi_collector.add_collector(Count);
+
+        let mut fruits = searcher.search(query, &multi_collector)?;
 
         let mut results = Vec::new();
-        for (sort_value, doc_addr) in search_results {
+        for (sort_value, doc_addr) in top_collector.extract(&mut fruits) {
             // ignored results were out of the requested paging
             if !sort_value.ignore {
                 let doc = searcher.doc(doc_addr)?;
@@ -970,14 +953,15 @@ impl MutationIndex {
             }
         }
 
-        Ok(results)
+        let total_count = count_collector.extract(&mut fruits);
+
+        Ok((results, total_count))
     }
 
     /// Creates a Tantivy top document collectors that sort by the given fast
     /// field and limits the result by the requested paging.
     fn sorted_field_collector(
         &self,
-        total_count: Arc<AtomicUsize>,
         paging: &Paging,
         sort_field: Field,
         ascending: bool,
@@ -986,8 +970,6 @@ impl MutationIndex {
         TopDocs::with_limit(paging.count as usize)
             .and_offset(paging.offset as usize)
             .custom_score(move |segment_reader: &SegmentReader| {
-                let total_docs = total_count.clone();
-
                 let operation_id_reader = segment_reader
                     .fast_fields()
                     .u64(operation_id_field)
@@ -997,17 +979,13 @@ impl MutationIndex {
                     .fast_fields()
                     .u64(sort_field)
                     .expect("Field requested is not a i64/u64 fast field.");
-                move |doc_id| {
-                    total_docs.fetch_add(1, atomic::Ordering::SeqCst);
-
-                    OrderingValueWrapper {
-                        value: OrderingValue {
-                            value: Some(ordering_value::Value::Uint64(sort_fast_field.get(doc_id))),
-                            operation_id: operation_id_reader.get(doc_id),
-                        },
-                        reverse: ascending,
-                        ignore: false,
-                    }
+                move |doc_id| OrderingValueWrapper {
+                    value: OrderingValue {
+                        value: Some(ordering_value::Value::Uint64(sort_fast_field.get(doc_id))),
+                        operation_id: operation_id_reader.get(doc_id),
+                    },
+                    reverse: ascending,
+                    ignore: false,
                 }
             })
     }
@@ -1016,7 +994,6 @@ impl MutationIndex {
     /// matching score and limits the result by the requested paging.
     fn match_score_collector(
         &self,
-        total_count: Arc<AtomicUsize>,
         paging: &Paging,
         ascending: bool,
         no_recency_boost: bool,
@@ -1028,8 +1005,6 @@ impl MutationIndex {
         TopDocs::with_limit(paging.count as usize)
             .and_offset(paging.offset as usize)
             .tweak_score(move |segment_reader: &SegmentReader| {
-                let total_docs = total_count.clone();
-
                 let operation_id_reader = segment_reader
                     .fast_fields()
                     .u64(operation_id_field)
@@ -1041,8 +1016,6 @@ impl MutationIndex {
                     .unwrap();
 
                 move |doc_id, score| {
-                    total_docs.fetch_add(1, atomic::Ordering::SeqCst);
-
                     let operation_id = operation_id_reader.get(doc_id);
 
                     // boost by date if needed
