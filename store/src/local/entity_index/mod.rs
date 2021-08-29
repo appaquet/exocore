@@ -249,7 +249,7 @@ where
         let reference_boost = query
             .ordering
             .as_ref()
-            .map_or(false, |o| !o.no_reference_boost);
+            .map_or(true, |o| !o.no_reference_boost);
 
         // query pending & chain mutation index without original query paging since we
         // need to do our own paging here since we are re-ranking results and
@@ -322,7 +322,7 @@ where
                 let mut ordering_value = matched_mutation.sort_value.clone();
                 let original_ordering_value = ordering_value.clone();
                 if reference_boost && ordering_value.is_score() && !entity_mutations.has_reference {
-                    ordering_value.boost(0.5);
+                    ordering_value.boost(0.3);
                 };
 
                 if ordering_value.value.is_within_page_bound(&query_page) {

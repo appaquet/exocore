@@ -314,10 +314,10 @@ impl MutationIndex {
     pub fn search_iter<Q: Borrow<EntityQuery>>(
         &self,
         query: Q,
-    ) -> Result<MutationResultsIterator<Q>, Error> {
+    ) -> Result<MutationResultIterator<Q>, Error> {
         let results = self.search(query.borrow())?;
 
-        Ok(MutationResultsIterator {
+        Ok(MutationResultIterator {
             index: self,
             query,
             total_results: results.total,
