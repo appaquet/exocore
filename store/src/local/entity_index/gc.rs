@@ -401,7 +401,7 @@ impl Inner {
     }
 
     fn is_full(&self) -> bool {
-        self.entity_ids.len() > self.config.queue_size
+        self.entity_ids.len() >= self.config.queue_size
     }
 }
 
