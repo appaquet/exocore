@@ -12,7 +12,7 @@ pub type RendezVousId = ConsistentTimestamp;
 
 /// Message to be sent to one or more other nodes.
 pub struct OutMessage {
-    pub to: Vec<Node>,
+    pub dest_node: Option<Node>,
     pub expiration: Option<Instant>,
     pub connection: Option<ConnectionId>,
     pub envelope_builder: CapnpFrameBuilder<envelope::Owned>,
@@ -21,39 +21,34 @@ pub struct OutMessage {
 impl OutMessage {
     pub fn from_framed_message<T>(
         cell: &Cell,
-        to_service: ServiceType,
+        dest_service: ServiceType,
         frame: CapnpFrameBuilder<T>,
     ) -> Result<OutMessage, Error>
     where
         T: for<'a> MessageType<'a>,
     {
-        let mut envelope_frame_builder = CapnpFrameBuilder::<envelope::Owned>::new();
-        let mut envelope_message_builder = envelope_frame_builder.get_builder();
-        envelope_message_builder.set_service(to_service.to_code());
+        let mut envelope_builder = CapnpFrameBuilder::<envelope::Owned>::new();
+        let mut envelope_message_builder = envelope_builder.get_builder();
+        envelope_message_builder.set_service(dest_service.to_code());
         envelope_message_builder.set_type(T::MESSAGE_TYPE);
         envelope_message_builder.set_cell_id(cell.id().as_bytes());
         envelope_message_builder.set_from_node_id(&cell.local_node().id().to_string());
         envelope_message_builder.set_data(&frame.as_bytes());
 
         Ok(OutMessage {
-            to: vec![],
+            dest_node: None,
             expiration: None,
             connection: None,
-            envelope_builder: envelope_frame_builder,
+            envelope_builder,
         })
     }
 
-    pub fn with_to_node(mut self, to_node: Node) -> Self {
-        self.to = vec![to_node];
+    pub fn with_dest_node(mut self, node: Node) -> Self {
+        self.dest_node = Some(node);
         self
     }
 
-    pub fn with_to_nodes(mut self, nodes: Vec<Node>) -> Self {
-        self.to = nodes;
-        self
-    }
-
-    pub fn with_rendez_vous_id(mut self, rendez_vous_id: RendezVousId) -> Self {
+    pub fn with_rdv(mut self, rendez_vous_id: RendezVousId) -> Self {
         let mut envelope_message_builder = self.envelope_builder.get_builder();
         envelope_message_builder.set_rendez_vous_id(rendez_vous_id.into());
 
@@ -65,13 +60,17 @@ impl OutMessage {
         self
     }
 
-    pub fn with_connection(mut self, connection: ConnectionId) -> Self {
-        self.connection = Some(connection);
+    pub fn with_connection(self, connection: ConnectionId) -> Self {
+        self.with_opt_connection(Some(connection))
+    }
+
+    pub fn with_opt_connection(mut self, connection: Option<ConnectionId>) -> Self {
+        self.connection = connection;
         self
     }
 
     #[cfg(any(test, feature = "tests-utils", feature = "http-server"))]
-    pub(crate) fn to_in_message(&self, from_node: Node) -> Result<Box<InMessage>, Error> {
+    pub(crate) fn to_in_message(&self, from_node: Node) -> Result<InMessage, Error> {
         let envelope = self.envelope_builder.as_owned_frame();
 
         let mut msg = InMessage::from_node_and_frame(from_node, envelope)?;
@@ -82,13 +81,12 @@ impl OutMessage {
 }
 
 /// Message receive from another node.
-#[derive(Clone)]
 pub struct InMessage {
-    pub from: Node,
+    pub node: Node,
     pub cell_id: CellId,
     pub service_type: ServiceType,
     pub rendez_vous_id: Option<RendezVousId>,
-    pub message_type: u16,
+    pub typ: u16,
     pub connection: Option<ConnectionId>,
     pub envelope: TypedCapnpFrame<Bytes, envelope::Owned>,
 }
@@ -97,7 +95,7 @@ impl InMessage {
     pub fn from_node_and_frame<I: FrameReader<OwnedType = Bytes>>(
         from: Node,
         envelope: TypedCapnpFrame<I, envelope::Owned>,
-    ) -> Result<Box<InMessage>, Error> {
+    ) -> Result<InMessage, Error> {
         let envelope_reader = envelope.get_reader()?;
         let rendez_vous_id = if envelope_reader.get_rendez_vous_id() != 0 {
             Some(envelope_reader.get_rendez_vous_id().into())
@@ -116,15 +114,15 @@ impl InMessage {
 
         let message_type = envelope_reader.get_type();
 
-        Ok(Box::new(InMessage {
-            from,
+        Ok(InMessage {
+            node: from,
             cell_id,
             service_type,
             rendez_vous_id,
-            message_type,
+            typ: message_type,
             connection: None,
             envelope: envelope.to_owned(),
-        }))
+        })
     }
 
     pub fn get_data(&self) -> Result<&[u8], Error> {
@@ -147,7 +145,7 @@ impl InMessage {
 
     pub fn get_reply_token(&self) -> Result<MessageReplyToken, Error> {
         Ok(MessageReplyToken {
-            from: self.from.clone(),
+            from: self.node.clone(),
             service_type: self.service_type,
             rendez_vous_id: self.get_rendez_vous_id()?,
             connection: self.connection.clone(),
@@ -170,7 +168,7 @@ impl InMessage {
         self.rendez_vous_id.ok_or_else(|| {
             Error::Other(format!(
                 "Tried to respond to an InMessage without a follow id (message_type={} service_type={:?})",
-                self.message_type, self.service_type
+                self.typ, self.service_type
             ))
         })
     }
@@ -195,12 +193,11 @@ impl MessageReplyToken {
     where
         T: for<'a> MessageType<'a>,
     {
-        let mut out_message = OutMessage::from_framed_message(cell, self.service_type, frame)?
-            .with_to_node(self.from.clone())
-            .with_rendez_vous_id(self.rendez_vous_id);
-
-        out_message.connection = self.connection.clone();
-
-        Ok(out_message)
+        Ok(
+            OutMessage::from_framed_message(cell, self.service_type, frame)?
+                .with_dest_node(self.from.clone())
+                .with_rdv(self.rendez_vous_id)
+                .with_opt_connection(self.connection.clone()),
+        )
     }
 }

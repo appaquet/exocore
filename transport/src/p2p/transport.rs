@@ -185,24 +185,15 @@ impl Libp2pTransport {
                                 None
                             };
 
-                        // prevent cloning frame if we only send to 1 node
-                        if msg.to.len() == 1 {
-                            let to_node = msg.to.first().unwrap();
+                        if let Some(dest) = msg.dest_node {
                             swarm.behaviour_mut().exocore.send_message(
-                                *to_node.peer_id(),
+                                *dest.peer_id(),
                                 msg.expiration,
                                 connection,
                                 frame_data,
                             );
                         } else {
-                            for to_node in msg.to {
-                                swarm.behaviour_mut().exocore.send_message(
-                                    *to_node.peer_id(),
-                                    msg.expiration,
-                                    connection,
-                                    frame_data.clone(),
-                                );
-                            }
+                            error!("Got a message to send to behaviour without destination node");
                         }
                     }
                     OutEvent::Reset => {
