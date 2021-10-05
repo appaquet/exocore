@@ -16,6 +16,7 @@ pub struct OutMessage {
     pub expiration: Option<Instant>,
     pub connection: Option<ConnectionId>,
     pub envelope_builder: CapnpFrameBuilder<envelope::Owned>,
+    pub stream: Option<Box<dyn futures::Stream<Item = u8> + Send>>,
 }
 
 impl OutMessage {
@@ -40,6 +41,7 @@ impl OutMessage {
             expiration: None,
             connection: None,
             envelope_builder,
+            stream: None,
         })
     }
 

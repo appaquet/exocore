@@ -14,7 +14,7 @@ use libp2p::{
     },
 };
 
-use super::protocol::{ExocoreProtoHandler, ExocoreProtoMessage};
+use super::protocol::{ExocoreProtoHandler, MessageData};
 
 const MAX_PEER_QUEUE: usize = 20;
 const DEFAULT_DIALING_MESSAGE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -34,7 +34,7 @@ pub struct ExocoreBehaviour {
     last_redial_check: Option<Instant>,
 }
 
-type BehaviourAction = NetworkBehaviourAction<ExocoreProtoMessage, ExocoreBehaviourEvent>;
+type BehaviourAction = NetworkBehaviourAction<MessageData, ExocoreBehaviourEvent>;
 
 impl ExocoreBehaviour {
     pub fn send_message(
@@ -55,7 +55,11 @@ impl ExocoreBehaviour {
                 let event = NetworkBehaviourAction::NotifyHandler {
                     peer_id,
                     handler,
-                    event: ExocoreProtoMessage { data },
+                    event: MessageData {
+                        message: data,
+                        stream: None,
+                        stream_len: 0,
+                    },
                 };
 
                 self.actions.push_back(event);
@@ -70,7 +74,11 @@ impl ExocoreBehaviour {
                     event: NetworkBehaviourAction::NotifyHandler {
                         peer_id,
                         handler,
-                        event: ExocoreProtoMessage { data },
+                        event: MessageData {
+                            message: data,
+                            stream: None,
+                            stream_len: 0,
+                        },
                     },
                     expiration: Some(expiration),
                 });
@@ -221,12 +229,7 @@ impl NetworkBehaviour for ExocoreBehaviour {
         }
     }
 
-    fn inject_event(
-        &mut self,
-        peer_id: PeerId,
-        connection: ConnectionId,
-        msg: ExocoreProtoMessage,
-    ) {
+    fn inject_event(&mut self, peer_id: PeerId, connection: ConnectionId, msg: MessageData) {
         if let Some(peer) = self.peers.get_mut(&peer_id) {
             trace!("Received message from {}", peer.node);
 
@@ -235,7 +238,7 @@ impl NetworkBehaviour for ExocoreBehaviour {
                     ExocoreBehaviourEvent::Message(ExocoreBehaviourMessage {
                         source: peer_id,
                         connection,
-                        data: msg.data,
+                        data: msg.message,
                     }),
                 ));
         }
@@ -268,7 +271,7 @@ impl NetworkBehaviour for ExocoreBehaviour {
         &mut self,
         _ctx: &mut Context,
         _params: &mut impl PollParameters,
-    ) -> Poll<NetworkBehaviourAction<ExocoreProtoMessage, ExocoreBehaviourEvent>> {
+    ) -> Poll<NetworkBehaviourAction<MessageData, ExocoreBehaviourEvent>> {
         // check if we could try to dial to disconnected nodes
         let redial_check = self
             .last_redial_check

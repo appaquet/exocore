@@ -48,19 +48,25 @@ async fn test_integration() -> anyhow::Result<()> {
     })
     .await;
 
-    // send 1 to 2
-    handle1.send_rdv(n2.node().clone(), 123).await;
-    let msg = handle2.recv_rdv(123).await;
+    {
+        // send 1 to 2
+        handle1.send_rdv(n2.node().clone(), 123).await;
+        let msg = handle2.recv_rdv(123).await;
 
-    // reply to message
-    let msg_frame = TestableTransportHandle::empty_message_frame();
-    let reply_msg = msg.to_response_message(n1_cell.cell(), msg_frame)?;
-    handle2.send_message(reply_msg).await;
-    handle1.recv_rdv(123).await;
+        // reply to message
+        let msg_frame = TestableTransportHandle::empty_message_frame();
+        let reply_msg = msg.to_response_message(n1_cell.cell(), msg_frame)?;
+        handle2.send_message(reply_msg).await;
+        handle1.recv_rdv(123).await;
 
-    // send 2 to 1, should expect receiving 1 new messages (so total 3 because of prev reply)
-    handle2.send_rdv(n1.node().clone(), 345).await;
-    async_expect_eventually(|| async { handle1.received_count().await == 3 }).await;
+        // send 2 to 1, should expect receiving 1 new messages (so total 3 because of prev reply)
+        handle2.send_rdv(n1.node().clone(), 345).await;
+        async_expect_eventually(|| async { handle1.received_count().await == 3 }).await;
+    }
+
+    {
+        // TODO: Stream
+    }
 
     Ok(())
 }
