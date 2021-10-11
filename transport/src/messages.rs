@@ -5,6 +5,7 @@ use exocore_core::{
     time::{ConsistentTimestamp, Instant},
 };
 use exocore_protos::generated::{common_capnp::envelope, MessageType};
+use futures::AsyncRead;
 
 use crate::{transport::ConnectionId, Error, ServiceType};
 
@@ -16,7 +17,7 @@ pub struct OutMessage {
     pub expiration: Option<Instant>,
     pub connection: Option<ConnectionId>,
     pub envelope_builder: CapnpFrameBuilder<envelope::Owned>,
-    pub stream: Option<Box<dyn futures::Stream<Item = u8> + Send>>,
+    pub stream: Option<Box<dyn AsyncRead + Send + Unpin>>,
 }
 
 impl OutMessage {
@@ -57,6 +58,11 @@ impl OutMessage {
         self
     }
 
+    pub fn with_stream(mut self, stream: Box<dyn AsyncRead + Send + Unpin>) -> Self {
+        self.stream = Some(stream);
+        self
+    }
+
     pub fn with_expiration(mut self, expiration: Option<Instant>) -> Self {
         self.expiration = expiration;
         self
@@ -91,6 +97,7 @@ pub struct InMessage {
     pub typ: u16,
     pub connection: Option<ConnectionId>,
     pub envelope: TypedCapnpFrame<Bytes, envelope::Owned>,
+    pub stream: Option<Box<dyn AsyncRead + Send + Unpin>>,
 }
 
 impl InMessage {
@@ -124,6 +131,7 @@ impl InMessage {
             typ: message_type,
             connection: None,
             envelope: envelope.to_owned(),
+            stream: None,
         })
     }
 

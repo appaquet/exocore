@@ -3,7 +3,6 @@ use std::{
     time::Duration,
 };
 
-use bytes::Bytes;
 use exocore_core::{cell::Node, time::Instant};
 use futures::task::{Context, Poll};
 use libp2p::{
@@ -42,7 +41,7 @@ impl ExocoreBehaviour {
         peer_id: PeerId,
         expiration: Option<Instant>,
         connection: Option<ConnectionId>,
-        data: Bytes,
+        msg: MessageData,
     ) {
         let handler = if let Some(connection_id) = connection {
             NotifyHandler::One(connection_id)
@@ -55,11 +54,7 @@ impl ExocoreBehaviour {
                 let event = NetworkBehaviourAction::NotifyHandler {
                     peer_id,
                     handler,
-                    event: MessageData {
-                        message: data,
-                        stream: None,
-                        stream_len: 0,
-                    },
+                    event: msg,
                 };
 
                 self.actions.push_back(event);
@@ -74,11 +69,7 @@ impl ExocoreBehaviour {
                     event: NetworkBehaviourAction::NotifyHandler {
                         peer_id,
                         handler,
-                        event: MessageData {
-                            message: data,
-                            stream: None,
-                            stream_len: 0,
-                        },
+                        event: msg,
                     },
                     expiration: Some(expiration),
                 });
@@ -238,7 +229,7 @@ impl NetworkBehaviour for ExocoreBehaviour {
                     ExocoreBehaviourEvent::Message(ExocoreBehaviourMessage {
                         source: peer_id,
                         connection,
-                        data: msg.message,
+                        message: msg,
                     }),
                 ));
         }
@@ -342,11 +333,10 @@ pub enum ExocoreBehaviourEvent {
     PeerStatus(PeerId, PeerStatus),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ExocoreBehaviourMessage {
     pub source: PeerId,
     pub connection: ConnectionId,
-    pub data: Bytes,
+    pub message: MessageData,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]

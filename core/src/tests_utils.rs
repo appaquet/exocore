@@ -97,7 +97,6 @@ pub fn result_assert_true(value: bool) -> anyhow::Result<()> {
     }
 }
 
-#[inline]
 pub fn result_assert_false(value: bool) -> anyhow::Result<()> {
     if value {
         Err(anyhow!("value is not false"))

@@ -237,9 +237,11 @@ impl TestableTransportHandle {
                 while let Some(event) = handle_stream.next().await {
                     received_events.fetch_add(1, Ordering::Relaxed);
 
-                    if let InEvent::NodeStatus(node_id, status) = &event {
+                    if matches!(&event, InEvent::NodeStatus(_, _)) {
                         let mut node_status = node_status.lock().await;
-                        node_status.insert(node_id.clone(), *status);
+                        if let InEvent::NodeStatus(node_id, status) = &event {
+                            node_status.insert(node_id.clone(), *status);
+                        }
                     }
 
                     in_sender.send(event).await.unwrap();
@@ -282,6 +284,22 @@ impl TestableTransportHandle {
             .unwrap()
             .with_rdv(rdv.into())
             .with_dest_node(dest);
+
+        self.send_message(msg).await;
+    }
+
+    pub async fn send_stream_msg(
+        &mut self,
+        dest: Node,
+        rdv: u64,
+        stream: Box<dyn AsyncRead + Send + Unpin>,
+    ) {
+        let frame_builder = Self::empty_message_frame();
+        let msg = OutMessage::from_framed_message(&self.cell, ServiceType::Chain, frame_builder)
+            .unwrap()
+            .with_rdv(rdv.into())
+            .with_dest_node(dest)
+            .with_stream(stream);
 
         self.send_message(msg).await;
     }

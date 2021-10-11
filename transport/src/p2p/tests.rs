@@ -6,6 +6,7 @@ use exocore_core::{
     tests_utils::async_expect_eventually,
     time::{ConsistentTimestamp, Instant},
 };
+use futures::{io::Cursor, AsyncRead, AsyncReadExt};
 
 use super::*;
 use crate::{
@@ -65,10 +66,23 @@ async fn test_integration() -> anyhow::Result<()> {
     }
 
     {
-        // TODO: Stream
+        // send message with stream
+        let stream = str_to_stream("hello world");
+        handle1
+            .send_stream_msg(n2.node().clone(), 124, stream)
+            .await;
+
+        let msg = handle2.recv_rdv(124).await;
+        let mut out = String::new();
+        msg.stream.unwrap().read_to_string(&mut out).await.unwrap();
+        assert_eq!(out, "hello world");
     }
 
     Ok(())
+}
+
+fn str_to_stream(str: &'static str) -> Box<dyn AsyncRead + Send + Unpin> {
+    Box::new(Cursor::new(str.to_string()))
 }
 
 #[tokio::test]

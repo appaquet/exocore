@@ -28,7 +28,7 @@ type InboundStreamFuture = BoxFuture<
     Result<(MessageData, Option<WrappedStream<NegotiatedSubstream>>), io::Error>,
 >;
 type OutboundStreamFuture =
-    BoxFuture<'static, Result<WrappedStream<NegotiatedSubstream>, io::Error>>;
+    BoxFuture<'static, Result<Option<WrappedStream<NegotiatedSubstream>>, io::Error>>;
 
 /// Protocol handler for Exocore protocol.
 ///
@@ -151,7 +151,7 @@ impl ProtocolsHandler for ExocoreProtoHandler {
             let futures = std::mem::take(&mut self.outbound_stream_futures);
             for mut fut in futures {
                 match fut.as_mut().poll(cx) {
-                    Poll::Ready(Ok(substream)) => {
+                    Poll::Ready(Ok(Some(substream))) => {
                         if self.idle_outbound_stream.is_some() {
                             trace!("Successfully sent message. One stream already opening / ongoing. Closing this one");
                         } else if let Some(message) = self.send_queue.pop_front() {
@@ -162,6 +162,11 @@ impl ProtocolsHandler for ExocoreProtoHandler {
                             trace!("Successfully sent message. None in queue. Idling");
                             self.idle_outbound_stream = Some(substream);
                         }
+                    }
+                    Poll::Ready(Ok(None)) => {
+                        trace!(
+                            "Successfully sent message. Substream was consumed (had streaming)."
+                        );
                     }
                     Poll::Ready(Err(err)) => {
                         debug!("Error sending message: {}", err);
@@ -180,11 +185,14 @@ impl ProtocolsHandler for ExocoreProtoHandler {
             for mut fut in futures {
                 match fut.as_mut().poll(cx) {
                     Poll::Ready(Ok((message, substream))) => {
-                        trace!("Successfully received message");
                         if let Some(substream) = substream {
+                            trace!("Successfully received message, reusing channel.");
                             self.inbound_stream_futures
                                 .push(Box::pin(substream.read_message()));
+                        } else {
+                            trace!("Successfully received message, with stream.");
                         }
+
                         return Poll::Ready(ProtocolsHandlerEvent::Custom(message));
                     }
                     Poll::Ready(Err(err)) => {
@@ -254,7 +262,6 @@ where
 pub struct MessageData {
     pub(crate) message: Bytes,
     pub(crate) stream: Option<Box<dyn AsyncRead + Send + Unpin>>,
-    pub(crate) stream_len: usize,
 }
 
 /// Wraps a stream to expose reading and writing message capability.
@@ -269,43 +276,33 @@ impl<TStream> WrappedStream<TStream>
 where
     TStream: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
-    async fn send_message(mut self, message: MessageData) -> Result<Self, io::Error> {
+    async fn send_message(mut self, message: MessageData) -> Result<Option<Self>, io::Error> {
         let mut size_buf = [0; 4];
+        encode_msg_len(
+            message.message.len(),
+            message.stream.is_some(),
+            &mut size_buf,
+        );
 
-        let mut msg_len = message.message.len() as u32;
-        if message.stream.is_some() {
-            // we have extra streamed data, high bit to indicate it
-            msg_len |= 2 << 31;
-        }
-        LittleEndian::write_u32(&mut size_buf, msg_len);
-
-        // write message
+        // write msg size & msg data
         self.socket.write_all(&size_buf).await?;
         self.socket.write_all(&message.message).await?;
 
-        // if we have a stream, copy the stream to socket
+        // if we have a stream, copy the stream to socket then drop the substream to notify the end of stream
         if let Some(stream) = message.stream {
-            LittleEndian::write_u32(&mut size_buf, message.stream_len as u32);
             futures::io::copy(stream, &mut self.socket).await?;
+            self.socket.flush().await?;
+            Ok(None)
+        } else {
+            self.socket.flush().await?;
+            Ok(Some(self))
         }
-
-        self.socket.flush().await?;
-
-        Ok(self)
     }
 
     async fn read_message(mut self) -> Result<(MessageData, Option<Self>), io::Error> {
-        let mut size_buf = vec![0; 4];
+        let mut size_buf = [0; 4];
         self.socket.read_exact(&mut size_buf).await?;
-
-        let mut msg_len = LittleEndian::read_u32(&size_buf) as usize;
-        let has_stream = if msg_len & 2 << 31 > 0 {
-            msg_len <<= 1;
-            msg_len >>= 1;
-            true
-        } else {
-            false
-        };
+        let (msg_len, has_stream) = decode_msg_len(&size_buf);
 
         let message_data = {
             if msg_len > MAX_MESSAGE_SIZE {
@@ -322,15 +319,10 @@ where
         };
 
         if has_stream {
-            // we have a stream, we return the received message and the stream
-            // that will be consumed somewhere else
-            self.socket.read_exact(&mut size_buf).await?;
-            let stream_len = LittleEndian::read_u32(&size_buf) as usize;
             Ok((
                 MessageData {
                     message: message_data.into(),
                     stream: Some(Box::new(self.socket)),
-                    stream_len,
                 },
                 None,
             ))
@@ -341,7 +333,6 @@ where
                 MessageData {
                     message: message_data.into(),
                     stream: None,
-                    stream_len: 0,
                 },
                 Some(self),
             ))
@@ -351,6 +342,7 @@ where
 
 const STREAM_MASK: usize = 1 << 31;
 
+/// Encodes message size and uses high bit to indicate that there is a stream after message.
 fn encode_msg_len(mut len: usize, has_stream: bool, into: &mut [u8]) {
     if has_stream {
         len |= STREAM_MASK;
@@ -359,6 +351,7 @@ fn encode_msg_len(mut len: usize, has_stream: bool, into: &mut [u8]) {
     LittleEndian::write_u32(into, len as u32);
 }
 
+/// Decodes message size.
 fn decode_msg_len(bytes: &[u8]) -> (usize, bool) {
     let mut msg_len = LittleEndian::read_u32(bytes) as usize;
     let has_stream = if msg_len & STREAM_MASK == STREAM_MASK {
