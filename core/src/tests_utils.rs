@@ -105,6 +105,23 @@ pub fn result_assert_false(value: bool) -> anyhow::Result<()> {
     }
 }
 
+pub async fn test_retry<F, O>(f: F) -> anyhow::Result<()>
+where
+    F: Fn() -> O,
+    O: Future<Output = anyhow::Result<()>>,
+{
+    for i in 0..3 {
+        match f().await {
+            Ok(_) => return Ok(()),
+            Err(err) => {
+                error!("Test failed at iter {}: {}", i, err);
+            }
+        }
+    }
+
+    Err(anyhow!("test failed after 3 attempts"))
+}
+
 /// Finds the given relative path from root of the project by popping current
 /// directory until we find the root directory. This is needed since tests may
 /// be executed from root directory, but also from test's file directory.

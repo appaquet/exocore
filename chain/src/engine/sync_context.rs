@@ -83,15 +83,15 @@ impl SyncContextMessage {
         let message = match self {
             SyncContextMessage::PendingSyncRequest(_, request_builder) => {
                 OutMessage::from_framed_message(cell, ServiceType::Chain, request_builder)?
-                    .with_dest_node(dest_node)
+                    .with_destination(dest_node)
             }
             SyncContextMessage::ChainSyncRequest(_, request_builder) => {
                 OutMessage::from_framed_message(cell, ServiceType::Chain, request_builder)?
-                    .with_dest_node(dest_node)
+                    .with_destination(dest_node)
             }
             SyncContextMessage::ChainSyncResponse(_, response_builder) => {
                 OutMessage::from_framed_message(cell, ServiceType::Chain, response_builder)?
-                    .with_dest_node(dest_node)
+                    .with_destination(dest_node)
             }
         };
 

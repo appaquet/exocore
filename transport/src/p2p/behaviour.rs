@@ -220,7 +220,7 @@ impl NetworkBehaviour for ExocoreBehaviour {
         }
     }
 
-    fn inject_event(&mut self, peer_id: PeerId, connection: ConnectionId, msg: MessageData) {
+    fn inject_event(&mut self, peer_id: PeerId, connection: ConnectionId, message: MessageData) {
         if let Some(peer) = self.peers.get_mut(&peer_id) {
             trace!("Received message from {}", peer.node);
 
@@ -229,7 +229,7 @@ impl NetworkBehaviour for ExocoreBehaviour {
                     ExocoreBehaviourEvent::Message(ExocoreBehaviourMessage {
                         source: peer_id,
                         connection,
-                        message: msg,
+                        message,
                     }),
                 ));
         }

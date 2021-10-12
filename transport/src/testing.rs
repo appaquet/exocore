@@ -157,7 +157,7 @@ impl Future for MockTransportServiceHandle {
                         .to_in_message(node.clone())
                         .expect("Couldn't get InMessage from OutMessage");
                     let dest_node = msg
-                        .dest_node
+                        .destination
                         .expect("Message didn't have a destination node");
                     let key = (dest_node.id().clone(), service_type);
                     if let Some(node_sink) = handles_sink.get_mut(&key) {
@@ -283,7 +283,7 @@ impl TestableTransportHandle {
         let msg = OutMessage::from_framed_message(&self.cell, ServiceType::Chain, frame_builder)
             .unwrap()
             .with_rdv(rdv.into())
-            .with_dest_node(dest);
+            .with_destination(dest);
 
         self.send_message(msg).await;
     }
@@ -298,7 +298,7 @@ impl TestableTransportHandle {
         let msg = OutMessage::from_framed_message(&self.cell, ServiceType::Chain, frame_builder)
             .unwrap()
             .with_rdv(rdv.into())
-            .with_dest_node(dest)
+            .with_destination(dest)
             .with_stream(stream);
 
         self.send_message(msg).await;
@@ -396,13 +396,13 @@ mod test {
         t0.send_rdv(node1.node().clone(), 100).await;
 
         let msg = t1.recv_msg().await;
-        assert_eq!(msg.node.id(), node0.id());
+        assert_eq!(msg.source.id(), node0.id());
         assert_eq!(msg.rendez_vous_id, Some(100.into()));
 
         t1.send_rdv(node0.node().clone(), 101).await;
 
         let msg = t0.recv_msg().await;
-        assert_eq!(msg.node.id(), node1.id());
+        assert_eq!(msg.source.id(), node1.id());
         assert_eq!(msg.rendez_vous_id, Some(101.into()));
     }
 

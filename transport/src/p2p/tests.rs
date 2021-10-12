@@ -153,7 +153,7 @@ async fn should_queue_message_until_connected() -> anyhow::Result<()> {
     let msg = OutMessage::from_framed_message(n1_cell.cell(), ServiceType::Chain, msg_frame)?
         .with_expiration(Some(Instant::now() - Duration::from_secs(5)))
         .with_rdv(ConsistentTimestamp(2))
-        .with_dest_node(n2.node().clone());
+        .with_destination(n2.node().clone());
     h1.send_message(msg).await;
 
     // leave some time for first messages to arrive

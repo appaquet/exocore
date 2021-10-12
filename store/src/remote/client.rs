@@ -263,8 +263,8 @@ impl Inner {
         let mut inner = inner.write()?;
 
         if let Some(store_node) = &inner.store_node {
-            if in_message.node.id() != store_node.id() {
-                warn!("Got message from a node other than store node (from {} != current {}). Dropping it.", in_message.node, store_node);
+            if in_message.source.id() != store_node.id() {
+                warn!("Got message from a node other than store node (from {} != current {}). Dropping it.", in_message.source, store_node);
                 return Ok(());
             }
         }
@@ -275,7 +275,7 @@ impl Inner {
             return Err(anyhow!(
                 "Got an InMessage without a rendez_vous_id (type={:?} from={})",
                 in_message.typ,
-                in_message.node
+                in_message.source
             )
             .into());
         };
@@ -287,7 +287,7 @@ impl Inner {
                 } else {
                     return Err(anyhow!(
                         "Couldn't find pending mutation for mutation response (request_id={:?} type={:?} from={})",
-                        request_id, in_message.typ, in_message.node
+                        request_id, in_message.typ, in_message.source
                     ).into());
                 }
             }
@@ -299,7 +299,7 @@ impl Inner {
                 } else {
                     return Err(anyhow!(
                         "Couldn't find pending query for query response (request_id={:?} type={:?} from={})",
-                        request_id, in_message.typ, in_message.node
+                        request_id, in_message.typ, in_message.source
                     ).into());
                 }
             }
@@ -496,7 +496,7 @@ impl Inner {
         })?;
 
         transport
-            .unbounded_send(OutEvent::Message(message.with_dest_node(store_node)))
+            .unbounded_send(OutEvent::Message(message.with_destination(store_node)))
             .map_err(|_err| {
                 Error::Fatal(anyhow!(
                     "Tried to send message, but transport_out channel is closed"

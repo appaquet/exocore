@@ -186,7 +186,7 @@ impl Libp2pTransport {
                                 None
                             };
 
-                        if let Some(dest) = msg.dest_node {
+                        if let Some(dest) = msg.destination {
                             let msg_data = MessageData {
                                 message: frame_data,
                                 stream: msg.stream,

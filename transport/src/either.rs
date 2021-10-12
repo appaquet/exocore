@@ -97,7 +97,7 @@ where
         side: Side,
     ) -> Result<(), Error> {
         let node_id = match event {
-            InEvent::Message(msg) => msg.node.id(),
+            InEvent::Message(msg) => msg.source.id(),
             _ => return Ok(()),
         };
 
@@ -179,7 +179,7 @@ where
                             let side = match Self::extract_out_message_connection_side(msg) {
                                 Some(explicit_side) => Some(explicit_side),
                                 None => {
-                                    let node = msg.dest_node.as_ref().ok_or_else(|| {
+                                    let node = msg.destination.as_ref().ok_or_else(|| {
                                         Error::Other(
                                             "Out event didn't have any destination node"
                                                 .to_string(),
@@ -336,11 +336,11 @@ mod tests {
                 OutMessage::from_framed_message(cell1.cell(), ServiceType::Chain, frame_builder)?
                     .with_rdv(2.into())
                     .with_connection(ConnectionId::Either(Side::Right, None))
-                    .with_dest_node(node2.node().clone());
+                    .with_destination(node2.node().clone());
             node1_either.send_message(msg).await;
 
             let msg = node2_t2.recv_msg().await;
-            assert_eq!(msg.node.id(), node1.id());
+            assert_eq!(msg.source.id(), node1.id());
             assert_eq!(msg.rendez_vous_id, Some(2.into()));
         }
 
@@ -348,7 +348,7 @@ mod tests {
             // sending to node1 via both transport should be received
             node2_t1.send_rdv(node1.node().clone(), 3).await;
             let msg = node1_either.recv_msg().await;
-            assert_eq!(msg.node.id(), node2.id());
+            assert_eq!(msg.source.id(), node2.id());
             assert_eq!(msg.rendez_vous_id, Some(3.into()));
             match &msg.connection {
                 Some(ConnectionId::Either(Side::Left, _)) => {}
@@ -360,7 +360,7 @@ mod tests {
 
             node2_t2.send_rdv(node1.node().clone(), 4).await;
             let msg = node1_either.recv_msg().await;
-            assert_eq!(msg.node.id(), node2.id());
+            assert_eq!(msg.source.id(), node2.id());
             assert_eq!(msg.rendez_vous_id, Some(4.into()));
             match &msg.connection {
                 Some(ConnectionId::Either(Side::Right, _)) => {}
@@ -375,7 +375,7 @@ mod tests {
         // transport (right side)
         node1_either.send_rdv(node2.node().clone(), 5).await;
         let msg = node2_t2.recv_msg().await;
-        assert_eq!(msg.node.id(), node1.id());
+        assert_eq!(msg.source.id(), node1.id());
         assert_eq!(msg.rendez_vous_id, Some(5.into()));
 
         Ok(())

@@ -13,7 +13,7 @@ pub type RendezVousId = ConsistentTimestamp;
 
 /// Message to be sent to one or more other nodes.
 pub struct OutMessage {
-    pub dest_node: Option<Node>,
+    pub destination: Option<Node>,
     pub expiration: Option<Instant>,
     pub connection: Option<ConnectionId>,
     pub envelope_builder: CapnpFrameBuilder<envelope::Owned>,
@@ -23,7 +23,7 @@ pub struct OutMessage {
 impl OutMessage {
     pub fn from_framed_message<T>(
         cell: &Cell,
-        dest_service: ServiceType,
+        service: ServiceType,
         frame: CapnpFrameBuilder<T>,
     ) -> Result<OutMessage, Error>
     where
@@ -31,14 +31,14 @@ impl OutMessage {
     {
         let mut envelope_builder = CapnpFrameBuilder::<envelope::Owned>::new();
         let mut envelope_message_builder = envelope_builder.get_builder();
-        envelope_message_builder.set_service(dest_service.to_code());
+        envelope_message_builder.set_service(service.to_code());
         envelope_message_builder.set_type(T::MESSAGE_TYPE);
         envelope_message_builder.set_cell_id(cell.id().as_bytes());
         envelope_message_builder.set_from_node_id(&cell.local_node().id().to_string());
         envelope_message_builder.set_data(&frame.as_bytes());
 
         Ok(OutMessage {
-            dest_node: None,
+            destination: None,
             expiration: None,
             connection: None,
             envelope_builder,
@@ -46,8 +46,8 @@ impl OutMessage {
         })
     }
 
-    pub fn with_dest_node(mut self, node: Node) -> Self {
-        self.dest_node = Some(node);
+    pub fn with_destination(mut self, node: Node) -> Self {
+        self.destination = Some(node);
         self
     }
 
@@ -90,7 +90,7 @@ impl OutMessage {
 
 /// Message receive from another node.
 pub struct InMessage {
-    pub node: Node,
+    pub source: Node,
     pub cell_id: CellId,
     pub service_type: ServiceType,
     pub rendez_vous_id: Option<RendezVousId>,
@@ -124,7 +124,7 @@ impl InMessage {
         let message_type = envelope_reader.get_type();
 
         Ok(InMessage {
-            node: from,
+            source: from,
             cell_id,
             service_type,
             rendez_vous_id,
@@ -155,7 +155,7 @@ impl InMessage {
 
     pub fn get_reply_token(&self) -> Result<MessageReplyToken, Error> {
         Ok(MessageReplyToken {
-            from: self.node.clone(),
+            from: self.source.clone(),
             service_type: self.service_type,
             rendez_vous_id: self.get_rendez_vous_id()?,
             connection: self.connection.clone(),
@@ -205,7 +205,7 @@ impl MessageReplyToken {
     {
         Ok(
             OutMessage::from_framed_message(cell, self.service_type, frame)?
-                .with_dest_node(self.from.clone())
+                .with_destination(self.from.clone())
                 .with_rdv(self.rendez_vous_id)
                 .with_opt_connection(self.connection.clone()),
         )

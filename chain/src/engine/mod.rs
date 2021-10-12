@@ -203,7 +203,7 @@ where
 
             debug!(
                 "{}: Got message of type {} from node {}",
-                inner.cell, message.typ, message.node,
+                inner.cell, message.typ, message.source,
             );
 
             match message.typ {
@@ -320,7 +320,7 @@ where
 
         let mut sync_context = SyncContext::new(self.sync_state);
         self.pending_synchronizer.handle_incoming_sync_request(
-            &message.node,
+            &message.source,
             &mut sync_context,
             &mut self.pending_store,
             request,
@@ -341,7 +341,7 @@ where
         let mut sync_context = SyncContext::new(self.sync_state);
         self.chain_synchronizer.handle_sync_request(
             &mut sync_context,
-            &message.node,
+            &message.source,
             &mut self.chain_store,
             request,
         )?;
@@ -361,7 +361,7 @@ where
         let mut sync_context = SyncContext::new(self.sync_state);
         self.chain_synchronizer.handle_sync_response(
             &mut sync_context,
-            &message.node,
+            &message.source,
             &mut self.chain_store,
             response,
         )?;
