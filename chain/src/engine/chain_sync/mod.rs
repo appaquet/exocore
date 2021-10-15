@@ -516,7 +516,7 @@ impl<CS: ChainStore> ChainSynchronizer<CS> {
     /// If we're asked for data, this means we're the lead.
     fn create_sync_response_for_blocks<
         B: Block + Send,
-        I: Iterator<Item = Result<B, crate::chain::Error>>
+        I: Iterator<Item = Result<B, crate::chain::Error>>,
     >(
         config: &ChainSyncConfig,
         from_offset: BlockOffset,
