@@ -36,10 +36,6 @@ struct Identity {
 }
 
 impl Cell {
-    pub fn new(public_key: PublicKey, local_node: LocalNode) -> Cell {
-        Self::build(public_key, local_node, None, None)
-    }
-
     pub fn from_config(config: CellConfig, local_node: LocalNode) -> Result<EitherCell, Error> {
         let either_cell = if !config.keypair.is_empty() {
             let keypair = Keypair::decode_base58_string(&config.keypair)

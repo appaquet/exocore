@@ -22,6 +22,7 @@ runtime = [
   "tokio/macros",
 ]
 tests-utils = ["runtime", "logger"]
+web = ["getrandom/js"] # see https://docs.rs/getrandom/0.2.0/getrandom/#webassembly-support
 
 [dependencies]
 anyhow = "1.0"

@@ -5,6 +5,55 @@ package exocore.core;
 import "exocore/apps/manifest.proto";
 import "google/protobuf/wrappers.proto";
 
+
+// TODO: Config RPC for apps to edit different configs
+
+message ConfigRequest {
+    message GenNode {
+    }
+    message GetNode {
+    }
+    message PutNode {
+    }
+
+    message ListCells {
+    }
+    message GetCell {
+        enum Format {
+            PROTO = 0;
+            YAML = 1;
+        }
+
+        Format format = 1;
+    }
+    message DeleteCell {
+    }
+
+    oneof request {
+        GenNode gen_node = 1;
+        GetNode get_node = 2;
+        PutNode put_node = 3;
+    }
+}
+
+message ConfigResponse {
+    message GenNode {
+        LocalNodeConfig config = 1;
+    }
+    message GetNode {
+        LocalNodeConfig config = 1;
+    }
+    message PutNode {
+        LocalNodeConfig config = 1;
+    }
+
+    oneof response {
+        GetNode get_node = 1;
+    }
+}
+
+
+
 message LocalNodeConfig {
     string keypair = 1;
 
@@ -14,6 +63,7 @@ message LocalNodeConfig {
 
     string id = 4;
 
+    // TODO: Should get rid of this
     string path = 5;
 
     NodeAddresses listen_addresses = 10;
@@ -34,11 +84,14 @@ message NodeAddresses {
 }
 
 message NodeCellConfig {
+    // TODO: Should get rid of this
     oneof location {
        CellConfig inline = 1;
 
        string path = 2;
     }
+
+    // TODO: Add basic info required to define cell (id, name, etc)
 }
 
 // Entity store configuration for the node (i.e. not global)
@@ -125,6 +178,7 @@ message CellConfig {
 
     string id = 4;
 
+    // TODO: Should get rid of this
     string path = 5;
 
     repeated CellNodeConfig nodes = 6;
@@ -164,6 +218,7 @@ message CellApplicationConfig {
 
     string package_url = 4;
 
+    // TODO: Should get rid of this
     oneof location {
         // Manifest is inline within the config.
         exocore.apps.Manifest inline = 5;
