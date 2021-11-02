@@ -1,20 +1,18 @@
 use std::{
-    collections::{BTreeMap, HashMap},
-    io::{Cursor, Read, Seek, SeekFrom, Write},
-    sync::{Arc, RwLock, Weak},
+    collections::BTreeMap,
+    io::{Read, Seek, SeekFrom, Write},
+    sync::{Arc, RwLock},
 };
-
-use bytes::{Buf, Bytes, BytesMut};
 
 use super::*;
 
 pub struct RamFileSystem {
-    files: Arc<RwLock<BTreeMap<Path, RamFileData>>>,
+    files: Arc<RwLock<BTreeMap<PathBuf, RamFileData>>>,
 }
 
 #[derive(Clone, Default)]
 struct RamFileData {
-    data: Arc<RwLock<Vec<u8>>>,
+    bytes: Arc<RwLock<Vec<u8>>>,
 }
 
 impl RamFileSystem {
@@ -32,15 +30,15 @@ impl Default for RamFileSystem {
 }
 
 impl FileSystem for RamFileSystem {
-    fn open_read(&self, path: &Path) -> Result<Box<dyn FileRead>, Error> {
-        if path.is_root() {
+    fn open_read(&self, path: &std::path::Path) -> Result<Box<dyn FileRead>, Error> {
+        if !path.has_root() || path.parent().is_none() {
             return Err(Error::InvalidFilePathRoot);
         }
 
         let files = self.files.read().unwrap();
         let file = files
             .get(path)
-            .ok_or_else(|| Error::NotFound(path.clone()))?;
+            .ok_or_else(|| Error::NotFound(path.to_path_buf()))?;
 
         Ok(Box::new(RamFile {
             data: file.clone(),
@@ -49,7 +47,7 @@ impl FileSystem for RamFileSystem {
     }
 
     fn open_write(&self, path: &Path) -> Result<Box<dyn FileWrite>, Error> {
-        if path.is_root() {
+        if !path.has_root() || path.parent().is_none() {
             return Err(Error::InvalidFilePathRoot);
         }
 
@@ -60,11 +58,40 @@ impl FileSystem for RamFileSystem {
             data
         } else {
             let data = RamFileData::default();
-            files.insert(path.clone(), data.clone());
+            files.insert(path.to_path_buf(), data.clone());
             data
         };
 
         Ok(Box::new(RamFile { data, cursor: 0 }))
+    }
+
+    fn list(&self, prefix: Option<&Path>) -> Result<Vec<Box<dyn FileStat>>, Error> {
+        let prefix = prefix.unwrap_or_else(|| Path::new("/"));
+        let files = self.files.read().unwrap();
+
+        let mut result: Vec<Box<dyn FileStat>> = Vec::new();
+        for (path, file) in files.iter() {
+            if path.starts_with(prefix) {
+                result.push(Box::new(RamFileStat {
+                    path: path.to_path_buf(),
+                    data: file.clone(),
+                }));
+            }
+        }
+
+        Ok(result)
+    }
+
+    fn stat(&self, path: &Path) -> Result<Box<dyn FileStat>, Error> {
+        let files = self.files.read().unwrap();
+        let file = files
+            .get(path)
+            .ok_or_else(|| Error::NotFound(path.to_path_buf()))?;
+
+        Ok(Box::new(RamFileStat {
+            path: path.to_path_buf(),
+            data: file.clone(),
+        }))
     }
 
     fn exists(&self, path: &Path) -> bool {
@@ -105,7 +132,7 @@ impl FileWrite for RamFile {}
 
 impl Read for RamFile {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let data = self.data.data.read().unwrap();
+        let data = self.data.bytes.read().unwrap();
         if self.cursor >= data.len() {
             return Ok(0);
         }
@@ -119,7 +146,7 @@ impl Read for RamFile {
 
 impl Seek for RamFile {
     fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
-        let data = self.data.data.read().unwrap();
+        let data = self.data.bytes.read().unwrap();
         let len = data.len();
         let pos = match pos {
             SeekFrom::Start(pos) => pos as u64,
@@ -133,7 +160,7 @@ impl Seek for RamFile {
 
 impl Write for RamFile {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let mut data = self.data.data.write().unwrap();
+        let mut data = self.data.bytes.write().unwrap();
 
         for i in 0..buf.len() {
             if self.cursor + i >= data.len() {
@@ -153,33 +180,52 @@ impl Write for RamFile {
     }
 }
 
+pub struct RamFileStat {
+    path: PathBuf,
+    data: RamFileData,
+}
+
+impl FileStat for RamFileStat {
+    fn path(&self) -> &Path {
+        self.path.as_path()
+    }
+
+    fn size(&self) -> u64 {
+        self.data.bytes.read().unwrap().len() as u64
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_write_file() {
+    fn test_write_read_file() {
         let fs = RamFileSystem::new();
 
         {
             // cannot create at root
-            assert!(fs.open_write(&"/".into()).is_err());
+            assert!(fs.open_write(Path::new("/")).is_err());
         }
 
         {
             // can create file
-            assert!(!fs.exists(&"/file1".into()));
+            assert!(!fs.exists(Path::new("/file1")));
 
-            let mut file = fs.open_write(&"/file1".into()).unwrap();
+            let mut file = fs.open_write(Path::new("/file1")).unwrap();
             file.write_all(b"Hello ").unwrap();
             file.write_all(b"world").unwrap();
 
-            assert!(fs.exists(&"/file1".into()));
+            let stat = fs.stat(Path::new("/file1")).unwrap();
+            assert_eq!(stat.path(), Path::new("/file1"));
+            assert_eq!(stat.size(), 11);
+
+            assert!(fs.exists(Path::new("/file1")));
         }
 
         {
             // can read the file
-            let mut file = fs.open_read(&"/file1".into()).unwrap();
+            let mut file = fs.open_read(Path::new("/file1")).unwrap();
             let mut buf = String::new();
             file.read_to_string(&mut buf).unwrap();
             assert_eq!("Hello world", buf);
@@ -191,7 +237,7 @@ mod tests {
 
         {
             // can seek
-            let mut file = fs.open_write(&"/file1".into()).unwrap();
+            let mut file = fs.open_write(Path::new("/file1")).unwrap();
 
             file.seek(SeekFrom::Start(6)).unwrap();
             file.write_all(b"monde").unwrap();
@@ -200,19 +246,73 @@ mod tests {
             file.read_to_string(&mut buf).unwrap();
             assert_eq!("", buf);
 
-            file.seek( SeekFrom::Start(0)).unwrap();
+            file.seek(SeekFrom::Start(0)).unwrap();
             file.read_to_string(&mut buf).unwrap();
             assert_eq!("Hello monde", buf);
 
-            file.seek( SeekFrom::End(-5)).unwrap();
+            file.seek(SeekFrom::End(-5)).unwrap();
             buf.clear();
             file.read_to_string(&mut buf).unwrap();
             assert_eq!("monde", buf);
 
-            file.seek( SeekFrom::Current(-5)).unwrap();
+            file.seek(SeekFrom::Current(-5)).unwrap();
             buf.clear();
             file.read_to_string(&mut buf).unwrap();
             assert_eq!("monde", buf);
         }
+    }
+
+    #[test]
+    fn test_list() {
+        let fs = RamFileSystem::new();
+        assert!(fs.list(None).unwrap().is_empty());
+        assert!(fs.list(Some(Path::new("/"))).unwrap().is_empty());
+
+        {
+            fs.open_write(Path::new("/dir1/file1")).unwrap();
+            fs.open_write(Path::new("/dir1/file2")).unwrap();
+            fs.open_write(Path::new("/dir1/file3")).unwrap();
+            fs.open_write(Path::new("/dir2/file1")).unwrap();
+            fs.open_write(Path::new("/dir2/file2")).unwrap();
+            fs.open_write(Path::new("/file1")).unwrap();
+        }
+
+        assert_eq!(fs.list(Some(Path::new("/dir1"))).unwrap().len(), 3);
+        assert_eq!(fs.list(Some(Path::new("/dir2"))).unwrap().len(), 2);
+        assert_eq!(fs.list(Some(Path::new("/file1"))).unwrap().len(), 1);
+        assert_eq!(fs.list(Some(Path::new("/"))).unwrap().len(), 6);
+        assert_eq!(fs.list(Some(Path::new("/not/found"))).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_clear() {
+        let fs = RamFileSystem::new();
+
+        {
+            let mut file = fs.open_write(Path::new("/test")).unwrap();
+            file.write_all(b"Hello").unwrap();
+        }
+
+        assert!(fs.exists(Path::new("/test")));
+
+        fs.clear().unwrap();
+
+        assert!(!fs.exists(Path::new("/test")));
+    }
+
+    #[test]
+    fn test_delete() {
+        let fs = RamFileSystem::new();
+
+        {
+            let mut file = fs.open_write(Path::new("/test")).unwrap();
+            file.write_all(b"Hello").unwrap();
+        }
+
+        assert!(fs.exists(Path::new("/test")));
+
+        fs.delete(Path::new("/test")).unwrap();
+
+        assert!(!fs.exists(Path::new("/test")));
     }
 }
