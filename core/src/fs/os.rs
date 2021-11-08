@@ -17,13 +17,11 @@ impl OsFileSystem {
     }
 
     fn resolve_path(&self, path: &Path, expect_file: bool) -> Result<PathBuf, Error> {
-        if !path.has_root() || (expect_file && path.parent().is_none()) {
+        if expect_file && path.parent().is_none() {
             return Err(Error::Path(anyhow!("expected a non-root path to a file")));
         }
 
-        let path_non_root = path.strip_prefix("/").unwrap();
-        let joined = self.base_path.join(path_non_root);
-
+        let joined = self.base_path.join(path);
         if !joined.starts_with(&self.base_path) {
             return Err(Error::Path(anyhow!(
                 "resolved path {:?} is not under base path {:?}",
@@ -60,7 +58,7 @@ impl FileSystem for OsFileSystem {
     fn list(&self, prefix: Option<&Path>) -> Result<Vec<Box<dyn FileStat>>, Error> {
         let prefix = if let Some(prefix) = prefix {
             let _ = self.resolve_path(prefix, false)?; // validate
-            Some(prefix.strip_prefix("/").unwrap())
+            Some(prefix)
         } else {
             None
         };

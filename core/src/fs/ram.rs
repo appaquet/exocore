@@ -31,7 +31,7 @@ impl Default for RamFileSystem {
 
 impl FileSystem for RamFileSystem {
     fn open_read(&self, path: &std::path::Path) -> Result<Box<dyn FileRead>, Error> {
-        if !path.has_root() || path.parent().is_none() {
+        if path.parent().is_none() {
             return Err(Error::Path(anyhow!("expected a non-root path to a file")));
         }
 
@@ -47,7 +47,7 @@ impl FileSystem for RamFileSystem {
     }
 
     fn open_write(&self, path: &Path) -> Result<Box<dyn FileWrite>, Error> {
-        if !path.has_root() || path.parent().is_none() {
+        if path.parent().is_none() {
             return Err(Error::Path(anyhow!("expected a non-root path to a file")));
         }
 
@@ -66,7 +66,7 @@ impl FileSystem for RamFileSystem {
     }
 
     fn list(&self, prefix: Option<&Path>) -> Result<Vec<Box<dyn FileStat>>, Error> {
-        let prefix = prefix.unwrap_or_else(|| Path::new("/"));
+        let prefix = prefix.unwrap_or_else(|| Path::new(""));
         let files = self.files.read().unwrap();
 
         let mut result: Vec<Box<dyn FileStat>> = Vec::new();
