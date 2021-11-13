@@ -10,11 +10,6 @@ pub struct RamFileSystem {
     files: Arc<RwLock<BTreeMap<PathBuf, RamFileData>>>,
 }
 
-#[derive(Clone, Default)]
-struct RamFileData {
-    bytes: Arc<RwLock<Vec<u8>>>,
-}
-
 impl RamFileSystem {
     pub fn new() -> Self {
         RamFileSystem {
@@ -30,7 +25,7 @@ impl Default for RamFileSystem {
 }
 
 impl FileSystem for RamFileSystem {
-    fn open_read(&self, path: &std::path::Path) -> Result<Box<dyn FileRead>, Error> {
+    fn open_read(&self, path: &Path) -> Result<Box<dyn FileRead>, Error> {
         if path.parent().is_none() {
             return Err(Error::Path(anyhow!("expected a non-root path to a file")));
         }
@@ -117,9 +112,28 @@ impl FileSystem for RamFileSystem {
     }
 }
 
+#[derive(Clone, Default)]
+pub struct RamFileData {
+    pub bytes: Arc<RwLock<Vec<u8>>>,
+}
+
+impl From<Vec<u8>> for RamFileData {
+    fn from(bytes: Vec<u8>) -> Self {
+        RamFileData {
+            bytes: Arc::new(RwLock::new(bytes)),
+        }
+    }
+}
+
 pub struct RamFile {
     data: RamFileData,
     cursor: usize,
+}
+
+impl RamFile {
+    pub fn new(data: RamFileData) -> Self {
+        RamFile { data, cursor: 0 }
+    }
 }
 
 impl FileRead for RamFile {}

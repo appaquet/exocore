@@ -6,7 +6,7 @@ use std::{
 pub mod os;
 pub mod ram;
 pub mod scoped;
-#[cfg(target_arch = "wasm32")]
+#[cfg(features="web")]
 pub mod web;
 
 pub trait FileSystem: Send + Sync {
@@ -64,6 +64,9 @@ pub enum Error {
 
     #[error("Not a OsFileSystem")]
     NotOsPath,
+
+    #[error("Other: {0}")]
+    Otehr(#[from] anyhow::Error),
 }
 
 #[cfg(test)]

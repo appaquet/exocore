@@ -103,7 +103,9 @@ impl FileStat for ScopedFileStat {
 
 #[cfg(test)]
 mod tests {
-    use crate::fs::ram::RamFileSystem;
+    use tempfile::tempdir;
+
+    use crate::fs::{os::OsFileSystem, ram::RamFileSystem};
 
     use super::*;
 
@@ -150,5 +152,20 @@ mod tests {
         let ram = RamFileSystem::new();
         let fs = ScopedFileSystem::new(ram, PathBuf::from(""));
         super::super::tests::test_delete(fs);
+    }
+
+    #[test]
+    fn test_as_os_path() {
+        let dir = tempdir().unwrap();
+        let fs = ScopedFileSystem::new(
+            OsFileSystem::new(dir.path().to_path_buf()),
+            PathBuf::from("sub"),
+        );
+
+        let os_path = fs.as_os_path(Path::new("")).unwrap();
+        assert_eq!(dir.path().join("sub"), os_path.as_path());
+
+        let os_path = fs.as_os_path(Path::new("dir/file")).unwrap();
+        assert_eq!(dir.path().join("sub/dir/file"), os_path.as_path());
     }
 }

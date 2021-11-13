@@ -224,6 +224,13 @@ mod tests {
 
     #[test]
     fn test_as_os_path() {
-        // TODO:
+        let dir = tempdir().unwrap();
+        let fs = OsFileSystem::new(dir.path().to_path_buf());
+
+        let os_path = fs.as_os_path(Path::new("")).unwrap();
+        assert_eq!(dir.path(), os_path.as_path());
+
+        let os_path = fs.as_os_path(Path::new("some/file")).unwrap();
+        assert_eq!(dir.path().join("some/file"), os_path.as_path());
     }
 }
