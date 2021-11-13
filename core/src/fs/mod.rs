@@ -6,7 +6,7 @@ use std::{
 pub mod os;
 pub mod ram;
 pub mod scoped;
-#[cfg(features="web")]
+#[cfg(features = "web")]
 pub mod web;
 
 pub trait FileSystem: Send + Sync {
