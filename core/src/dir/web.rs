@@ -7,16 +7,16 @@ use std::{
 
 use super::{
     ram::{RamFile, RamFileData},
-    DynFileSystem, Error, FileRead, FileStat, FileSystem, FileWrite,
+    Directory, DynDirectory, Error, FileRead, FileStat, FileWrite,
 };
 
-const FS_PREFIX: &str = "_fs";
+const DIR_PREFIX: &str = "_dir";
 
-pub struct WebFileSystem {
+pub struct WebDirectory {
     storage: Arc<Mutex<Storage>>,
 }
 
-impl WebFileSystem {
+impl WebDirectory {
     pub fn new(storage: web_sys::Storage) -> Self {
         Self {
             storage: Arc::new(Mutex::new(Storage(storage))),
@@ -24,9 +24,9 @@ impl WebFileSystem {
     }
 }
 
-unsafe impl Send for WebFileSystem {}
+unsafe impl Send for WebDirectory {}
 
-impl FileSystem for WebFileSystem {
+impl Directory for WebDirectory {
     fn open_read(&self, path: &Path) -> Result<Box<dyn FileRead>, Error> {
         let key = path_to_key(path, true)?;
         let file = WebFile::new(self.storage.clone(), key, true)?;
@@ -88,15 +88,15 @@ impl FileSystem for WebFileSystem {
         Ok(())
     }
 
-    fn clone(&self) -> DynFileSystem {
-        WebFileSystem {
+    fn clone(&self) -> DynDirectory {
+        WebDirectory {
             storage: self.storage.clone(),
         }
         .into()
     }
 
     fn as_os_path(&self, _path: &Path) -> Result<PathBuf, Error> {
-        Err(Error::NotOsPath)
+        Err(Error::NotOsDirectory)
     }
 }
 
@@ -250,7 +250,7 @@ impl Storage {
 
 fn key_to_path(key: &str) -> PathBuf {
     let path = key
-        .strip_prefix(FS_PREFIX)
+        .strip_prefix(DIR_PREFIX)
         .unwrap_or_default()
         .strip_prefix('/')
         .unwrap_or_default();
@@ -262,7 +262,7 @@ fn path_to_key(path: &Path, expect_file: bool) -> Result<String, Error> {
         return Err(Error::Path(anyhow!("expected a non-root path to a file")));
     }
 
-    Ok(format!("{}/{}", FS_PREFIX, path.to_string_lossy()))
+    Ok(format!("{}/{}", DIR_PREFIX, path.to_string_lossy()))
 }
 
 #[cfg(test)]
@@ -279,12 +279,12 @@ mod tests {
 
         let path = Path::new("foo");
         let key = path_to_key(path, false).unwrap();
-        assert_eq!("_fs/foo", key);
-        assert_eq!(path, key_to_path("_fs/foo"));
+        assert_eq!("_dir/foo", key);
+        assert_eq!(path, key_to_path("_dir/foo"));
 
         let path = Path::new("foo/bar");
         let key = path_to_key(path, false).unwrap();
-        assert_eq!("_fs/foo/bar", key);
-        assert_eq!(path, key_to_path("_fs/foo/bar"));
+        assert_eq!("_dir/foo/bar", key);
+        assert_eq!(path, key_to_path("_dir/foo/bar"));
     }
 }

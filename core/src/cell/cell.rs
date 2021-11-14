@@ -32,7 +32,7 @@ struct Identity {
     cell_id: CellId,
     local_node: LocalNode,
     name: String,
-    path: Option<PathBuf>,
+    path: Option<PathBuf>, // TODO: Should be a directory
 }
 
 impl Cell {
@@ -108,6 +108,8 @@ impl Cell {
 
     pub fn from_local_node(local_node: LocalNode) -> Result<(Vec<EitherCell>, LocalNode), Error> {
         let config = local_node.config();
+
+        // TODO: Should only work if local node has a file system configured
 
         let mut either_cells = Vec::new();
         for node_cell_config in &config.cells {

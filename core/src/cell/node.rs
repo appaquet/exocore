@@ -2,6 +2,7 @@ use std::{
     collections::HashSet,
     fmt::{Debug, Display},
     ops::Deref,
+    path::Path,
     str::FromStr,
     sync::{Arc, RwLock},
 };
@@ -14,10 +15,16 @@ use libp2p::core::{Multiaddr, PeerId};
 use url::Url;
 
 use super::error::Error;
-use crate::sec::{
-    keys::{Keypair, PublicKey},
-    signature::Signature,
+use crate::{
+    cell::LocalNodeConfigExt,
+    dir::DynDirectory,
+    sec::{
+        keys::{Keypair, PublicKey},
+        signature::Signature,
+    },
 };
+
+const CONFIG_FILE_NAME: &str = "node.yaml";
 
 /// Represents a machine / process on which Exocore runs. A node can host
 /// multiple `Cell`.
@@ -173,7 +180,8 @@ impl Display for Node {
 #[derive(Clone)]
 pub struct LocalNode {
     node: Node,
-    identity: Arc<LocalNodeIdentity>,
+    ident: Arc<LocalNodeIdentity>,
+    fs: Option<DynDirectory>,
 }
 
 struct LocalNodeIdentity {
@@ -199,7 +207,7 @@ impl LocalNode {
         Self::new_from_config(config).expect("Couldn't create node config generated config")
     }
 
-    pub fn new_from_config(config: LocalNodeConfig) -> Result<Self, Error> {
+    pub fn new_from_config(config: LocalNodeConfig) -> Result<LocalNode, Error> {
         let keypair = Keypair::decode_base58_string(&config.keypair)
             .map_err(|err| Error::Cell(anyhow!("Couldn't decode local node keypair: {}", err)))?;
 
@@ -212,14 +220,29 @@ impl LocalNode {
                 id: config.id.clone(),
                 addresses: config.addresses.clone(),
             })?,
-            identity: Arc::new(LocalNodeIdentity {
+            ident: Arc::new(LocalNodeIdentity {
                 keypair,
                 config,
                 addresses: listen_addresses,
             }),
+            fs: None,
         };
 
         Ok(local_node)
+    }
+
+    pub fn new_from_directory(fs: impl Into<DynDirectory>) -> Result<LocalNode, Error> {
+        let fs = fs.into();
+
+        let config = {
+            let config_file = fs.open_read(Path::new(CONFIG_FILE_NAME))?;
+            LocalNodeConfig::from_yaml_reader(config_file)?
+        };
+
+        let mut node = LocalNode::new_from_config(config)?;
+        node.fs = Some(fs);
+
+        Ok(node)
     }
 
     pub fn node(&self) -> &Node {
@@ -227,7 +250,7 @@ impl LocalNode {
     }
 
     pub fn keypair(&self) -> &Keypair {
-        &self.identity.keypair
+        &self.ident.keypair
     }
 
     pub fn sign_message(&self, _message: &[u8]) -> Signature {
@@ -237,20 +260,20 @@ impl LocalNode {
     }
 
     pub fn config(&self) -> &LocalNodeConfig {
-        &self.identity.config
+        &self.ident.config
     }
 
     pub fn p2p_listen_addresses(&self) -> Vec<Multiaddr> {
-        if !self.identity.addresses.p2p.is_empty() {
-            self.identity.addresses.p2p.iter().cloned().collect()
+        if !self.ident.addresses.p2p.is_empty() {
+            self.ident.addresses.p2p.iter().cloned().collect()
         } else {
             self.p2p_addresses()
         }
     }
 
     pub fn http_listen_addresses(&self) -> Vec<Url> {
-        if !self.identity.addresses.http.is_empty() {
-            self.identity.addresses.http.iter().cloned().collect()
+        if !self.ident.addresses.http.is_empty() {
+            self.ident.addresses.http.iter().cloned().collect()
         } else {
             self.http_addresses()
         }
@@ -277,8 +300,8 @@ impl Debug for LocalNode {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_struct("LocalNode")
             .field("node", &self.node)
-            .field("p2p_listen_addresses", &self.identity.addresses.p2p)
-            .field("http_listen_addresses", &self.identity.addresses.http)
+            .field("p2p_listen_addresses", &self.ident.addresses.p2p)
+            .field("http_listen_addresses", &self.ident.addresses.http)
             .finish()
     }
 }
@@ -286,7 +309,7 @@ impl Debug for LocalNode {
 impl Display for LocalNode {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.write_str("LocalNode{")?;
-        f.write_str(&self.identity.config.name)?;
+        f.write_str(&self.ident.config.name)?;
         f.write_str("}")
     }
 }
@@ -376,6 +399,8 @@ impl Addresses {
 mod tests {
     #![allow(clippy::eq_op)] // since we test node's equality
 
+    use crate::dir::{ram::RamDirectory, Directory};
+
     use super::*;
 
     #[test]
@@ -417,5 +442,23 @@ mod tests {
 
         assert_eq!(node1.keypair().public(), node2.keypair().public());
         assert_eq!(node1.config(), node2.config());
+    }
+
+    #[test]
+    fn local_node_from_file_system() {
+        let fs = RamDirectory::new();
+
+        let node1 = LocalNode::generate();
+        {
+            // generate config & write to file system
+            let config_file = fs.open_write(Path::new(CONFIG_FILE_NAME)).unwrap();
+            node1.config().to_yaml_writer(config_file).unwrap();
+        }
+
+        {
+            // reload node from file system
+            let node2 = LocalNode::new_from_directory(fs).unwrap();
+            assert_eq!(node1.id(), node2.id());
+        }
     }
 }

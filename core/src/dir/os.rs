@@ -7,11 +7,11 @@ use std::{
 use super::*;
 
 #[derive(Clone)]
-pub struct OsFileSystem {
+pub struct OsDirectory {
     base_path: PathBuf,
 }
 
-impl OsFileSystem {
+impl OsDirectory {
     pub fn new(base_path: PathBuf) -> Self {
         Self { base_path }
     }
@@ -34,7 +34,7 @@ impl OsFileSystem {
     }
 }
 
-impl FileSystem for OsFileSystem {
+impl Directory for OsDirectory {
     fn open_read(&self, path: &Path) -> Result<Box<dyn FileRead>, Error> {
         let path = self.resolve_path(path, true)?;
         create_parent_path(&path)?;
@@ -125,8 +125,8 @@ impl FileSystem for OsFileSystem {
         Ok(())
     }
 
-    fn clone(&self) -> DynFileSystem {
-        OsFileSystem {
+    fn clone(&self) -> DynDirectory {
+        OsDirectory {
             base_path: self.base_path.clone(),
         }
         .into()
@@ -203,34 +203,34 @@ mod tests {
 
     #[test]
     fn test_write_read_file() {
-        let dir = tempdir().unwrap();
-        let fs = OsFileSystem::new(dir.into_path());
-        super::super::tests::test_write_read_file(fs);
+        let tmp = tempdir().unwrap();
+        let dir = OsDirectory::new(tmp.into_path());
+        super::super::tests::test_write_read_file(dir);
     }
 
     #[test]
     fn test_list() {
-        let dir = tempdir().unwrap();
-        let fs = OsFileSystem::new(dir.into_path());
-        super::super::tests::test_list(fs);
+        let tmp = tempdir().unwrap();
+        let dir = OsDirectory::new(tmp.into_path());
+        super::super::tests::test_list(dir);
     }
 
     #[test]
     fn test_delete() {
-        let dir = tempdir().unwrap();
-        let fs = OsFileSystem::new(dir.into_path());
-        super::super::tests::test_delete(fs);
+        let tmp = tempdir().unwrap();
+        let dir = OsDirectory::new(tmp.into_path());
+        super::super::tests::test_delete(dir);
     }
 
     #[test]
     fn test_as_os_path() {
-        let dir = tempdir().unwrap();
-        let fs = OsFileSystem::new(dir.path().to_path_buf());
+        let tmp = tempdir().unwrap();
+        let dir = OsDirectory::new(tmp.path().to_path_buf());
 
-        let os_path = fs.as_os_path(Path::new("")).unwrap();
-        assert_eq!(dir.path(), os_path.as_path());
+        let os_path = dir.as_os_path(Path::new("")).unwrap();
+        assert_eq!(tmp.path(), os_path.as_path());
 
-        let os_path = fs.as_os_path(Path::new("some/file")).unwrap();
-        assert_eq!(dir.path().join("some/file"), os_path.as_path());
+        let os_path = dir.as_os_path(Path::new("some/file")).unwrap();
+        assert_eq!(tmp.path().join("some/file"), os_path.as_path());
     }
 }

@@ -1,16 +1,16 @@
 use std::path::{Path, PathBuf};
 
-use super::{DynFileSystem, Error, FileStat, FileSystem};
+use super::{DynDirectory, Error, FileStat, Directory};
 
-pub struct ScopedFileSystem {
-    inner: DynFileSystem,
+pub struct ScopedDirectory {
+    inner: DynDirectory,
     base_path: PathBuf,
 }
 
-impl ScopedFileSystem {
-    pub fn new(fs: impl Into<DynFileSystem>, base_path: PathBuf) -> Self {
-        ScopedFileSystem {
-            inner: fs.into(),
+impl ScopedDirectory {
+    pub fn new(dir: impl Into<DynDirectory>, base_path: PathBuf) -> Self {
+        ScopedDirectory {
+            inner: dir.into(),
             base_path,
         }
     }
@@ -25,7 +25,7 @@ impl ScopedFileSystem {
     }
 }
 
-impl FileSystem for ScopedFileSystem {
+impl Directory for ScopedDirectory {
     fn open_read(&self, path: &std::path::Path) -> Result<Box<dyn super::FileRead>, super::Error> {
         let path = self.join_path(path, true)?;
         self.inner.open_read(&path)
@@ -72,8 +72,8 @@ impl FileSystem for ScopedFileSystem {
         self.inner.delete(&path)
     }
 
-    fn clone(&self) -> DynFileSystem {
-        ScopedFileSystem {
+    fn clone(&self) -> DynDirectory {
+        ScopedDirectory {
             inner: self.inner.clone(),
             base_path: self.base_path.clone(),
         }
@@ -105,67 +105,67 @@ impl FileStat for ScopedFileStat {
 mod tests {
     use tempfile::tempdir;
 
-    use crate::fs::{os::OsFileSystem, ram::RamFileSystem};
+    use crate::dir::{os::OsDirectory, ram::RamDirectory};
 
     use super::*;
 
     #[test]
     fn test_write_read_file() {
-        let ram = RamFileSystem::new();
-        let fs = ScopedFileSystem::new(ram, PathBuf::from("sub"));
-        super::super::tests::test_write_read_file(fs);
+        let ram = RamDirectory::new();
+        let scoped = ScopedDirectory::new(ram, PathBuf::from("sub"));
+        super::super::tests::test_write_read_file(scoped);
 
-        let ram = RamFileSystem::new();
-        let fs = ScopedFileSystem::new(ram, PathBuf::from("sub/sub"));
-        super::super::tests::test_write_read_file(fs);
+        let ram = RamDirectory::new();
+        let scoped = ScopedDirectory::new(ram, PathBuf::from("sub/sub"));
+        super::super::tests::test_write_read_file(scoped);
 
-        let ram = RamFileSystem::new();
-        let fs = ScopedFileSystem::new(ram, PathBuf::from(""));
-        super::super::tests::test_write_read_file(fs);
+        let ram = RamDirectory::new();
+        let scoped = ScopedDirectory::new(ram, PathBuf::from(""));
+        super::super::tests::test_write_read_file(scoped);
     }
 
     #[test]
     fn test_list() {
-        let ram = RamFileSystem::new();
-        let fs = ScopedFileSystem::new(ram, PathBuf::from("sub"));
-        super::super::tests::test_list(fs);
+        let ram = RamDirectory::new();
+        let scoped = ScopedDirectory::new(ram, PathBuf::from("sub"));
+        super::super::tests::test_list(scoped);
 
-        let ram = RamFileSystem::new();
-        let fs = ScopedFileSystem::new(ram, PathBuf::from("sub/sub"));
-        super::super::tests::test_list(fs);
+        let ram = RamDirectory::new();
+        let scoped = ScopedDirectory::new(ram, PathBuf::from("sub/sub"));
+        super::super::tests::test_list(scoped);
 
-        let ram = RamFileSystem::new();
-        let fs = ScopedFileSystem::new(ram, PathBuf::from(""));
-        super::super::tests::test_list(fs);
+        let ram = RamDirectory::new();
+        let scoped = ScopedDirectory::new(ram, PathBuf::from(""));
+        super::super::tests::test_list(scoped);
     }
 
     #[test]
     fn test_delete() {
-        let ram = RamFileSystem::new();
-        let fs = ScopedFileSystem::new(ram, PathBuf::from("sub"));
-        super::super::tests::test_delete(fs);
+        let ram = RamDirectory::new();
+        let scoped = ScopedDirectory::new(ram, PathBuf::from("sub"));
+        super::super::tests::test_delete(scoped);
 
-        let ram = RamFileSystem::new();
-        let fs = ScopedFileSystem::new(ram, PathBuf::from("sub/sub"));
-        super::super::tests::test_delete(fs);
+        let ram = RamDirectory::new();
+        let scoped = ScopedDirectory::new(ram, PathBuf::from("sub/sub"));
+        super::super::tests::test_delete(scoped);
 
-        let ram = RamFileSystem::new();
-        let fs = ScopedFileSystem::new(ram, PathBuf::from(""));
-        super::super::tests::test_delete(fs);
+        let ram = RamDirectory::new();
+        let scoped = ScopedDirectory::new(ram, PathBuf::from(""));
+        super::super::tests::test_delete(scoped);
     }
 
     #[test]
     fn test_as_os_path() {
         let dir = tempdir().unwrap();
-        let fs = ScopedFileSystem::new(
-            OsFileSystem::new(dir.path().to_path_buf()),
+        let scoped = ScopedDirectory::new(
+            OsDirectory::new(dir.path().to_path_buf()),
             PathBuf::from("sub"),
         );
 
-        let os_path = fs.as_os_path(Path::new("")).unwrap();
+        let os_path = scoped.as_os_path(Path::new("")).unwrap();
         assert_eq!(dir.path().join("sub"), os_path.as_path());
 
-        let os_path = fs.as_os_path(Path::new("dir/file")).unwrap();
+        let os_path = scoped.as_os_path(Path::new("dir/file")).unwrap();
         assert_eq!(dir.path().join("sub/dir/file"), os_path.as_path());
     }
 }

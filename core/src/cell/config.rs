@@ -24,6 +24,7 @@ pub trait LocalNodeConfigExt {
 
     fn from_yaml_reader<R: Read>(reader: R) -> Result<LocalNodeConfig, Error>;
 
+    // TODO: Replace with file system
     fn from_yaml_file<P: AsRef<Path>>(path: P) -> Result<LocalNodeConfig, Error>;
 
     fn from_json_reader<R: Read>(bytes: R) -> Result<LocalNodeConfig, Error>;

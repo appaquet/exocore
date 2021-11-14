@@ -6,25 +6,25 @@ use std::{
 
 use super::*;
 
-pub struct RamFileSystem {
+pub struct RamDirectory {
     files: Arc<RwLock<BTreeMap<PathBuf, RamFileData>>>,
 }
 
-impl RamFileSystem {
+impl RamDirectory {
     pub fn new() -> Self {
-        RamFileSystem {
+        RamDirectory {
             files: Arc::new(RwLock::new(BTreeMap::new())),
         }
     }
 }
 
-impl Default for RamFileSystem {
+impl Default for RamDirectory {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl FileSystem for RamFileSystem {
+impl Directory for RamDirectory {
     fn open_read(&self, path: &Path) -> Result<Box<dyn FileRead>, Error> {
         if path.parent().is_none() {
             return Err(Error::Path(anyhow!("expected a non-root path to a file")));
@@ -100,15 +100,15 @@ impl FileSystem for RamFileSystem {
         Ok(())
     }
 
-    fn clone(&self) -> DynFileSystem {
-        RamFileSystem {
+    fn clone(&self) -> DynDirectory {
+        RamDirectory {
             files: self.files.clone(),
         }
         .into()
     }
 
     fn as_os_path(&self, _path: &Path) -> Result<PathBuf, Error> {
-        Err(Error::NotOsPath)
+        Err(Error::NotOsDirectory)
     }
 }
 
@@ -210,16 +210,16 @@ mod tests {
 
     #[test]
     fn test_write_read_file() {
-        super::super::tests::test_write_read_file(RamFileSystem::new());
+        super::super::tests::test_write_read_file(RamDirectory::new());
     }
 
     #[test]
     fn test_list() {
-        super::super::tests::test_list(RamFileSystem::new());
+        super::super::tests::test_list(RamDirectory::new());
     }
 
     #[test]
     fn test_delete() {
-        super::super::tests::test_delete(RamFileSystem::new());
+        super::super::tests::test_delete(RamDirectory::new());
     }
 }
