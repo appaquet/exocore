@@ -3,11 +3,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use self::scoped::ScopedDirectory;
+
 pub mod os;
 pub mod ram;
 pub mod scoped;
 #[cfg(feature = "web")]
 pub mod web;
+
 pub trait Directory: Send + Sync {
     fn open_read(&self, path: &Path) -> Result<Box<dyn FileRead>, Error>;
     fn open_write(&self, path: &Path) -> Result<Box<dyn FileWrite>, Error>;
@@ -17,6 +20,11 @@ pub trait Directory: Send + Sync {
     fn delete(&self, path: &Path) -> Result<(), Error>;
     fn clone(&self) -> DynDirectory;
     fn as_os_path(&self, path: &Path) -> Result<PathBuf, Error>;
+
+    fn scope(&self, path: PathBuf) -> Result<DynDirectory, Error> {
+        let dir = self.clone();
+        Ok(ScopedDirectory::new(dir, path).into())
+    }
 }
 
 pub struct DynDirectory(pub Box<dyn Directory>);

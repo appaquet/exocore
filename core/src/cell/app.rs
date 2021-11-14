@@ -10,10 +10,15 @@ use exocore_protos::{
 };
 
 use super::{Error, ManifestExt};
-use crate::sec::{
-    hash::{multihash_decode_bs58, multihash_sha3_256_file, MultihashExt},
-    keys::PublicKey,
+use crate::{
+    dir::DynDirectory,
+    sec::{
+        hash::{multihash_decode_bs58, multihash_sha3_256_file, MultihashExt},
+        keys::PublicKey,
+    },
 };
+
+const APP_FILE_NAME: &str = "app.yaml";
 
 /// Application that extends the capability of the cell by providing schemas and
 /// WebAssembly logic.
@@ -21,6 +26,7 @@ use crate::sec::{
 pub struct Application {
     identity: Arc<Identity>,
     schemas: Arc<[FileDescriptorSet]>,
+    dir: Option<DynDirectory>,
 }
 
 struct Identity {
@@ -30,7 +36,7 @@ struct Identity {
 }
 
 impl Application {
-    pub fn new_from_directory<P: AsRef<Path>>(dir: P) -> Result<Application, Error> {
+    pub fn from_directory_old<P: AsRef<Path>>(dir: P) -> Result<Application, Error> {
         let mut manifest_path = dir.as_ref().to_path_buf();
         manifest_path.push("app.yaml");
 
@@ -40,7 +46,18 @@ impl Application {
         Self::build(manifest)
     }
 
-    pub fn new_from_manifest(manifest: Manifest) -> Result<Application, Error> {
+    pub fn from_directory(dir: impl Into<DynDirectory>) -> Result<Application, Error> {
+        let dir = dir.into();
+
+        let manifest = {
+            let manifest_file = dir.open_read(Path::new(APP_FILE_NAME))?;
+            Manifest::from_yaml(manifest_file)?
+        };
+
+        Self::build(manifest)
+    }
+
+    pub fn from_manifest(manifest: Manifest) -> Result<Application, Error> {
         Self::build(manifest)
     }
 
@@ -91,6 +108,7 @@ impl Application {
                 manifest,
             }),
             schemas: schemas.into(),
+            dir: None,
         })
     }
 

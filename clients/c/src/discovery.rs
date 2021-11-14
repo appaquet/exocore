@@ -212,6 +212,7 @@ async fn join_cell(
 
     node_config.add_cell(NodeCellConfig {
         location: Some(node_cell_config::Location::Inline(cell_config)),
+        id: "".into(), // TODO: should only be an id
     });
 
     let local_node = LocalNode::from_config(node_config)

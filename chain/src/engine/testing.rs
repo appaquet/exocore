@@ -107,9 +107,9 @@ impl EngineTestCluster {
                 name: format!("test-node-{}", i),
                 ..LocalNode::generate().config().clone()
             };
-            let local_node = LocalNode::new_from_config(node_config).unwrap();
+            let local_node = LocalNode::from_config(node_config).unwrap();
 
-            let cell = FullCell::generate(local_node.clone());
+            let cell = FullCell::generate_old(local_node.clone());
             cells.push(cell.clone());
 
             nodes_index.insert(local_node.id().clone(), i);

@@ -300,8 +300,8 @@ fn cmd_init(
     init_opts: &InitOptions,
 ) -> anyhow::Result<()> {
     let node_config = ctx.options.read_configuration();
-    let node = LocalNode::new_from_config(node_config.clone())
-        .expect("Couldn't create node from node config");
+    let node =
+        LocalNode::from_config(node_config.clone()).expect("Couldn't create node from node config");
 
     let cell_keypair = Keypair::generate_ed25519();
     let cell_pk_str = cell_keypair.public().encode_base58_string();
@@ -1263,6 +1263,7 @@ fn add_node_config_cell(ctx: &Context, node_config: &LocalNodeConfig, cell_confi
             "cells/{}",
             &cell_config.public_key
         ))),
+        id: "".into(), // TODO: should only be an id
     };
 
     print_action(format!(

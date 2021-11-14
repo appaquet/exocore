@@ -16,6 +16,79 @@ pub struct AuthTokenData {
     #[prost(message, optional, tag = "4")]
     pub expiration_date: ::core::option::Option<::prost_types::Timestamp>,
 }
+// TODO: Config RPC for apps to edit different configs
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ConfigRequest {
+    #[prost(oneof = "config_request::Request", tags = "1, 2, 3")]
+    pub request: ::core::option::Option<config_request::Request>,
+}
+/// Nested message and enum types in `ConfigRequest`.
+pub mod config_request {
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct GenNode {}
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct GetNode {}
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct PutNode {}
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct ListCells {}
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct GetCell {
+        #[prost(enumeration = "get_cell::Format", tag = "1")]
+        pub format: i32,
+    }
+    /// Nested message and enum types in `GetCell`.
+    pub mod get_cell {
+        #[derive(
+            Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration,
+        )]
+        #[repr(i32)]
+        pub enum Format {
+            Proto = 0,
+            Yaml = 1,
+        }
+    }
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct DeleteCell {}
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Request {
+        #[prost(message, tag = "1")]
+        GenNode(GenNode),
+        #[prost(message, tag = "2")]
+        GetNode(GetNode),
+        #[prost(message, tag = "3")]
+        PutNode(PutNode),
+    }
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ConfigResponse {
+    #[prost(oneof = "config_response::Response", tags = "1")]
+    pub response: ::core::option::Option<config_response::Response>,
+}
+/// Nested message and enum types in `ConfigResponse`.
+pub mod config_response {
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct GenNode {
+        #[prost(message, optional, tag = "1")]
+        pub config: ::core::option::Option<super::LocalNodeConfig>,
+    }
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct GetNode {
+        #[prost(message, optional, tag = "1")]
+        pub config: ::core::option::Option<super::LocalNodeConfig>,
+    }
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct PutNode {
+        #[prost(message, optional, tag = "1")]
+        pub config: ::core::option::Option<super::LocalNodeConfig>,
+    }
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Response {
+        #[prost(message, tag = "1")]
+        GetNode(GetNode),
+    }
+}
 #[derive(Serialize, Deserialize, Clone, PartialEq, ::prost::Message)]
 pub struct LocalNodeConfig {
     #[prost(string, tag = "1")]
@@ -28,6 +101,7 @@ pub struct LocalNodeConfig {
     #[prost(string, tag = "4")]
     #[serde(default)]
     pub id: ::prost::alloc::string::String,
+    /// TODO: Should get rid of this
     #[prost(string, tag = "5")]
     #[serde(default)]
     pub path: ::prost::alloc::string::String,
@@ -55,12 +129,17 @@ pub struct NodeAddresses {
 }
 #[derive(Serialize, Deserialize, Clone, PartialEq, ::prost::Message)]
 pub struct NodeCellConfig {
+    /// TODO: Add basic info required to define cell (id, name, etc)
+    #[prost(string, tag = "3")]
+    pub id: ::prost::alloc::string::String,
+    /// TODO: Should get rid of this
     #[prost(oneof = "node_cell_config::Location", tags = "1, 2")]
     #[serde(flatten)]
     pub location: ::core::option::Option<node_cell_config::Location>,
 }
 /// Nested message and enum types in `NodeCellConfig`.
 pub mod node_cell_config {
+    /// TODO: Should get rid of this
     #[derive(Serialize, Deserialize)]
     #[serde(rename_all = "lowercase")]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
@@ -163,6 +242,13 @@ pub struct EntityGarbageCollectorConfig {
     #[serde(default)]
     pub queue_size: ::core::option::Option<u32>,
 }
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SignedCellConfig {
+    #[prost(bytes = "vec", tag = "1")]
+    pub cell: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bytes = "vec", tag = "2")]
+    pub signature: ::prost::alloc::vec::Vec<u8>,
+}
 #[derive(Serialize, Deserialize, Clone, PartialEq, ::prost::Message)]
 pub struct CellConfig {
     #[prost(string, tag = "1")]
@@ -176,6 +262,7 @@ pub struct CellConfig {
     #[prost(string, tag = "4")]
     #[serde(default)]
     pub id: ::prost::alloc::string::String,
+    /// TODO: Should get rid of this
     #[prost(string, tag = "5")]
     #[serde(default)]
     pub path: ::prost::alloc::string::String,
@@ -239,12 +326,14 @@ pub struct CellApplicationConfig {
     pub public_key: ::prost::alloc::string::String,
     #[prost(string, tag = "4")]
     pub package_url: ::prost::alloc::string::String,
+    /// TODO: Should get rid of this
     #[prost(oneof = "cell_application_config::Location", tags = "5, 6")]
     #[serde(flatten)]
     pub location: ::core::option::Option<cell_application_config::Location>,
 }
 /// Nested message and enum types in `CellApplicationConfig`.
 pub mod cell_application_config {
+    /// TODO: Should get rid of this
     #[derive(Serialize, Deserialize)]
     #[serde(rename_all = "lowercase")]
     #[derive(Clone, PartialEq, ::prost::Oneof)]

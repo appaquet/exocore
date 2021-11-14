@@ -78,6 +78,7 @@ impl Discovery {
             let mut local_node_config = local_node.config.clone();
             local_node_config.add_cell(NodeCellConfig {
                 location: Some(node_cell_config::Location::Inline(cell_config)),
+                id: "".into(), // TODO: should only be an id
             });
 
             let local_node = LocalNode::from_config(local_node_config)

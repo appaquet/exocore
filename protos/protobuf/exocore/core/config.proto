@@ -52,8 +52,6 @@ message ConfigResponse {
     }
 }
 
-
-
 message LocalNodeConfig {
     string keypair = 1;
 
@@ -91,6 +89,7 @@ message NodeCellConfig {
        string path = 2;
     }
 
+    string id = 3;
     // TODO: Add basic info required to define cell (id, name, etc)
 }
 
@@ -167,6 +166,12 @@ message EntityGarbageCollectorConfig {
 
     // Size of the queue of entities to be collected.
     google.protobuf.UInt32Value queue_size = 2;
+}
+
+message SignedCellConfig {
+    bytes cell = 1;
+
+    bytes signature = 2;
 }
 
 message CellConfig {

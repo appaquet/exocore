@@ -583,7 +583,7 @@ pub mod tests {
     #[test]
     fn directory_chain_create_and_open() -> anyhow::Result<()> {
         let local_node = LocalNode::generate();
-        let cell = FullCell::generate(local_node);
+        let cell = FullCell::generate_old(local_node);
         let dir = tempfile::tempdir()?;
         let config: DirectoryChainStoreConfig = Default::default();
 
@@ -674,7 +674,7 @@ pub mod tests {
     #[test]
     fn directory_chain_iterator() -> anyhow::Result<()> {
         let local_node = LocalNode::generate();
-        let cell = FullCell::generate(local_node);
+        let cell = FullCell::generate_old(local_node);
         let dir = tempfile::tempdir()?;
         let config = DirectoryChainStoreConfig {
             segment_max_size: 350_000,
@@ -700,7 +700,7 @@ pub mod tests {
     #[test]
     fn directory_chain_write_until_second_segment() -> anyhow::Result<()> {
         let local_node = LocalNode::generate();
-        let cell = FullCell::generate(local_node);
+        let cell = FullCell::generate_old(local_node);
         let dir = tempfile::tempdir()?;
         let config = DirectoryChainStoreConfig {
             segment_max_size: 350_000,
@@ -770,7 +770,7 @@ pub mod tests {
     #[test]
     fn directory_chain_truncate() -> anyhow::Result<()> {
         let local_node = LocalNode::generate();
-        let cell = FullCell::generate(local_node);
+        let cell = FullCell::generate_old(local_node);
         let config = DirectoryChainStoreConfig {
             segment_max_size: 1000,
             segment_over_allocate_size: 1600,
@@ -858,7 +858,7 @@ pub mod tests {
     #[test]
     fn directory_chain_truncate_all() -> anyhow::Result<()> {
         let local_node = LocalNode::generate();
-        let cell = FullCell::generate(local_node);
+        let cell = FullCell::generate_old(local_node);
         let dir = tempfile::tempdir()?;
         let config = DirectoryChainStoreConfig {
             segment_max_size: 3000,

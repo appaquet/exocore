@@ -101,8 +101,8 @@ impl Directory for WebDirectory {
 }
 
 // Represents a file stored in web local storage.
-// On first access, the file is loaded into memory and flushed to the web storage
-// on every flushed write.
+// On first access, the file is loaded into memory and flushed to the web
+// storage on every flushed write.
 pub struct WebFile {
     storage: Arc<Mutex<Storage>>,
     key: String,

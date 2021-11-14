@@ -105,9 +105,8 @@ impl FileStat for ScopedFileStat {
 mod tests {
     use tempfile::tempdir;
 
-    use crate::dir::{os::OsDirectory, ram::RamDirectory};
-
     use super::*;
+    use crate::dir::{os::OsDirectory, ram::RamDirectory};
 
     #[test]
     fn test_write_read_file() {

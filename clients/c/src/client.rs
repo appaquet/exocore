@@ -355,8 +355,8 @@ impl Client {
     unsafe fn new(node: *mut LocalNode) -> Result<Client, ClientStatus> {
         let local_node = node.as_mut().unwrap();
 
-        let (either_cells, local_node) =
-            Cell::from_local_node(local_node.node.clone()).map_err(|err| {
+        let (either_cells, local_node) = Cell::from_local_node_old(local_node.node.clone())
+            .map_err(|err| {
                 error!("Error creating cell: {}", err);
                 ClientStatus::Error
             })?;

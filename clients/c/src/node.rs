@@ -13,7 +13,7 @@ pub struct LocalNode {
 
 impl LocalNode {
     pub(crate) fn from_config(config: LocalNodeConfig) -> Result<LocalNode, ()> {
-        let core_local_node = match CoreLocalNode::new_from_config(config) {
+        let core_local_node = match CoreLocalNode::from_config(config) {
             Ok(node) => node,
             Err(err) => {
                 error!("Couldn't create LocalNode from config: {}", err);

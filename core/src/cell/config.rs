@@ -715,9 +715,11 @@ mod tests {
                             },
                         ],
                     })),
+                    id: "".into(), // TODO: this should be the only field now
                 },
                 NodeCellConfig {
                     location: Some(node_cell_config::Location::Path("some_path".to_string())),
+                    id: "".into(), // TODO: this should be the only field now
                 },
             ],
             addresses: Some(NodeAddresses {
@@ -901,16 +903,19 @@ mod tests {
 
             config.add_cell(NodeCellConfig {
                 location: Some(node_cell_config::Location::Path("some_path".to_string())),
+                id: "".into(), // TODO: this should be the only field now
             });
             assert_eq!(1, config.cells.len());
 
             config.add_cell(NodeCellConfig {
                 location: Some(node_cell_config::Location::Path("some_path".to_string())),
+                id: "".into(), // TODO: this should be the only field now
             });
             assert_eq!(1, config.cells.len());
 
             config.add_cell(NodeCellConfig {
                 location: Some(node_cell_config::Location::Path("other_path".to_string())),
+                id: "".into(), // TODO: this should be the only field now
             });
             assert_eq!(2, config.cells.len());
         }
@@ -924,6 +929,7 @@ mod tests {
                     public_key: "pk1".to_string(),
                     ..Default::default()
                 })),
+                id: "".into(), // TODO: this should be the only field now
             });
             assert_eq!(1, config.cells.len());
 
@@ -932,6 +938,7 @@ mod tests {
                     public_key: "pk1".to_string(),
                     ..Default::default()
                 })),
+                id: "".into(), // TODO: this should be the only field now
             });
             assert_eq!(1, config.cells.len());
 
@@ -940,6 +947,7 @@ mod tests {
                     public_key: "pk2".to_string(),
                     ..Default::default()
                 })),
+                id: "".into(), // TODO: this should be the only field now
             });
             assert_eq!(2, config.cells.len());
         }
@@ -960,7 +968,8 @@ addresses:
     - http://0.0.0.0:8080
 
 cells:
-  - inline:
+  - id: "" # TODO: Fix me
+    inline:
       public_key: pe2AgPyBmJNztntK9n4vhLuEYN8P2kRfFXnaZFsiXqWacQ
       keypair: ""
       name: ""

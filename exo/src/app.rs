@@ -212,7 +212,7 @@ impl AppPackage {
         let manifest = Manifest::from_yaml_file(dir.path().join("app.yaml"))
             .map_err(|err| anyhow!("Couldn't read manifest from package: {}", err))?;
 
-        let app = Application::new_from_manifest(manifest)
+        let app = Application::from_manifest(manifest)
             .map_err(|err| anyhow!("Couldn't create app from manifest: {}", err))?;
 
         Ok(AppPackage {
@@ -228,13 +228,13 @@ impl AppPackage {
         cell_config: &mut CellConfig,
         overwrite: bool,
     ) -> anyhow::Result<()> {
-        let apps_dir = cell.apps_directory().expect("No apps directory");
+        let apps_dir = cell.apps_directory_old().expect("No apps directory");
         std::fs::create_dir_all(apps_dir).expect("Couldn't create app dir");
 
-        let app_dir = cell.app_directory(self.app.manifest()).unwrap();
+        let app_dir = cell.app_directory_old(self.app.manifest()).unwrap();
         let cell_dir = cell.cell_directory().unwrap();
 
-        let application = Application::new_from_directory(self.temp_dir.path())?;
+        let application = Application::from_directory_old(self.temp_dir.path())?;
         application
             .validate()
             .expect("Failed to validate the application");

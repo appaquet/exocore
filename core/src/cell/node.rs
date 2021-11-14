@@ -14,7 +14,7 @@ use exocore_protos::{
 use libp2p::core::{Multiaddr, PeerId};
 use url::Url;
 
-use super::error::Error;
+use super::{error::Error, CellId};
 use crate::{
     cell::LocalNodeConfigExt,
     dir::DynDirectory,
@@ -43,11 +43,11 @@ struct NodeIdentity {
 }
 
 impl Node {
-    pub fn new_from_public_key(public_key: PublicKey) -> Node {
+    pub fn from_public_key(public_key: PublicKey) -> Node {
         Self::build(public_key, None)
     }
 
-    pub fn new_from_config(config: NodeConfig) -> Result<Node, Error> {
+    pub fn from_config(config: NodeConfig) -> Result<Node, Error> {
         let public_key = PublicKey::decode_base58_string(&config.public_key)
             .map_err(|err| Error::Cell(anyhow!("Couldn't decode node public key: {}", err)))?;
 
@@ -121,6 +121,16 @@ impl Node {
         self.identity.consistent_clock_id
     }
 
+    pub fn to_config(&self) -> NodeConfig {
+        let addresses = self.addresses.read().unwrap();
+        NodeConfig {
+            public_key: self.identity.public_key.encode_base58_string(),
+            name: self.identity.name.to_string(),
+            id: self.identity.node_id.to_string(),
+            addresses: Some(addresses.to_config()),
+        }
+    }
+
     pub fn p2p_addresses(&self) -> Vec<Multiaddr> {
         let addresses = self.addresses.read().expect("Couldn't get addresses lock");
         addresses.p2p.iter().cloned().collect()
@@ -181,7 +191,7 @@ impl Display for Node {
 pub struct LocalNode {
     node: Node,
     ident: Arc<LocalNodeIdentity>,
-    fs: Option<DynDirectory>,
+    dir: Option<DynDirectory>,
 }
 
 struct LocalNodeIdentity {
@@ -193,7 +203,7 @@ struct LocalNodeIdentity {
 impl LocalNode {
     pub fn generate() -> LocalNode {
         let keypair = Keypair::generate_ed25519();
-        let node = Node::new_from_public_key(keypair.public());
+        let node = Node::from_public_key(keypair.public());
         let node_name = node.name().to_string();
 
         let config = LocalNodeConfig {
@@ -204,17 +214,31 @@ impl LocalNode {
             ..Default::default()
         };
 
-        Self::new_from_config(config).expect("Couldn't create node config generated config")
+        Self::from_config(config).expect("Couldn't create node config generated config")
     }
 
-    pub fn new_from_config(config: LocalNodeConfig) -> Result<LocalNode, Error> {
+    pub fn generate_in_directory(dir: impl Into<DynDirectory>) -> Result<LocalNode, Error> {
+        let dir = dir.into();
+        let mut node = Self::generate();
+        node.dir = Some(dir.clone());
+
+        {
+            // generate config & write to file system
+            let config_file = dir.open_write(Path::new(CONFIG_FILE_NAME)).unwrap();
+            node.config().to_yaml_writer(config_file).unwrap();
+        }
+
+        Ok(node)
+    }
+
+    pub fn from_config(config: LocalNodeConfig) -> Result<LocalNode, Error> {
         let keypair = Keypair::decode_base58_string(&config.keypair)
             .map_err(|err| Error::Cell(anyhow!("Couldn't decode local node keypair: {}", err)))?;
 
         let listen_addresses =
             Addresses::parse(&config.listen_addresses.clone().unwrap_or_default())?;
         let local_node = LocalNode {
-            node: Node::new_from_config(NodeConfig {
+            node: Node::from_config(NodeConfig {
                 public_key: config.public_key.clone(),
                 name: config.name.clone(),
                 id: config.id.clone(),
@@ -225,24 +249,33 @@ impl LocalNode {
                 config,
                 addresses: listen_addresses,
             }),
-            fs: None,
+            dir: None,
         };
 
         Ok(local_node)
     }
 
-    pub fn new_from_directory(fs: impl Into<DynDirectory>) -> Result<LocalNode, Error> {
-        let fs = fs.into();
+    pub fn from_directory(dir: impl Into<DynDirectory>) -> Result<LocalNode, Error> {
+        let dir = dir.into();
 
         let config = {
-            let config_file = fs.open_read(Path::new(CONFIG_FILE_NAME))?;
+            let config_file = dir.open_read(Path::new(CONFIG_FILE_NAME))?;
             LocalNodeConfig::from_yaml_reader(config_file)?
         };
 
-        let mut node = LocalNode::new_from_config(config)?;
-        node.fs = Some(fs);
+        let mut node = LocalNode::from_config(config)?;
+        node.dir = Some(dir);
 
         Ok(node)
+    }
+
+    pub fn directory(&self) -> Option<&DynDirectory> {
+        self.dir.as_ref()
+    }
+
+    pub fn cell_directory(&self, cell_id: &CellId) -> Result<DynDirectory, Error> {
+        let dir = self.dir.as_ref().ok_or(Error::NoDirectory)?;
+        Ok(dir.scope(Path::new("cells").join(cell_id.to_string()))?)
     }
 
     pub fn node(&self) -> &Node {
@@ -393,18 +426,24 @@ impl Addresses {
 
         Ok(addresses)
     }
+
+    fn to_config(&self) -> NodeAddresses {
+        NodeAddresses {
+            p2p: self.p2p.iter().map(|addr| addr.to_string()).collect(),
+            http: self.http.iter().map(|url| url.to_string()).collect(),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::eq_op)] // since we test node's equality
-
-    use crate::dir::{ram::RamDirectory, Directory};
 
     use super::*;
+    use crate::dir::{ram::RamDirectory, Directory};
 
     #[test]
     fn node_equality() {
+        #![allow(clippy::eq_op)]
         let node1 = LocalNode::generate();
         let node2 = LocalNode::generate();
 
@@ -430,7 +469,7 @@ mod tests {
     fn node_deterministic_random_name() {
         let pk = PublicKey::decode_base58_string("pe2AgPyBmJNztntK9n4vhLuEYN8P2kRfFXnaZFsiXqWacQ")
             .unwrap();
-        let node = Node::new_from_public_key(pk);
+        let node = Node::from_public_key(pk);
         assert_eq!("wholly-proud-gannet", node.identity.name);
         assert_eq!("Node{wholly-proud-gannet}", node.to_string());
     }
@@ -438,27 +477,20 @@ mod tests {
     #[test]
     fn local_node_from_generated_config() {
         let node1 = LocalNode::generate();
-        let node2 = LocalNode::new_from_config(node1.config().clone()).unwrap();
+        let node2 = LocalNode::from_config(node1.config().clone()).unwrap();
 
         assert_eq!(node1.keypair().public(), node2.keypair().public());
         assert_eq!(node1.config(), node2.config());
     }
 
     #[test]
-    fn local_node_from_file_system() {
-        let fs = RamDirectory::new();
+    fn local_node_from_directory() {
+        let dir = RamDirectory::new();
 
-        let node1 = LocalNode::generate();
-        {
-            // generate config & write to file system
-            let config_file = fs.open_write(Path::new(CONFIG_FILE_NAME)).unwrap();
-            node1.config().to_yaml_writer(config_file).unwrap();
-        }
+        let node1 = LocalNode::generate_in_directory(dir.clone()).unwrap();
 
-        {
-            // reload node from file system
-            let node2 = LocalNode::new_from_directory(fs).unwrap();
-            assert_eq!(node1.id(), node2.id());
-        }
+        // reload node from file system
+        let node2 = LocalNode::from_directory(dir).unwrap();
+        assert_eq!(node1.id(), node2.id());
     }
 }

@@ -23,7 +23,8 @@ listen_addresses:
 # Use `exo sec generate-key` to generate cell's keys
 cells:
   # Cell defined inline
-  - inline:
+  - id: "" # TODO: FIX ME
+    inline:
       public_key: pe2AgPyBmJNztntK9n4vhLuEYN8P2kRfFXnaZFsiXqWacQ
       keypair: ae55Nfv11ppyFVxCDaYovcxTcaTDaSzSFjiVoiC3VwGARfEuaqGcgoJUdVpqfwKQVDN4rvGKUvt4yqQc6w7it7PCpG
       name: Optional Cell Name
@@ -57,7 +58,8 @@ cells:
           path: ./app
 
   # Cell defined in a directory
-  - path: ./cell
+  - id: "" # TODO: FIX ME
+    path: ./cell
 
 store:
   index:

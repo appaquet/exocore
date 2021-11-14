@@ -3,7 +3,7 @@ use std::{
     sync::{RwLockReadGuard, RwLockWriteGuard},
 };
 
-use exocore_protos::generated::exocore_core::cell_node_config;
+use exocore_protos::{core::CellNodeConfig, generated::exocore_core::cell_node_config};
 
 use super::{Cell, Error, LocalNode, Node, NodeId};
 
@@ -97,6 +97,19 @@ impl CellNode {
 
     pub fn has_role(&self, role: CellNodeRole) -> bool {
         self.roles.contains(&role)
+    }
+
+    pub fn to_config(&self) -> CellNodeConfig {
+        let mut config = CellNodeConfig {
+            node: Some(self.node.to_config()),
+            roles: vec![],
+        };
+
+        for role in &self.roles {
+            config.roles.push(role.to_config().into());
+        }
+
+        config
     }
 }
 
@@ -250,6 +263,14 @@ impl CellNodeRole {
             }
         }
     }
+
+    pub fn to_config(&self) -> cell_node_config::Role {
+        match self {
+            CellNodeRole::Chain => cell_node_config::Role::ChainRole,
+            CellNodeRole::Store => cell_node_config::Role::StoreRole,
+            CellNodeRole::AppHost => cell_node_config::Role::AppHostRole,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -259,7 +280,7 @@ mod tests {
     #[test]
     fn nodes_add_get() {
         let local_node = LocalNode::generate();
-        let full_cell = FullCell::generate(local_node.clone());
+        let full_cell = FullCell::generate_old(local_node.clone());
 
         {
             let nodes = full_cell.cell().nodes();
@@ -299,7 +320,7 @@ mod tests {
     #[test]
     fn nodes_quorum() {
         let local_node = LocalNode::generate();
-        let full_cell = FullCell::generate(local_node);
+        let full_cell = FullCell::generate_old(local_node);
 
         {
             // 1 node

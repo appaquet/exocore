@@ -26,7 +26,7 @@ impl LocalNode {
     }
 
     pub(crate) fn from_config(config: LocalNodeConfig) -> Result<LocalNode, JsValue> {
-        let node = CoreLocalNode::new_from_config(config.clone())
+        let node = CoreLocalNode::from_config(config.clone())
             .map_err(|err| into_js_error("couldn't create node from config", err))?;
 
         Ok(LocalNode {

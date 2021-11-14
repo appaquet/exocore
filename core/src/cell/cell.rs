@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
+    str::FromStr,
     sync::{Arc, RwLock},
 };
 
@@ -9,13 +10,18 @@ use exocore_protos::{
     generated::exocore_core::{CellConfig, LocalNodeConfig},
     registry::Registry,
 };
-use libp2p::core::PeerId;
+use libp2p::PeerId;
 
 use super::{
-    config::CellConfigExt, CellApplications, CellNode, CellNodeRole, CellNodes, CellNodesRead,
-    CellNodesWrite, Error, LocalNode, Node, NodeId,
+    cell_apps::cell_app_directory, config::CellConfigExt, CellApplications, CellNode, CellNodeRole,
+    CellNodes, CellNodesRead, CellNodesWrite, Error, LocalNode, Node, NodeId,
 };
-use crate::sec::keys::{Keypair, PublicKey};
+use crate::{
+    dir::DynDirectory,
+    sec::keys::{Keypair, PublicKey},
+};
+
+const CELL_CONFIG_FILE: &str = "cell.yaml";
 
 /// A Cell represents a private enclosure in which the data and applications of
 /// a user are hosted. A Cell resides on multiple nodes.
@@ -25,6 +31,7 @@ pub struct Cell {
     nodes: Arc<RwLock<HashMap<NodeId, CellNode>>>,
     apps: CellApplications,
     schemas: Arc<Registry>,
+    dir: Option<DynDirectory>,
 }
 
 struct Identity {
@@ -71,7 +78,7 @@ impl Cell {
             // load nodes from config
             let mut nodes = either_cell.nodes_mut();
             for node_config in &config.nodes {
-                let node = Node::new_from_config(node_config.node.clone().ok_or_else(|| {
+                let node = Node::from_config(node_config.node.clone().ok_or_else(|| {
                     Error::Config(anyhow!("Cell node config node is not defined"))
                 })?)?;
 
@@ -88,28 +95,32 @@ impl Cell {
         {
             // load apps from config
             let cell = either_cell.cell();
-            cell.apps.load_from_cell_apps_conf(config.apps.iter())?;
+            let apps_directory = cell.apps_directory().ok();
+            cell.apps
+                .load_from_cell_apps_conf(apps_directory, config.apps.iter())?;
         }
 
         Ok(either_cell)
     }
 
-    pub fn from_directory<P: AsRef<Path>>(
-        directory: P,
+    pub fn from_directory(
+        dir: impl Into<DynDirectory>,
         local_node: LocalNode,
     ) -> Result<EitherCell, Error> {
-        let mut config_path = directory.as_ref().to_path_buf();
-        config_path.push("cell.yaml");
+        let dir = dir.into();
 
-        let cell_config = CellConfig::from_yaml_file(config_path)?;
+        let cell_config = {
+            let config_file = dir.open_read(Path::new(CELL_CONFIG_FILE))?;
+            CellConfig::from_yaml(config_file)?
+        };
 
         Self::from_config(cell_config, local_node)
     }
 
-    pub fn from_local_node(local_node: LocalNode) -> Result<(Vec<EitherCell>, LocalNode), Error> {
+    pub fn from_local_node_old(
+        local_node: LocalNode,
+    ) -> Result<(Vec<EitherCell>, LocalNode), Error> {
         let config = local_node.config();
-
-        // TODO: Should only work if local node has a file system configured
 
         let mut either_cells = Vec::new();
         for node_cell_config in &config.cells {
@@ -121,11 +132,28 @@ impl Cell {
         Ok((either_cells, local_node))
     }
 
+    pub fn from_local_node(local_node: LocalNode) -> Result<(Vec<EitherCell>, LocalNode), Error> {
+        let config = local_node.config();
+
+        let mut either_cells = Vec::new();
+        for node_cell_config in &config.cells {
+            let cell_id = CellId::from_str(&node_cell_config.id).map_err(|_err| {
+                Error::Cell(anyhow!("couldn't parse cell id '{}'", node_cell_config.id))
+            })?;
+
+            let cell_dir = local_node.cell_directory(&cell_id)?;
+            let either_cell = Cell::from_directory(cell_dir, local_node.clone())?;
+            either_cells.push(either_cell);
+        }
+
+        Ok((either_cells, local_node))
+    }
+
     pub fn from_local_node_config(
         config: LocalNodeConfig,
     ) -> Result<(Vec<EitherCell>, LocalNode), Error> {
-        let local_node = LocalNode::new_from_config(config)?;
-        Self::from_local_node(local_node)
+        let local_node = LocalNode::from_config(config)?;
+        Self::from_local_node_old(local_node)
     }
 
     fn build(
@@ -144,6 +172,8 @@ impl Cell {
 
         let schemas = Arc::new(Registry::new_with_exocore_types());
 
+        let dir = local_node.cell_directory(&cell_id).ok();
+
         Cell {
             identity: Arc::new(Identity {
                 public_key,
@@ -155,6 +185,7 @@ impl Cell {
             apps: CellApplications::new(schemas.clone()),
             nodes: Arc::new(RwLock::new(nodes_map)),
             schemas,
+            dir,
         }
     }
 
@@ -207,7 +238,12 @@ impl Cell {
         &self.apps
     }
 
+    pub fn directory(&self) -> Option<&DynDirectory> {
+        self.dir.as_ref()
+    }
+
     pub fn cell_directory(&self) -> Option<&Path> {
+        // TODO: Remove
         self.identity.path.as_deref()
     }
 
@@ -227,7 +263,8 @@ impl Cell {
         })
     }
 
-    pub fn apps_directory(&self) -> Option<PathBuf> {
+    // TOOD: Remove me
+    pub fn apps_directory_old(&self) -> Option<PathBuf> {
         self.cell_directory().map(|dir| {
             let mut dir = dir.to_owned();
             dir.push("apps");
@@ -235,12 +272,24 @@ impl Cell {
         })
     }
 
-    pub fn app_directory(&self, app_manifest: &Manifest) -> Option<PathBuf> {
-        let app_dir = self.apps_directory()?;
+    pub fn apps_directory(&self) -> Result<DynDirectory, Error> {
+        let dir = self.directory().ok_or(Error::NoDirectory)?;
+        let apps_dir = dir.scope(Path::new("apps").to_path_buf())?;
+        Ok(apps_dir)
+    }
+
+    // TODO: Remove me
+    pub fn app_directory_old(&self, app_manifest: &Manifest) -> Option<PathBuf> {
+        let app_dir = self.apps_directory_old()?;
         Some(app_dir.join(format!(
             "{}_{}",
             app_manifest.public_key, app_manifest.version
         )))
+    }
+
+    pub fn app_directory(&self, app_manifest: &Manifest) -> Result<DynDirectory, Error> {
+        let apps_dir = self.apps_directory()?;
+        cell_app_directory(&apps_dir, &app_manifest.public_key, &app_manifest.version)
     }
 
     pub fn temp_directory(&self) -> Option<PathBuf> {
@@ -315,9 +364,18 @@ impl FullCell {
         Self::build(keypair, local_node, None, None)
     }
 
-    pub fn generate(local_node: LocalNode) -> FullCell {
+    pub fn generate_old(local_node: LocalNode) -> FullCell {
         let cell_keypair = Keypair::generate_ed25519();
         Self::build(cell_keypair, local_node, None, None)
+    }
+
+    pub fn generate(local_node: LocalNode) -> Result<FullCell, Error> {
+        let cell_keypair = Keypair::generate_ed25519();
+
+        let full_cell = Self::build(cell_keypair, local_node, None, None);
+        full_cell.save_config()?;
+
+        Ok(full_cell)
     }
 
     fn build(
@@ -338,6 +396,36 @@ impl FullCell {
 
     pub fn cell(&self) -> &Cell {
         &self.cell
+    }
+
+    pub fn generate_config(&self, full: bool) -> CellConfig {
+        let mut cell_config = CellConfig {
+            public_key: self.cell.public_key().encode_base58_string(),
+            id: self.cell.id().to_string(),
+            name: self.cell.name().to_string(),
+            ..Default::default()
+        };
+
+        if full {
+            cell_config.keypair = self.keypair.encode_base58_string();
+        }
+
+        {
+            let nodes = self.cell.nodes();
+            for node in nodes.iter().all() {
+                cell_config.nodes.push(node.to_config());
+            }
+        }
+
+        cell_config
+    }
+
+    pub fn save_config(&self) -> Result<(), Error> {
+        let dir = self.cell.dir.as_ref().ok_or(Error::NoDirectory)?;
+        let file = dir.open_write(Path::new(CELL_CONFIG_FILE))?;
+        let config = self.generate_config(true);
+        config.to_yaml_writer(file)?;
+        Ok(())
     }
 
     #[cfg(any(test, feature = "tests-utils"))]
@@ -397,5 +485,23 @@ impl EitherCell {
             EitherCell::Cell(cell) => cell.as_ref().clone(),
             _ => panic!("Tried to unwrap EitherCell into Cell, but wasn't"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dir::{ram::RamDirectory, Directory};
+
+    #[test]
+    fn test_save_load_directory() {
+        let dir = RamDirectory::new();
+        let node = LocalNode::generate_in_directory(dir.clone()).unwrap();
+
+        let cell1 = FullCell::generate(node.clone()).unwrap();
+        let cell_dir = cell1.cell().directory().unwrap().clone();
+
+        let cell2 = Cell::from_directory(cell_dir, node).unwrap();
+        assert_eq!(cell1.cell().id(), cell2.cell().id());
     }
 }
