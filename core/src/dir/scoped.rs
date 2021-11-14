@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use super::{DynDirectory, Error, FileStat, Directory};
+use super::{Directory, DynDirectory, Error, FileStat};
 
 pub struct ScopedDirectory {
     inner: DynDirectory,
