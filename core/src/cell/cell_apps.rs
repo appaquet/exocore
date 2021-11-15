@@ -5,10 +5,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use exocore_protos::{
-    generated::exocore_core::{cell_application_config, CellApplicationConfig},
-    registry::Registry,
-};
+use exocore_protos::{generated::exocore_core::CellApplicationConfig, registry::Registry};
 
 use crate::dir::DynDirectory;
 
@@ -32,42 +29,16 @@ impl CellApplications {
     // TODO: Should be DynDirectory direct, not option
     pub(crate) fn load_from_cell_apps_conf<'c, I>(
         &self,
-        apps_directory: Option<DynDirectory>,
+        apps_dir: DynDirectory,
         iter: I,
     ) -> Result<(), Error>
     where
         I: Iterator<Item = &'c CellApplicationConfig> + 'c,
     {
         for cell_app in iter {
-            if let Some(apps_dir) = &apps_directory {
-                let app_dir =
-                    cell_app_directory(apps_dir, &cell_app.public_key, &cell_app.version)?;
-                let app = Application::from_directory(app_dir)?;
-                self.add_application(app)?;
-                continue;
-            }
-
-            // TODO: Remove the code bellow when everything is migrated
-            let app_location = if let Some(loc) = &cell_app.location {
-                loc
-            } else {
-                warn!(
-                    "Cannot load application {} (version {}). No location configured.",
-                    cell_app.name, cell_app.version
-                );
-                continue;
-            };
-
-            match app_location {
-                cell_application_config::Location::Inline(manifest) => {
-                    let application = Application::from_manifest(manifest.clone())?;
-                    self.add_application(application)?;
-                }
-                cell_application_config::Location::Path(dir) => {
-                    let application = Application::from_directory_old(&dir)?;
-                    self.add_application(application)?;
-                }
-            }
+            let app_dir = cell_app_directory(&apps_dir, &cell_app.public_key, &cell_app.version)?;
+            let app = Application::from_directory(app_dir)?;
+            self.add_application(app)?;
         }
 
         Ok(())

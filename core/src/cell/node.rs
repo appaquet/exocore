@@ -201,6 +201,30 @@ struct LocalNodeIdentity {
 }
 
 impl LocalNode {
+    pub fn from_config(config: LocalNodeConfig) -> Result<LocalNode, Error> {
+        let keypair = Keypair::decode_base58_string(&config.keypair)
+            .map_err(|err| Error::Cell(anyhow!("Couldn't decode local node keypair: {}", err)))?;
+
+        let listen_addresses =
+            Addresses::parse(&config.listen_addresses.clone().unwrap_or_default())?;
+        let local_node = LocalNode {
+            node: Node::from_config(NodeConfig {
+                public_key: config.public_key.clone(),
+                name: config.name.clone(),
+                id: config.id.clone(),
+                addresses: config.addresses.clone(),
+            })?,
+            ident: Arc::new(LocalNodeIdentity {
+                keypair,
+                config,
+                addresses: listen_addresses,
+            }),
+            dir: None,
+        };
+
+        Ok(local_node)
+    }
+
     pub fn generate() -> LocalNode {
         let keypair = Keypair::generate_ed25519();
         let node = Node::from_public_key(keypair.public());
@@ -229,30 +253,6 @@ impl LocalNode {
         }
 
         Ok(node)
-    }
-
-    pub fn from_config(config: LocalNodeConfig) -> Result<LocalNode, Error> {
-        let keypair = Keypair::decode_base58_string(&config.keypair)
-            .map_err(|err| Error::Cell(anyhow!("Couldn't decode local node keypair: {}", err)))?;
-
-        let listen_addresses =
-            Addresses::parse(&config.listen_addresses.clone().unwrap_or_default())?;
-        let local_node = LocalNode {
-            node: Node::from_config(NodeConfig {
-                public_key: config.public_key.clone(),
-                name: config.name.clone(),
-                id: config.id.clone(),
-                addresses: config.addresses.clone(),
-            })?,
-            ident: Arc::new(LocalNodeIdentity {
-                keypair,
-                config,
-                addresses: listen_addresses,
-            }),
-            dir: None,
-        };
-
-        Ok(local_node)
     }
 
     pub fn from_directory(dir: impl Into<DynDirectory>) -> Result<LocalNode, Error> {

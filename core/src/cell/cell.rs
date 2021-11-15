@@ -39,7 +39,6 @@ struct Identity {
     cell_id: CellId,
     local_node: LocalNode,
     name: String,
-    path: Option<PathBuf>, // TODO: Should be a directory
 }
 
 impl Cell {
@@ -50,13 +49,7 @@ impl Cell {
 
             let name = Some(config.name.clone()).filter(String::is_empty);
 
-            let path = if !config.path.is_empty() {
-                Some(PathBuf::from(config.path.clone()))
-            } else {
-                None
-            };
-
-            let full_cell = FullCell::build(keypair, local_node, name, path);
+            let full_cell = FullCell::build(keypair, local_node, name);
             EitherCell::Full(Box::new(full_cell))
         } else {
             let public_key = PublicKey::decode_base58_string(&config.public_key)
@@ -64,13 +57,7 @@ impl Cell {
 
             let name = Some(config.name.clone()).filter(String::is_empty);
 
-            let path = if !config.path.is_empty() {
-                Some(PathBuf::from(config.path.clone()))
-            } else {
-                None
-            };
-
-            let cell = Cell::build(public_key, local_node, name, path);
+            let cell = Cell::build(public_key, local_node, name);
             EitherCell::Cell(Box::new(cell))
         };
 
@@ -95,9 +82,10 @@ impl Cell {
         {
             // load apps from config
             let cell = either_cell.cell();
-            let apps_directory = cell.apps_directory().ok();
-            cell.apps
-                .load_from_cell_apps_conf(apps_directory, config.apps.iter())?;
+            if let Ok(apps_dir) = cell.apps_directory() {
+                cell.apps
+                    .load_from_cell_apps_conf(apps_dir, config.apps.iter())?;
+            }
         }
 
         Ok(either_cell)
@@ -149,6 +137,7 @@ impl Cell {
         Ok((either_cells, local_node))
     }
 
+    // TODO: Remove
     pub fn from_local_node_config(
         config: LocalNodeConfig,
     ) -> Result<(Vec<EitherCell>, LocalNode), Error> {
@@ -156,12 +145,14 @@ impl Cell {
         Self::from_local_node_old(local_node)
     }
 
-    fn build(
-        public_key: PublicKey,
-        local_node: LocalNode,
-        name: Option<String>,
-        path: Option<PathBuf>,
-    ) -> Cell {
+    pub fn from_local_node_directory(
+        dir: impl Into<DynDirectory>,
+    ) -> Result<(Vec<EitherCell>, LocalNode), Error> {
+        let local_node = LocalNode::from_directory(dir.into())?;
+        Self::from_local_node(local_node)
+    }
+
+    fn build(public_key: PublicKey, local_node: LocalNode, name: Option<String>) -> Cell {
         let cell_id = CellId::from_public_key(&public_key);
 
         let mut nodes_map = HashMap::new();
@@ -180,7 +171,6 @@ impl Cell {
                 cell_id,
                 local_node,
                 name,
-                path,
             }),
             apps: CellApplications::new(schemas.clone()),
             nodes: Arc::new(RwLock::new(nodes_map)),
@@ -242,22 +232,23 @@ impl Cell {
         self.dir.as_ref()
     }
 
-    pub fn cell_directory(&self) -> Option<&Path> {
-        // TODO: Remove
-        self.identity.path.as_deref()
+    pub fn cell_directory(&self) -> Option<PathBuf> {
+        let dir = self.directory()?;
+        let path = dir
+            .as_os_path(Path::new(""))
+            .expect("couldn't get os path for cell");
+        Some(path)
     }
 
     pub fn chain_directory(&self) -> Option<PathBuf> {
-        self.cell_directory().map(|dir| {
-            let mut dir = dir.to_owned();
+        self.cell_directory().map(|mut dir| {
             dir.push("chain");
             dir
         })
     }
 
     pub fn store_directory(&self) -> Option<PathBuf> {
-        self.cell_directory().map(|dir| {
-            let mut dir = dir.to_owned();
+        self.cell_directory().map(|mut dir| {
             dir.push("store");
             dir
         })
@@ -265,8 +256,7 @@ impl Cell {
 
     // TOOD: Remove me
     pub fn apps_directory_old(&self) -> Option<PathBuf> {
-        self.cell_directory().map(|dir| {
-            let mut dir = dir.to_owned();
+        self.cell_directory().map(|mut dir| {
             dir.push("apps");
             dir
         })
@@ -361,31 +351,26 @@ pub struct FullCell {
 
 impl FullCell {
     pub fn from_keypair(keypair: Keypair, local_node: LocalNode) -> FullCell {
-        Self::build(keypair, local_node, None, None)
+        Self::build(keypair, local_node, None)
     }
 
     pub fn generate_old(local_node: LocalNode) -> FullCell {
         let cell_keypair = Keypair::generate_ed25519();
-        Self::build(cell_keypair, local_node, None, None)
+        Self::build(cell_keypair, local_node, None)
     }
 
     pub fn generate(local_node: LocalNode) -> Result<FullCell, Error> {
         let cell_keypair = Keypair::generate_ed25519();
 
-        let full_cell = Self::build(cell_keypair, local_node, None, None);
+        let full_cell = Self::build(cell_keypair, local_node, None);
         full_cell.save_config()?;
 
         Ok(full_cell)
     }
 
-    fn build(
-        keypair: Keypair,
-        local_node: LocalNode,
-        name: Option<String>,
-        path: Option<PathBuf>,
-    ) -> FullCell {
+    fn build(keypair: Keypair, local_node: LocalNode, name: Option<String>) -> FullCell {
         FullCell {
-            cell: Cell::build(keypair.public(), local_node, name, path),
+            cell: Cell::build(keypair.public(), local_node, name),
             keypair,
         }
     }
@@ -431,16 +416,6 @@ impl FullCell {
     #[cfg(any(test, feature = "tests-utils"))]
     pub fn with_local_node(self, local_node: LocalNode) -> FullCell {
         FullCell::from_keypair(self.keypair, local_node)
-    }
-
-    #[cfg(any(test, feature = "tests-utils"))]
-    pub fn with_path(self, path: PathBuf) -> FullCell {
-        Self::build(
-            self.keypair,
-            self.cell.local_node().clone(),
-            None,
-            Some(path),
-        )
     }
 }
 

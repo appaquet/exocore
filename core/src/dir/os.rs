@@ -30,6 +30,8 @@ impl OsDirectory {
             )));
         }
 
+        println!("resolved to {:?}", joined);
+
         Ok(joined)
     }
 }

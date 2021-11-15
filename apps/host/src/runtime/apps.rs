@@ -1,4 +1,8 @@
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 
 use anyhow::anyhow;
 use exocore_core::{
@@ -52,13 +56,16 @@ impl<S: Store> Applications<S> {
             let cell_app = app.application();
 
             let app_manifest = cell_app.manifest();
-            if app_manifest.module.is_none() {
+            let module = if let Some(module) = &app_manifest.module {
+                module
+            } else {
                 continue;
             };
 
-            let module_path = cell_app
-                .module_path()
-                .ok_or_else(|| anyhow!("Couldn't find module path"))?;
+            let app_dir = app.directory();
+            let module_path = app_dir
+                .as_os_path(Path::new(&module.file))
+                .map_err(|err| anyhow!("module file is not accessible via os fs: {}", err))?;
 
             let app = Application {
                 cell: cell.clone(),

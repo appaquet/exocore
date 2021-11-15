@@ -17,7 +17,10 @@ extern crate anyhow;
 use std::{path::PathBuf, str::FromStr};
 
 use clap::Parser;
-use exocore_core::cell::LocalNodeConfigExt;
+use exocore_core::{
+    cell::LocalNodeConfigExt,
+    dir::{os::OsDirectory, DynDirectory},
+};
 use exocore_protos::core::LocalNodeConfig;
 use log::LevelFilter;
 use term::*;
@@ -56,6 +59,10 @@ impl Options {
 
     pub fn dir_path(&self) -> PathBuf {
         self.dir.clone()
+    }
+
+    pub fn node_directory(&self) -> DynDirectory {
+        OsDirectory::new(self.dir_path()).into()
     }
 
     pub fn conf_path(&self) -> PathBuf {
@@ -148,9 +155,7 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    if let Err(err) = result {
-        println!("Error: {}", err);
-    }
+    result.unwrap();
 
     Ok(())
 }

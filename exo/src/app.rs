@@ -6,6 +6,7 @@ use std::{
 
 use exocore_core::{
     cell::{Application, Cell, CellApplicationConfigExt, CellConfigExt, ManifestExt},
+    dir::os::OsDirectory,
     sec::{
         hash::{multihash_sha3_256_file, MultihashExt},
         keys::Keypair,
@@ -209,10 +210,8 @@ impl AppPackage {
             .extract(dir.path())
             .map_err(|err| anyhow!("Couldn't extract package: {}", err))?;
 
-        let manifest = Manifest::from_yaml_file(dir.path().join("app.yaml"))
-            .map_err(|err| anyhow!("Couldn't read manifest from package: {}", err))?;
-
-        let app = Application::from_manifest(manifest)
+        let app_dir = OsDirectory::new(dir.path().to_path_buf());
+        let app = Application::from_directory(app_dir)
             .map_err(|err| anyhow!("Couldn't create app from manifest: {}", err))?;
 
         Ok(AppPackage {

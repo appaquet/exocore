@@ -6,6 +6,7 @@ use std::{
 
 use exocore_core::{
     cell::{CellNode, CellNodeRole, FullCell, LocalNode},
+    dir::os::OsDirectory,
     futures::spawn_future,
     tests_utils::expect_result_eventually,
     time::Clock,
@@ -64,9 +65,10 @@ impl TestChainCluster {
         let mut events_received = Vec::new();
 
         for node_idx in 0..count {
-            let local_node = LocalNode::generate();
-            let cell = FullCell::generate_old(local_node.clone())
-                .with_path(tempdir.path().join(format!("{}", node_idx)));
+            let node_path = tempdir.path().join(format!("{}", node_idx)).to_path_buf();
+            let node_dir = OsDirectory::new(node_path);
+            let local_node = LocalNode::generate_in_directory(node_dir)?;
+            let cell = FullCell::generate(local_node.clone())?;
             nodes.push(local_node);
             cells.push(cell);
 

@@ -1,8 +1,4 @@
-use std::{
-    fs::File,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{path::Path, sync::Arc};
 
 use exocore_protos::{
     generated::exocore_apps::{manifest_schema::Source, Manifest},
@@ -11,9 +7,9 @@ use exocore_protos::{
 
 use super::{Error, ManifestExt};
 use crate::{
-    dir::DynDirectory,
+    dir::{os::OsDirectory, DynDirectory},
     sec::{
-        hash::{multihash_decode_bs58, multihash_sha3_256_file, MultihashExt},
+        hash::{multihash_decode_bs58, multihash_sha3_256, MultihashExt},
         keys::PublicKey,
     },
 };
@@ -37,13 +33,8 @@ struct Identity {
 
 impl Application {
     pub fn from_directory_old<P: AsRef<Path>>(dir: P) -> Result<Application, Error> {
-        let mut manifest_path = dir.as_ref().to_path_buf();
-        manifest_path.push("app.yaml");
-
-        let mut manifest = Manifest::from_yaml_file(manifest_path)?;
-        manifest.path = dir.as_ref().to_string_lossy().to_string();
-
-        Self::build(manifest)
+        let dir = OsDirectory::new(dir.as_ref().to_path_buf());
+        Self::from_directory(dir)
     }
 
     pub fn from_directory(dir: impl Into<DynDirectory>) -> Result<Application, Error> {
@@ -54,14 +45,17 @@ impl Application {
             Manifest::from_yaml(manifest_file)?
         };
 
-        Self::build(manifest)
+        let mut app = Self::from_manifest(dir.clone(), manifest)?;
+        app.dir = Some(dir);
+
+        Ok(app)
     }
 
-    pub fn from_manifest(manifest: Manifest) -> Result<Application, Error> {
-        Self::build(manifest)
-    }
-
-    fn build(manifest: Manifest) -> Result<Application, Error> {
+    pub fn from_manifest(
+        dir: impl Into<DynDirectory>,
+        manifest: Manifest,
+    ) -> Result<Application, Error> {
+        let dir = dir.into();
         let public_key = PublicKey::decode_base58_string(&manifest.public_key).map_err(|err| {
             Error::Application(
                 manifest.name.clone(),
@@ -75,7 +69,8 @@ impl Application {
         for app_schema in &manifest.schemas {
             match &app_schema.source {
                 Some(Source::File(schema_path)) => {
-                    let fd_set = read_file_descriptor_set_file(&manifest.name, schema_path)?;
+                    let schema_file = dir.open_read(Path::new(schema_path))?;
+                    let fd_set = read_file_descriptor_set(&manifest.name, schema_file)?;
                     schemas.push(fd_set);
                 }
                 Some(Source::Bytes(bytes)) => {
@@ -136,26 +131,19 @@ impl Application {
         self.schemas.as_ref()
     }
 
-    pub fn module_path(&self) -> Option<PathBuf> {
-        let module = self.manifest().module.as_ref()?;
-
-        let app_path = PathBuf::from(&self.manifest().path);
-        Some(app_path.join(&module.file))
+    pub fn directory(&self) -> &DynDirectory {
+        self.dir.as_ref().expect("expected application directory")
     }
 
     pub fn validate(&self) -> Result<(), Error> {
         // validate module
         if let Some(module) = &self.manifest().module {
-            let module_path = self.module_path().unwrap();
+            let module_file = self.directory().open_read(Path::new(&module.file))?;
 
-            let module_multihash = multihash_sha3_256_file(&module_path).map_err(|err| {
+            let module_multihash = multihash_sha3_256(module_file).map_err(|err| {
                 Error::Application(
                     self.name().to_string(),
-                    anyhow!(
-                        "Couldn't multihash module file at {:?}: {}",
-                        module_path,
-                        err
-                    ),
+                    anyhow!("Couldn't multihash module file at: {}", err),
                 )
             })?;
 
@@ -226,21 +214,11 @@ impl std::str::FromStr for ApplicationId {
     }
 }
 
-fn read_file_descriptor_set_file<P: AsRef<Path>>(
+fn read_file_descriptor_set(
     app_name: &str,
-    path: P,
+    mut content: impl std::io::Read,
 ) -> Result<FileDescriptorSet, Error> {
-    let mut file = File::open(path).map_err(|err| {
-        Error::Application(
-            app_name.to_string(),
-            anyhow!(
-                "Couldn't open application file descriptor set file: {}",
-                err
-            ),
-        )
-    })?;
-
-    let fd_set = FileDescriptorSet::parse_from_reader(&mut file).map_err(|err| {
+    let fd_set = FileDescriptorSet::parse_from_reader(&mut content).map_err(|err| {
         Error::Application(
             app_name.to_string(),
             anyhow!(

@@ -49,9 +49,9 @@ impl<D: Directory + 'static> From<D> for DynDirectory {
     }
 }
 
-pub trait FileRead: std::io::Read + std::io::Seek {}
+pub trait FileRead: std::io::Read + std::io::Seek + Send {}
 
-pub trait FileWrite: std::io::Write + std::io::Read + std::io::Seek {}
+pub trait FileWrite: std::io::Write + std::io::Read + std::io::Seek + Send {}
 
 pub trait FileStat {
     fn path(&self) -> &Path;
