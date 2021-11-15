@@ -299,9 +299,10 @@ fn cmd_init(
     _cell_opts: &CellOptions,
     init_opts: &InitOptions,
 ) -> anyhow::Result<()> {
-    let node_config = ctx.options.read_configuration();
+    let node_dir = ctx.options.node_directory();
     let node =
-        LocalNode::from_config(node_config.clone()).expect("Couldn't create node from node config");
+        LocalNode::from_directory(node_dir.clone()).expect("Couldn't create node from node config");
+    let node_config = node.config();
 
     let cell_keypair = Keypair::generate_ed25519();
     let cell_pk_str = cell_keypair.public().encode_base58_string();
@@ -367,13 +368,12 @@ fn cmd_init(
         cell_config
     };
 
-    add_node_config_cell(ctx, &node_config, &cell_config);
+    add_node_config_cell(ctx, node_config, &cell_config);
 
     if !init_opts.no_genesis {
         // Create genesis block
-        let node_config = ctx.options.read_configuration();
         let (either_cells, _local_node) =
-            Cell::from_local_node_config(node_config).expect("Couldn't create cell from config");
+            Cell::from_local_node_directory(node_dir).expect("Couldn't create cell from config");
 
         let cell = extract_cell_by_pk(either_cells, &cell_config.public_key)
             .expect("Couldn't find just created cell in config");
@@ -685,9 +685,9 @@ fn cmd_print(ctx: &Context, cell_opts: &CellOptions, print_opts: &PrintOptions) 
 }
 
 fn cmd_list(ctx: &Context, _cell_opts: &CellOptions) {
-    let config = ctx.options.read_configuration();
+    let node_dir = ctx.options.node_directory();
     let (either_cells, _local_node) =
-        Cell::from_local_node_config(config).expect("Couldn't create cell from config");
+        Cell::from_local_node_directory(node_dir).expect("Couldn't create cell from config");
 
     print_spacer();
     let mut rows = Vec::new();
@@ -1158,10 +1158,10 @@ async fn unpack_cell_apps(
     }
 }
 
-fn get_cell(ctx: &Context, cell_opts: &CellOptions) -> (LocalNodeConfig, EitherCell) {
-    let config = ctx.options.read_configuration();
-    let (either_cells, _local_node) =
-        Cell::from_local_node_config(config.clone()).expect("Couldn't create cell from config");
+fn get_cell(ctx: &Context, cell_opts: &CellOptions) -> (LocalNode, EitherCell) {
+    let dir = ctx.options.node_directory();
+    let (either_cells, local_node) =
+        Cell::from_local_node_directory(dir).expect("Couldn't create cell from config");
 
     let cell = if let Some(pk) = &cell_opts.public_key {
         extract_cell_by_pk(either_cells, pk.as_str())
@@ -1183,7 +1183,7 @@ fn get_cell(ctx: &Context, cell_opts: &CellOptions) -> (LocalNodeConfig, EitherC
         style_value(cell.cell().public_key().encode_base58_string())
     ));
 
-    (config, cell)
+    (local_node, cell)
 }
 
 fn extract_cell_by_pk(either_cells: Vec<EitherCell>, key: &str) -> Option<EitherCell> {
@@ -1263,7 +1263,7 @@ fn add_node_config_cell(ctx: &Context, node_config: &LocalNodeConfig, cell_confi
             "cells/{}",
             &cell_config.public_key
         ))),
-        id: "".into(), // TODO: should only be an id
+        id: cell_config.id.clone(),
     };
 
     print_action(format!(

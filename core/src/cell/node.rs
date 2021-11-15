@@ -17,7 +17,7 @@ use url::Url;
 use super::{error::Error, CellId};
 use crate::{
     cell::LocalNodeConfigExt,
-    dir::DynDirectory,
+    dir::{ram::RamDirectory, DynDirectory},
     sec::{
         keys::{Keypair, PublicKey},
         signature::Signature,
@@ -191,7 +191,7 @@ impl Display for Node {
 pub struct LocalNode {
     node: Node,
     ident: Arc<LocalNodeIdentity>,
-    dir: Option<DynDirectory>,
+    dir: DynDirectory,
 }
 
 struct LocalNodeIdentity {
@@ -219,7 +219,7 @@ impl LocalNode {
                 config,
                 addresses: listen_addresses,
             }),
-            dir: None,
+            dir: RamDirectory::default().into(),
         };
 
         Ok(local_node)
@@ -244,7 +244,7 @@ impl LocalNode {
     pub fn generate_in_directory(dir: impl Into<DynDirectory>) -> Result<LocalNode, Error> {
         let dir = dir.into();
         let mut node = Self::generate();
-        node.dir = Some(dir.clone());
+        node.dir = dir.clone();
 
         {
             // generate config & write to file system
@@ -264,18 +264,18 @@ impl LocalNode {
         };
 
         let mut node = LocalNode::from_config(config)?;
-        node.dir = Some(dir);
+        node.dir = dir;
 
         Ok(node)
     }
 
-    pub fn directory(&self) -> Option<&DynDirectory> {
-        self.dir.as_ref()
+    pub fn directory(&self) -> &DynDirectory {
+        &self.dir
     }
 
     pub fn cell_directory(&self, cell_id: &CellId) -> Result<DynDirectory, Error> {
-        let dir = self.dir.as_ref().ok_or(Error::NoDirectory)?;
-        Ok(dir.scope(Path::new("cells").join(cell_id.to_string()))?)
+        let cell_path = Path::new("cells").join(cell_id.to_string());
+        Ok(self.dir.scope(cell_path)?)
     }
 
     pub fn node(&self) -> &Node {

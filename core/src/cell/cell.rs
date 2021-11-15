@@ -105,6 +105,8 @@ impl Cell {
         Self::from_config(cell_config, local_node)
     }
 
+    // TODO: Remove me
+    #[deprecated]
     pub fn from_local_node_old(
         local_node: LocalNode,
     ) -> Result<(Vec<EitherCell>, LocalNode), Error> {
@@ -138,6 +140,7 @@ impl Cell {
     }
 
     // TODO: Remove
+    #[deprecated]
     pub fn from_local_node_config(
         config: LocalNodeConfig,
     ) -> Result<(Vec<EitherCell>, LocalNode), Error> {
@@ -240,6 +243,7 @@ impl Cell {
         Some(path)
     }
 
+    #[deprecated]
     pub fn chain_directory(&self) -> Option<PathBuf> {
         self.cell_directory().map(|mut dir| {
             dir.push("chain");
@@ -247,6 +251,7 @@ impl Cell {
         })
     }
 
+    #[deprecated]
     pub fn store_directory(&self) -> Option<PathBuf> {
         self.cell_directory().map(|mut dir| {
             dir.push("store");
@@ -255,6 +260,7 @@ impl Cell {
     }
 
     // TOOD: Remove me
+    #[deprecated]
     pub fn apps_directory_old(&self) -> Option<PathBuf> {
         self.cell_directory().map(|mut dir| {
             dir.push("apps");
@@ -269,6 +275,7 @@ impl Cell {
     }
 
     // TODO: Remove me
+    #[deprecated]
     pub fn app_directory_old(&self, app_manifest: &Manifest) -> Option<PathBuf> {
         let app_dir = self.apps_directory_old()?;
         Some(app_dir.join(format!(
@@ -284,7 +291,7 @@ impl Cell {
 
     pub fn temp_directory(&self) -> Option<PathBuf> {
         self.cell_directory().map(|dir| {
-            let mut dir = dir.to_owned();
+            let mut dir = dir;
             dir.push("tmp");
 
             dir
