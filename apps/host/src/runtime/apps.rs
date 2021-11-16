@@ -64,8 +64,9 @@ impl<S: Store> Applications<S> {
 
             let app_dir = app.directory();
             let module_path = app_dir
-                .as_os_path(Path::new(&module.file))
-                .map_err(|err| anyhow!("module file is not accessible via os fs: {}", err))?;
+                .as_os_path()
+                .map_err(|err| anyhow!("module file is not accessible via os fs: {}", err))?
+                .join(&module.file);
 
             let app = Application {
                 cell: cell.clone(),

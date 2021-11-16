@@ -19,7 +19,7 @@ pub trait Directory: Send + Sync {
     fn exists(&self, path: &Path) -> bool;
     fn delete(&self, path: &Path) -> Result<(), Error>;
     fn clone(&self) -> DynDirectory;
-    fn as_os_path(&self, path: &Path) -> Result<PathBuf, Error>;
+    fn as_os_path(&self) -> Result<PathBuf, Error>;
 
     fn scope(&self, path: PathBuf) -> Result<DynDirectory, Error> {
         let dir = self.clone();

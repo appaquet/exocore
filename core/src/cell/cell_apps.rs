@@ -7,7 +7,7 @@ use std::{
 
 use exocore_protos::{generated::exocore_core::CellApplicationConfig, registry::Registry};
 
-use crate::dir::DynDirectory;
+use crate::{dir::DynDirectory, sec::keys::PublicKey};
 
 use super::{Application, ApplicationId, Error};
 
@@ -36,8 +36,14 @@ impl CellApplications {
         I: Iterator<Item = &'c CellApplicationConfig> + 'c,
     {
         for cell_app in iter {
-            let app_dir = cell_app_directory(&apps_dir, &cell_app.public_key, &cell_app.version)?;
-            let app = Application::from_directory(app_dir)?;
+            let app_id = ApplicationId::from_base58_public_key(&cell_app.public_key)?;
+            let app_dir = cell_app_directory(&apps_dir, &app_id, &cell_app.version)?;
+            let app = Application::from_directory(app_dir).map_err(|err| {
+                Error::Application(
+                    cell_app.name.clone(),
+                    anyhow!("failed to load from directory: {}", err),
+                )
+            })?;
             self.add_application(app)?;
         }
 
@@ -82,9 +88,9 @@ impl Deref for CellApplication {
 
 pub fn cell_app_directory(
     apps_dir: &DynDirectory,
-    app_public_key: &str,
+    app_id: &ApplicationId,
     app_version: &str,
 ) -> Result<DynDirectory, Error> {
-    let dir = apps_dir.scope(PathBuf::from(format!("{}_{}", app_public_key, app_version)))?;
+    let dir = apps_dir.scope(PathBuf::from(format!("{}_{}", app_id, app_version)))?;
     Ok(dir)
 }

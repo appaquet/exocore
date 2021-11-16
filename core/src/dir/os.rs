@@ -30,7 +30,7 @@ impl OsDirectory {
             )));
         }
 
-        println!("resolved to {:?}", joined);
+        debug!("resolved to {:?}", joined); // TODO: remove
 
         Ok(joined)
     }
@@ -134,10 +134,9 @@ impl Directory for OsDirectory {
         .into()
     }
 
-    fn as_os_path(&self, path: &Path) -> Result<PathBuf, Error> {
-        let path = self.resolve_path(path, false)?;
-        create_parent_path(&path)?;
-        Ok(path)
+    fn as_os_path(&self) -> Result<PathBuf, Error> {
+        create_parent_path(&self.base_path)?;
+        Ok(self.base_path.to_path_buf())
     }
 }
 
@@ -229,10 +228,7 @@ mod tests {
         let tmp = tempdir().unwrap();
         let dir = OsDirectory::new(tmp.path().to_path_buf());
 
-        let os_path = dir.as_os_path(Path::new("")).unwrap();
+        let os_path = dir.as_os_path().unwrap();
         assert_eq!(tmp.path(), os_path.as_path());
-
-        let os_path = dir.as_os_path(Path::new("some/file")).unwrap();
-        assert_eq!(tmp.path().join("some/file"), os_path.as_path());
     }
 }

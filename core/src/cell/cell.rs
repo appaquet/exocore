@@ -13,8 +13,9 @@ use exocore_protos::{
 use libp2p::PeerId;
 
 use super::{
-    cell_apps::cell_app_directory, config::CellConfigExt, CellApplications, CellNode, CellNodeRole,
-    CellNodes, CellNodesRead, CellNodesWrite, Error, LocalNode, Node, NodeId,
+    cell_apps::cell_app_directory, config::CellConfigExt, ApplicationId, CellApplications,
+    CellNode, CellNodeRole, CellNodes, CellNodesRead, CellNodesWrite, Error, LocalNode, Node,
+    NodeId,
 };
 use crate::{
     dir::DynDirectory,
@@ -132,7 +133,10 @@ impl Cell {
             })?;
 
             let cell_dir = local_node.cell_directory(&cell_id)?;
-            let either_cell = Cell::from_directory(cell_dir, local_node.clone())?;
+            let either_cell =
+                Cell::from_directory(cell_dir, local_node.clone()).map_err(|err| {
+                    Error::Cell(anyhow!("Failed to load cell id '{}': {}", cell_id, err))
+                })?;
             either_cells.push(either_cell);
         }
 
@@ -237,9 +241,7 @@ impl Cell {
 
     pub fn cell_directory(&self) -> Option<PathBuf> {
         let dir = self.directory()?;
-        let path = dir
-            .as_os_path(Path::new(""))
-            .expect("couldn't get os path for cell");
+        let path = dir.as_os_path().expect("couldn't get os path for cell");
         Some(path)
     }
 
@@ -259,34 +261,16 @@ impl Cell {
         })
     }
 
-    // TOOD: Remove me
-    #[deprecated]
-    pub fn apps_directory_old(&self) -> Option<PathBuf> {
-        self.cell_directory().map(|mut dir| {
-            dir.push("apps");
-            dir
-        })
-    }
-
     pub fn apps_directory(&self) -> Result<DynDirectory, Error> {
         let dir = self.directory().ok_or(Error::NoDirectory)?;
         let apps_dir = dir.scope(Path::new("apps").to_path_buf())?;
         Ok(apps_dir)
     }
 
-    // TODO: Remove me
-    #[deprecated]
-    pub fn app_directory_old(&self, app_manifest: &Manifest) -> Option<PathBuf> {
-        let app_dir = self.apps_directory_old()?;
-        Some(app_dir.join(format!(
-            "{}_{}",
-            app_manifest.public_key, app_manifest.version
-        )))
-    }
-
     pub fn app_directory(&self, app_manifest: &Manifest) -> Result<DynDirectory, Error> {
+        let app_id = ApplicationId::from_base58_public_key(&app_manifest.public_key)?;
         let apps_dir = self.apps_directory()?;
-        cell_app_directory(&apps_dir, &app_manifest.public_key, &app_manifest.version)
+        cell_app_directory(&apps_dir, &app_id, &app_manifest.version)
     }
 
     pub fn temp_directory(&self) -> Option<PathBuf> {

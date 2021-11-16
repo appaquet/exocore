@@ -4,10 +4,11 @@ use exocore_protos::{
     generated::exocore_apps::{manifest_schema::Source, Manifest},
     reflect::{FileDescriptorSet, Message},
 };
+use libp2p::PeerId;
 
 use super::{Error, ManifestExt};
 use crate::{
-    dir::{os::OsDirectory, DynDirectory},
+    dir::DynDirectory,
     sec::{
         hash::{multihash_decode_bs58, multihash_sha3_256, MultihashExt},
         keys::PublicKey,
@@ -32,11 +33,6 @@ struct Identity {
 }
 
 impl Application {
-    pub fn from_directory_old<P: AsRef<Path>>(dir: P) -> Result<Application, Error> {
-        let dir = OsDirectory::new(dir.as_ref().to_path_buf());
-        Self::from_directory(dir)
-    }
-
     pub fn from_directory(dir: impl Into<DynDirectory>) -> Result<Application, Error> {
         let dir = dir.into();
 
@@ -175,14 +171,23 @@ impl Application {
 }
 
 /// Unique identifier of an application, which is built by hashing the public
-/// key
+/// key.
+///
+/// For now, this ID is generated the same way as node IDs.
 #[derive(PartialEq, Eq, Clone, Debug, Hash)]
 pub struct ApplicationId(String);
 
 impl ApplicationId {
+    /// Create a Cell ID from a public key by using libp2p method to be
+    /// compatible with it
     pub fn from_public_key(public_key: &PublicKey) -> ApplicationId {
-        let id = public_key.encode_base58_string();
-        ApplicationId(id)
+        let peer_id = PeerId::from_public_key(public_key.to_libp2p().clone());
+        ApplicationId(peer_id.to_string())
+    }
+
+    pub fn from_base58_public_key(public_key: &str) -> Result<ApplicationId, Error> {
+        let public_key = PublicKey::decode_base58_string(public_key)?;
+        Ok(ApplicationId::from_public_key(&public_key))
     }
 
     pub fn from_string(id: String) -> ApplicationId {

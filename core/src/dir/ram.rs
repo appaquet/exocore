@@ -107,7 +107,7 @@ impl Directory for RamDirectory {
         .into()
     }
 
-    fn as_os_path(&self, _path: &Path) -> Result<PathBuf, Error> {
+    fn as_os_path(&self) -> Result<PathBuf, Error> {
         Err(Error::NotOsDirectory)
     }
 }

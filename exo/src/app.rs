@@ -227,39 +227,42 @@ impl AppPackage {
         cell_config: &mut CellConfig,
         overwrite: bool,
     ) -> anyhow::Result<()> {
-        let apps_dir = cell.apps_directory_old().expect("No apps directory");
-        std::fs::create_dir_all(apps_dir).expect("Couldn't create app dir");
+        let apps_dir = cell.apps_directory().expect("No apps directory");
+        let apps_dir_path = apps_dir.as_os_path()?;
+        std::fs::create_dir_all(apps_dir_path).expect("Couldn't create app dir");
 
-        let app_dir = cell.app_directory_old(self.app.manifest()).unwrap();
+        let app_dir = cell.app_directory(self.app.manifest()).unwrap();
+        let app_dir_path = app_dir.as_os_path()?;
         let cell_dir = cell.cell_directory().unwrap();
 
-        let application = Application::from_directory_old(self.temp_dir.path())?;
+        let temp_dir = OsDirectory::new(self.temp_dir.path().to_path_buf());
+        let application = Application::from_directory(temp_dir)?;
         application
             .validate()
             .expect("Failed to validate the application");
 
-        if app_dir.exists() {
+        if app_dir_path.exists() {
             if overwrite {
                 print_info(format!(
                     "Application already installed at '{}'. Overwriting it.",
-                    style_value(&app_dir)
+                    style_value(&app_dir_path)
                 ));
-                std::fs::remove_dir_all(&app_dir).expect("Couldn't remove existing app dir");
+                std::fs::remove_dir_all(&app_dir_path).expect("Couldn't remove existing app dir");
             } else {
                 print_error(format!(
                     "Application already installed at '{}'. Use {} to overwrite it.",
-                    style_value(&app_dir),
+                    style_value(&app_dir_path),
                     style_value("--overwrite"),
                 ));
                 return Ok(());
             }
         }
 
-        std::fs::rename(&self.temp_dir, &app_dir).expect("Couldn't move temp app dir");
+        std::fs::rename(&self.temp_dir, &app_dir_path).expect("Couldn't move temp app dir");
 
         let mut cell_app_config = CellApplicationConfig::from_manifest(self.app.manifest().clone());
         cell_app_config.location = Some(cell_application_config::Location::Path(
-            app_dir
+            app_dir_path
                 .strip_prefix(cell_dir)
                 .unwrap()
                 .to_string_lossy()

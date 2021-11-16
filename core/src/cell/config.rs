@@ -644,7 +644,6 @@ impl ManifestExt for Manifest {
 #[cfg(test)]
 mod tests {
     use exocore_protos::{
-        apps::manifest_schema,
         core::{
             cell_application_config, CellApplicationConfig, ChainConfig, EntityIndexConfig,
             MutationIndexConfig, NodeAddresses,
@@ -656,10 +655,10 @@ mod tests {
     };
 
     use super::{
-        super::{Cell, CellNodeRole, CellNodes},
+        super::{Cell, CellNodes},
         *,
     };
-    use crate::tests_utils::find_test_fixture;
+    use crate::{dir::os::OsDirectory, tests_utils::find_test_fixture};
 
     #[test]
     fn parse_node_config_yaml_ser_deser() -> anyhow::Result<()> {
@@ -776,58 +775,36 @@ mod tests {
         assert_eq!(PathBuf::from(&config.path), PathBuf::from("path"));
     }
 
-    // TODO: Replace me with a test from a folder
-    // #[test]
-    // fn parse_node_config_example_yaml_file() -> anyhow::Result<()> {
-    //     let config_path = find_test_fixture("examples/node.yaml");
-    //     let config = LocalNodeConfig::from_yaml_file(config_path)?;
+    #[test]
+    fn parse_node_config_example_yaml_file() -> anyhow::Result<()> {
+        let node_path = find_test_fixture("examples/node");
+        // let config = LocalNodeConfig::from_yaml_file(config_path)?;
 
-    //     let (cells, node) = Cell::from_local_node_config(config)?;
-    //     assert_eq!(2, cells.len());
-    //     assert_eq!(2, node.p2p_addresses().len());
+        let dir = OsDirectory::new(node_path);
+        let (cells, node) = Cell::from_local_node_directory(dir)?;
+        assert_eq!(1, cells.len());
+        assert_eq!(2, node.p2p_addresses().len());
 
-    //     {
-    //         // inlined cell
-    //         let cell = cells[1].clone().unwrap_full();
+        {
+            // cell from directory
+            let cell = cells[0].clone().unwrap_full();
 
-    //         {
-    //             let nodes = cell.cell().nodes();
-    //             assert_eq!(2, nodes.count());
+            {
+                let nodes = cell.cell().nodes();
+                assert_eq!(2, nodes.count());
+            }
 
-    //             let nodes_iter = nodes.iter();
-    //             let node = nodes_iter.with_role(CellNodeRole::Store).next().unwrap();
-    //             assert_eq!(3, node.roles().len());
-    //         }
+            {
+                let schemas = cell
+                    .cell()
+                    .schemas()
+                    .get_message_descriptor("exocore.example_app.Task");
+                assert!(schemas.is_ok());
+            }
+        }
 
-    //         {
-    //             let schemas = cell
-    //                 .cell()
-    //                 .schemas()
-    //                 .get_message_descriptor("exocore.example_app.Task");
-    //             assert!(schemas.is_ok());
-    //         }
-    //     }
-
-    //     {
-    //         // cell from directory
-    //         let cell = cells[1].clone().unwrap_full();
-
-    //         {
-    //             let nodes = cell.cell().nodes();
-    //             assert_eq!(2, nodes.count());
-    //         }
-
-    //         {
-    //             let schemas = cell
-    //                 .cell()
-    //                 .schemas()
-    //                 .get_message_descriptor("exocore.example_app.Task");
-    //             assert!(schemas.is_ok());
-    //         }
-    //     }
-
-    //     Ok(())
-    // }
+        Ok(())
+    }
 
     #[test]
     fn write_node_config_yaml_file() -> anyhow::Result<()> {
@@ -847,53 +824,6 @@ mod tests {
         assert_eq!(config_init, config_read);
 
         Ok(())
-    }
-
-    #[test]
-    fn node_config_inlined() {
-        let config_path = find_test_fixture("examples/node.yaml");
-        let config = LocalNodeConfig::from_yaml_file(config_path).unwrap();
-
-        let inlined_config = config.inlined().unwrap();
-
-        fn validate_node_cell_config(node_cell_config: &NodeCellConfig) {
-            match node_cell_config.location.as_ref() {
-                Some(node_cell_config::Location::Inline(cell_config)) => {
-                    validate_cell(cell_config);
-                }
-                other => panic!("Expected cell to be an instance location, got: {:?}", other),
-            }
-        }
-
-        fn validate_cell(cell_config: &CellConfig) {
-            for cell_app_config in &cell_config.apps {
-                match cell_app_config.location.as_ref() {
-                    Some(cell_application_config::Location::Inline(app_manifest)) => {
-                        validate_app(app_manifest);
-                    }
-                    other => panic!("Expected app to be an instance location, got: {:?}", other),
-                }
-            }
-        }
-
-        fn validate_app(app_manifest: &Manifest) {
-            for schema in &app_manifest.schemas {
-                match schema.source.as_ref() {
-                    Some(manifest_schema::Source::Bytes(_)) => {}
-                    other => panic!(
-                        "Expected app schema to be in bytes format, got: {:?}",
-                        other
-                    ),
-                }
-            }
-        }
-
-        for cell in &inlined_config.cells {
-            validate_node_cell_config(cell);
-        }
-
-        // should be able to load cell inlined
-        assert!(Cell::from_local_node_config(inlined_config).is_ok());
     }
 
     #[test]
@@ -951,117 +881,6 @@ mod tests {
                 id: "".into(), // TODO: this should be the only field now
             });
             assert_eq!(2, config.cells.len());
-        }
-    }
-
-    #[test]
-    pub fn parse_node_config_from_yaml() {
-        let yaml = r#"
-name: node name
-keypair: ae2oiM2PYznyfqEMPraKbpAuA8LWVhPUiUTgdwjvnwbDjnz9W9FAiE9431NtVjfBaX44nPPoNR8Mv6iYcJdqSfp8eZ
-public_key: peFdPsQsdqzT2H6cPd3WdU1fGdATDmavh4C17VWWacZTMP
-
-addresses:
-  p2p:
-    - /ip4/0.0.0.0/tcp/3330
-    - /ip4/0.0.0.0/tcp/3341/ws
-  http:
-    - http://0.0.0.0:8080
-
-cells:
-  - id: "" # TODO: Fix me
-    inline:
-      public_key: pe2AgPyBmJNztntK9n4vhLuEYN8P2kRfFXnaZFsiXqWacQ
-      keypair: ""
-      name: ""
-      path: target/data/cell1
-      nodes:
-        - node:
-            name: node name
-            public_key: peFdPsQsdqzT2H6cPd3WdU1fGdATDmavh4C17VWWacZTMP
-            addresses:
-              p2p:
-                - /ip4/192.168.2.67/tcp/3330
-              http:
-                - http://192.168.2.67:8080
-          roles:
-            - 1
-      apps:
-        - id: test
-          name: some application
-          version: 0.0.1
-          public_key: peHZC1CM51uAugeMNxbXkVukFzCwMJY52m1xDCfLmm1pc1
-          package_url: ""
-          inline:
-             name: some application
-             version: 0.0.1
-             public_key: peHZC1CM51uAugeMNxbXkVukFzCwMJY52m1xDCfLmm1pc1
-
-store:
-  index:
-    chain_index_min_depth: 2
-    chain_index_depth_leeway: 6
-    pending_index:
-      indexer_num_threads: 3
-      indexer_heap_size_bytes: 50000000
-      iterator_page_size: 100
-
-"#;
-
-        let config = LocalNodeConfig::from_yaml_reader(yaml.as_bytes()).unwrap();
-
-        {
-            let index_entity = config.clone().store.unwrap().index.unwrap();
-            assert_eq!(Some(2), index_entity.chain_index_min_depth);
-            assert_eq!(Some(6), index_entity.chain_index_depth_leeway);
-
-            let default_conf = MutationIndexConfig::default();
-
-            let pending_mutation = index_entity.pending_index.unwrap();
-            assert_eq!(Some(3), pending_mutation.indexer_num_threads);
-            assert_eq!(Some(50000000), pending_mutation.indexer_heap_size_bytes);
-
-            // Not defined should be default
-            assert_eq!(
-                default_conf.entity_mutations_cache_size,
-                pending_mutation.entity_mutations_cache_size
-            );
-
-            assert_eq!(None, index_entity.chain_index);
-        }
-
-        let (cells, node) = Cell::from_local_node_config(config).unwrap();
-        assert_eq!(1, cells.len());
-        assert_eq!(2, node.p2p_addresses().len());
-        assert_eq!(1, node.http_addresses().len());
-
-        let cell = cells.first().cloned().unwrap().unwrap_cell();
-
-        {
-            let nodes = cell.nodes();
-            assert_eq!(1, nodes.count());
-
-            let nodes_iter = nodes.iter();
-            let node = nodes_iter.all().next().unwrap();
-
-            assert_eq!(
-                "peFdPsQsdqzT2H6cPd3WdU1fGdATDmavh4C17VWWacZTMP",
-                node.node().public_key().encode_base58_string()
-            );
-
-            // libp2p's PeerId
-            assert_eq!(
-                "12D3KooWQSm3A1DZBMHmWVu3g7NonTMTenGQccmY9bUWtVjWTQ5K",
-                node.node().id().to_string()
-            );
-
-            assert_eq!(1, node.node().p2p_addresses().len());
-            assert_eq!(1, node.node().http_addresses().len());
-        }
-
-        {
-            assert!(cell.local_node_has_role(CellNodeRole::Chain));
-            assert!(!cell.local_node_has_role(CellNodeRole::Store));
         }
     }
 

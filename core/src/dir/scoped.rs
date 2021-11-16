@@ -80,9 +80,9 @@ impl Directory for ScopedDirectory {
         .into()
     }
 
-    fn as_os_path(&self, path: &std::path::Path) -> Result<std::path::PathBuf, super::Error> {
-        let path = self.join_path(path, false)?;
-        self.inner.as_os_path(&path)
+    fn as_os_path(&self) -> Result<std::path::PathBuf, super::Error> {
+        let path = self.inner.as_os_path()?;
+        Ok(path.join(&self.base_path))
     }
 }
 
@@ -161,10 +161,7 @@ mod tests {
             PathBuf::from("sub"),
         );
 
-        let os_path = scoped.as_os_path(Path::new("")).unwrap();
+        let os_path = scoped.as_os_path().unwrap();
         assert_eq!(dir.path().join("sub"), os_path.as_path());
-
-        let os_path = scoped.as_os_path(Path::new("dir/file")).unwrap();
-        assert_eq!(dir.path().join("sub/dir/file"), os_path.as_path());
     }
 }
