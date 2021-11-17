@@ -7,7 +7,7 @@ use std::{
 
 use exocore_protos::{generated::exocore_core::CellApplicationConfig, registry::Registry};
 
-use crate::{dir::DynDirectory, sec::keys::PublicKey};
+use crate::dir::DynDirectory;
 
 use super::{Application, ApplicationId, Error};
 
@@ -26,10 +26,9 @@ impl CellApplications {
         }
     }
 
-    // TODO: Should be DynDirectory direct, not option
     pub(crate) fn load_from_cell_apps_conf<'c, I>(
         &self,
-        apps_dir: DynDirectory,
+        apps_dir: &DynDirectory,
         iter: I,
     ) -> Result<(), Error>
     where
@@ -37,7 +36,7 @@ impl CellApplications {
     {
         for cell_app in iter {
             let app_id = ApplicationId::from_base58_public_key(&cell_app.public_key)?;
-            let app_dir = cell_app_directory(&apps_dir, &app_id, &cell_app.version)?;
+            let app_dir = cell_app_directory(apps_dir, &app_id, &cell_app.version);
             let app = Application::from_directory(app_dir).map_err(|err| {
                 Error::Application(
                     cell_app.name.clone(),
@@ -90,7 +89,6 @@ pub fn cell_app_directory(
     apps_dir: &DynDirectory,
     app_id: &ApplicationId,
     app_version: &str,
-) -> Result<DynDirectory, Error> {
-    let dir = apps_dir.scope(PathBuf::from(format!("{}_{}", app_id, app_version)))?;
-    Ok(dir)
+) -> DynDirectory {
+    apps_dir.scope(PathBuf::from(format!("{}_{}", app_id, app_version)))
 }

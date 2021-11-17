@@ -32,7 +32,7 @@ pub struct Cell {
     nodes: Arc<RwLock<HashMap<NodeId, CellNode>>>,
     apps: CellApplications,
     schemas: Arc<Registry>,
-    dir: Option<DynDirectory>,
+    dir: DynDirectory,
 }
 
 struct Identity {
@@ -83,10 +83,9 @@ impl Cell {
         {
             // load apps from config
             let cell = either_cell.cell();
-            if let Ok(apps_dir) = cell.apps_directory() {
-                cell.apps
-                    .load_from_cell_apps_conf(apps_dir, config.apps.iter())?;
-            }
+            let apps_dir = &cell.apps_directory();
+            cell.apps
+                .load_from_cell_apps_conf(apps_dir, config.apps.iter())?;
         }
 
         Ok(either_cell)
@@ -132,7 +131,7 @@ impl Cell {
                 Error::Cell(anyhow!("couldn't parse cell id '{}'", node_cell_config.id))
             })?;
 
-            let cell_dir = local_node.cell_directory(&cell_id)?;
+            let cell_dir = local_node.cell_directory(&cell_id);
             let either_cell =
                 Cell::from_directory(cell_dir, local_node.clone()).map_err(|err| {
                     Error::Cell(anyhow!("Failed to load cell id '{}': {}", cell_id, err))
@@ -170,7 +169,7 @@ impl Cell {
 
         let schemas = Arc::new(Registry::new_with_exocore_types());
 
-        let dir = local_node.cell_directory(&cell_id).ok();
+        let dir = local_node.cell_directory(&cell_id);
 
         Cell {
             identity: Arc::new(Identity {
@@ -235,51 +234,34 @@ impl Cell {
         &self.apps
     }
 
-    pub fn directory(&self) -> Option<&DynDirectory> {
-        self.dir.as_ref()
+    pub fn directory(&self) -> &DynDirectory {
+        &self.dir
     }
 
-    pub fn cell_directory(&self) -> Option<PathBuf> {
-        let dir = self.directory()?;
-        let path = dir.as_os_path().expect("couldn't get os path for cell");
-        Some(path)
+    pub fn chain_directory(&self) -> DynDirectory {
+        self.directory().scope(PathBuf::from("chain"))
     }
 
-    #[deprecated]
-    pub fn chain_directory(&self) -> Option<PathBuf> {
-        self.cell_directory().map(|mut dir| {
-            dir.push("chain");
-            dir
-        })
+    pub fn store_directory(&self) -> DynDirectory {
+        self.directory().scope(PathBuf::from("store"))
     }
 
-    #[deprecated]
-    pub fn store_directory(&self) -> Option<PathBuf> {
-        self.cell_directory().map(|mut dir| {
-            dir.push("store");
-            dir
-        })
-    }
-
-    pub fn apps_directory(&self) -> Result<DynDirectory, Error> {
-        let dir = self.directory().ok_or(Error::NoDirectory)?;
-        let apps_dir = dir.scope(Path::new("apps").to_path_buf())?;
-        Ok(apps_dir)
+    pub fn apps_directory(&self) -> DynDirectory {
+        self.directory().scope(PathBuf::from("apps"))
     }
 
     pub fn app_directory(&self, app_manifest: &Manifest) -> Result<DynDirectory, Error> {
         let app_id = ApplicationId::from_base58_public_key(&app_manifest.public_key)?;
-        let apps_dir = self.apps_directory()?;
-        cell_app_directory(&apps_dir, &app_id, &app_manifest.version)
+        let apps_dir = self.apps_directory();
+        Ok(cell_app_directory(
+            &apps_dir,
+            &app_id,
+            &app_manifest.version,
+        ))
     }
 
-    pub fn temp_directory(&self) -> Option<PathBuf> {
-        self.cell_directory().map(|dir| {
-            let mut dir = dir;
-            dir.push("tmp");
-
-            dir
-        })
+    pub fn temp_directory(&self) -> DynDirectory {
+        self.directory().scope(PathBuf::from("tmp"))
     }
 }
 
@@ -397,8 +379,7 @@ impl FullCell {
     }
 
     pub fn save_config(&self) -> Result<(), Error> {
-        let dir = self.cell.dir.as_ref().ok_or(Error::NoDirectory)?;
-        let file = dir.open_write(Path::new(CELL_CONFIG_FILE))?;
+        let file = self.cell.dir.open_write(Path::new(CELL_CONFIG_FILE))?;
         let config = self.generate_config(true);
         config.to_yaml_writer(file)?;
         Ok(())
@@ -465,7 +446,7 @@ mod tests {
         let node = LocalNode::generate_in_directory(dir.clone()).unwrap();
 
         let cell1 = FullCell::generate(node.clone()).unwrap();
-        let cell_dir = cell1.cell().directory().unwrap().clone();
+        let cell_dir = cell1.cell().directory().clone();
 
         let cell2 = Cell::from_directory(cell_dir, node).unwrap();
         assert_eq!(cell1.cell().id(), cell2.cell().id());

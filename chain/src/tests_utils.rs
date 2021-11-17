@@ -254,7 +254,9 @@ impl TestChainCluster {
                 while let Some(event) = stream_events.next().await {
                     let mut events = events.lock().unwrap();
                     events.push(event.clone());
-                    events_sender.send(event).unwrap();
+                    if let Err(err) = events_sender.send(event) {
+                        error!("failed to send to events sender: {}", err);
+                    }
                 }
             });
         }

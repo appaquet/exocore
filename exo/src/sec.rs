@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use exocore_core::{
-    cell::{ApplicationId, CellId, Node, NodeId},
+    cell::{Node, NodeId},
     sec::{
         hash::{multihash_sha3_256_file, MultihashExt},
         keys::{Keypair, PublicKey},

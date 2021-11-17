@@ -708,7 +708,8 @@ fn cmd_check_chain(ctx: &Context, cell_opts: &CellOptions) -> anyhow::Result<()>
     let chain_dir = cell
         .cell()
         .chain_directory()
-        .expect("Cell doesn't have a path configured");
+        .as_os_path()
+        .expect("Cell is not stored in an OS directory");
 
     let chain_config = config.chain.unwrap_or_default();
     let chain_store = DirectoryChainStore::create_or_open(chain_config.into(), &chain_dir)
@@ -772,7 +773,8 @@ fn cmd_export_chain(
     let chain_dir = cell
         .cell()
         .chain_directory()
-        .expect("Cell doesn't have a path configured");
+        .as_os_path()
+        .expect("Cell is not stored in an OS directory");
 
     let chain_config = config.chain.unwrap_or_default();
     let chain_store = DirectoryChainStore::create_or_open(chain_config.into(), &chain_dir)
@@ -878,7 +880,8 @@ fn cmd_import_chain(
     let chain_dir = full_cell
         .cell()
         .chain_directory()
-        .expect("Cell doesn't have a path configured");
+        .as_os_path()
+        .expect("Cell is not stored in an OS directory");
 
     let chain_config = config.chain.unwrap_or_default();
     let mut chain_store = DirectoryChainStore::create_or_open(chain_config.into(), &chain_dir)
@@ -1197,7 +1200,11 @@ fn extract_cell_by_name(either_cells: Vec<EitherCell>, name: &str) -> Option<Eit
 }
 
 pub fn cell_config_path(cell: &Cell) -> PathBuf {
-    let cell_directory = cell.cell_directory().expect("Couldn't find cell directory");
+    // TODO: Move to Cell
+    let cell_directory = cell
+        .directory()
+        .as_os_path()
+        .expect("Cell is not stored in an OS directory");
     cell_directory.join("cell.yaml")
 }
 
@@ -1205,7 +1212,8 @@ fn create_genesis_block(cell: FullCell) -> anyhow::Result<()> {
     let chain_dir = cell
         .cell()
         .chain_directory()
-        .expect("Couldn't find chain directory");
+        .as_os_path()
+        .expect("Cell is not stored in an OS directory");
 
     print_step(format!(
         "Creating genesis block for cell {}",

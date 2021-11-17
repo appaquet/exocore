@@ -48,9 +48,10 @@ pub async fn cmd_daemon(ctx: &Context) -> anyhow::Result<()> {
             let cell_name = cell.name().to_string();
 
             // make sure data directory exists
-            let chain_dir = cell.chain_directory().ok_or_else(|| {
-                anyhow!("{}: Cell doesn't have a directory configured", cell_name)
-            })?;
+            let chain_dir = cell
+                .chain_directory()
+                .as_os_path()
+                .expect("Cell is not stored in an OS directory");
             std::fs::create_dir_all(&chain_dir)?;
 
             // create chain store

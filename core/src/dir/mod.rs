@@ -21,9 +21,9 @@ pub trait Directory: Send + Sync {
     fn clone(&self) -> DynDirectory;
     fn as_os_path(&self) -> Result<PathBuf, Error>;
 
-    fn scope(&self, path: PathBuf) -> Result<DynDirectory, Error> {
+    fn scope(&self, path: PathBuf) -> DynDirectory {
         let dir = self.clone();
-        Ok(ScopedDirectory::new(dir, path).into())
+        ScopedDirectory::new(dir, path).into()
     }
 }
 

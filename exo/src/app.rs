@@ -200,7 +200,10 @@ impl AppPackage {
         let mut package_zip = zip::ZipArchive::new(reader)
             .map_err(|err| anyhow!("Couldn't read package zip: {}", err))?;
 
-        let cell_temp_dir = cell.temp_directory().expect("Cell didn't have a directory");
+        let cell_temp_dir = cell
+            .temp_directory()
+            .as_os_path()
+            .expect("Cell is not stored in an OS directory");
         std::fs::create_dir_all(&cell_temp_dir).expect("Couldn't create temp directory");
 
         let dir = tempdir_in(cell_temp_dir)
@@ -227,13 +230,17 @@ impl AppPackage {
         cell_config: &mut CellConfig,
         overwrite: bool,
     ) -> anyhow::Result<()> {
-        let apps_dir = cell.apps_directory().expect("No apps directory");
+        let apps_dir = cell.apps_directory();
         let apps_dir_path = apps_dir.as_os_path()?;
         std::fs::create_dir_all(apps_dir_path).expect("Couldn't create app dir");
 
         let app_dir = cell.app_directory(self.app.manifest()).unwrap();
         let app_dir_path = app_dir.as_os_path()?;
-        let cell_dir = cell.cell_directory().unwrap();
+
+        let cell_dir = cell
+            .directory()
+            .as_os_path()
+            .expect("Cell is not stored in an OS directory");
 
         let temp_dir = OsDirectory::new(self.temp_dir.path().to_path_buf());
         let application = Application::from_directory(temp_dir)?;

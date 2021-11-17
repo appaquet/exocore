@@ -273,9 +273,9 @@ impl LocalNode {
         &self.dir
     }
 
-    pub fn cell_directory(&self, cell_id: &CellId) -> Result<DynDirectory, Error> {
+    pub fn cell_directory(&self, cell_id: &CellId) -> DynDirectory {
         let cell_path = Path::new("cells").join(cell_id.to_string());
-        Ok(self.dir.scope(cell_path)?)
+        self.dir.scope(cell_path)
     }
 
     pub fn node(&self) -> &Node {
