@@ -45,6 +45,7 @@ fn main() {
                     "#[serde(rename_all = \"lowercase\")]",
                 )
                 .field_attribute("NodeCellConfig.location", "#[serde(flatten)]")
+                .field_attribute("NodeCellConfig.id", "#[serde(default)]") // TODO: Remove once migrated to new cell config
                 .type_attribute("NodeStoreConfig", "#[derive(Serialize, Deserialize)]")
                 .type_attribute("ChainConfig", "#[derive(Serialize, Deserialize)]")
                 .type_attribute("EntityIndexConfig", "#[derive(Serialize, Deserialize)]")

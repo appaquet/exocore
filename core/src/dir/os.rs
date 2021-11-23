@@ -12,8 +12,10 @@ pub struct OsDirectory {
 }
 
 impl OsDirectory {
-    pub fn new(base_path: PathBuf) -> Self {
-        Self { base_path }
+    pub fn new(base_path: impl Into<PathBuf>) -> Self {
+        Self {
+            base_path: base_path.into(),
+        }
     }
 
     fn resolve_path(&self, path: &Path, expect_file: bool) -> Result<PathBuf, Error> {

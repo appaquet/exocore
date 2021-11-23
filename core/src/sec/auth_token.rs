@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn token_validity() -> anyhow::Result<()> {
         let node = LocalNode::generate();
-        let cell = FullCell::generate_old(node);
+        let cell = FullCell::generate(node)?;
         let clock = Clock::new();
 
         let mut token = AuthToken::new(cell.cell(), &clock, None)?;
@@ -215,7 +215,7 @@ mod tests {
     #[test]
     fn token_expiration() -> anyhow::Result<()> {
         let node = LocalNode::generate();
-        let cell = FullCell::generate_old(node.clone());
+        let cell = FullCell::generate(node.clone())?;
 
         let now = Instant::now();
         let clock = Clock::new_fixed_mocked(now);
@@ -237,7 +237,7 @@ mod tests {
     #[test]
     fn token_encoding() -> anyhow::Result<()> {
         let node = LocalNode::generate();
-        let cell = FullCell::generate_old(node.clone());
+        let cell = FullCell::generate(node.clone())?;
 
         let clock = Clock::new();
         let expiry = clock.consistent_time(node.node());

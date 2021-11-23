@@ -6,9 +6,7 @@ use std::{
 };
 
 use exocore_protos::{
-    apps::Manifest,
-    generated::exocore_core::{CellConfig, LocalNodeConfig},
-    registry::Registry,
+    apps::Manifest, core::LocalNodeConfig, generated::exocore_core::CellConfig, registry::Registry,
 };
 use libp2p::PeerId;
 
@@ -18,7 +16,7 @@ use super::{
     NodeId,
 };
 use crate::{
-    dir::DynDirectory,
+    dir::{ram::RamDirectory, DynDirectory},
     sec::keys::{Keypair, PublicKey},
 };
 
@@ -36,6 +34,7 @@ pub struct Cell {
 }
 
 struct Identity {
+    config: CellConfig,
     public_key: PublicKey,
     cell_id: CellId,
     local_node: LocalNode,
@@ -44,21 +43,14 @@ struct Identity {
 
 impl Cell {
     pub fn from_config(config: CellConfig, local_node: LocalNode) -> Result<EitherCell, Error> {
+        let cell = Cell::build(config.clone(), local_node)?;
+
         let either_cell = if !config.keypair.is_empty() {
             let keypair = Keypair::decode_base58_string(&config.keypair)
                 .map_err(|err| Error::Cell(anyhow!("Couldn't parse cell keypair: {}", err)))?;
-
-            let name = Some(config.name.clone()).filter(String::is_empty);
-
-            let full_cell = FullCell::build(keypair, local_node, name);
+            let full_cell = FullCell::build(keypair, cell);
             EitherCell::Full(Box::new(full_cell))
         } else {
-            let public_key = PublicKey::decode_base58_string(&config.public_key)
-                .map_err(|err| Error::Cell(anyhow!("Couldn't parse cell public key: {}", err)))?;
-
-            let name = Some(config.name.clone()).filter(String::is_empty);
-
-            let cell = Cell::build(public_key, local_node, name);
             EitherCell::Cell(Box::new(cell))
         };
 
@@ -105,74 +97,69 @@ impl Cell {
         Self::from_config(cell_config, local_node)
     }
 
-    // TODO: Remove me
-    #[deprecated]
-    pub fn from_local_node_old(
-        local_node: LocalNode,
-    ) -> Result<(Vec<EitherCell>, LocalNode), Error> {
+    pub fn from_local_node(local_node: LocalNode) -> Result<Vec<EitherCell>, Error> {
         let config = local_node.config();
 
         let mut either_cells = Vec::new();
         for node_cell_config in &config.cells {
-            let cell_config = CellConfig::from_node_cell(node_cell_config)?;
-            let either_cell = Self::from_config(cell_config, local_node.clone())?;
-            either_cells.push(either_cell);
-        }
-
-        Ok((either_cells, local_node))
-    }
-
-    pub fn from_local_node(local_node: LocalNode) -> Result<(Vec<EitherCell>, LocalNode), Error> {
-        let config = local_node.config();
-
-        let mut either_cells = Vec::new();
-        for node_cell_config in &config.cells {
-            let cell_id = CellId::from_str(&node_cell_config.id).map_err(|_err| {
-                Error::Cell(anyhow!("couldn't parse cell id '{}'", node_cell_config.id))
-            })?;
-
-            let cell_dir = local_node.cell_directory(&cell_id);
-            let either_cell =
+            let either_cell = if node_cell_config.location.is_none() {
+                let cell_id = CellId::from_str(&node_cell_config.id).map_err(|_err| {
+                    Error::Cell(anyhow!("couldn't parse cell id '{}'", node_cell_config.id))
+                })?;
+                let cell_dir = local_node.cell_directory(&cell_id);
                 Cell::from_directory(cell_dir, local_node.clone()).map_err(|err| {
                     Error::Cell(anyhow!("Failed to load cell id '{}': {}", cell_id, err))
-                })?;
+                })?
+            } else {
+                // TODO: Remove when refactoring done
+                warn!("Loading from inlined cell config...");
+                let cell_config = CellConfig::from_node_cell(node_cell_config)?;
+                Self::from_config(cell_config, local_node.clone())?
+            };
+
             either_cells.push(either_cell);
         }
 
-        Ok((either_cells, local_node))
+        Ok(either_cells)
     }
 
-    // TODO: Remove
     #[deprecated]
     pub fn from_local_node_config(
-        config: LocalNodeConfig,
+        node_config: LocalNodeConfig,
     ) -> Result<(Vec<EitherCell>, LocalNode), Error> {
-        let local_node = LocalNode::from_config(config)?;
-        Self::from_local_node_old(local_node)
+        let local_node = LocalNode::from_config(RamDirectory::new(), node_config)?;
+        let cells = Self::from_local_node(local_node.clone())?;
+        Ok((cells, local_node))
     }
 
     pub fn from_local_node_directory(
         dir: impl Into<DynDirectory>,
     ) -> Result<(Vec<EitherCell>, LocalNode), Error> {
         let local_node = LocalNode::from_directory(dir.into())?;
-        Self::from_local_node(local_node)
+        let cells = Self::from_local_node(local_node.clone())?;
+        Ok((cells, local_node))
     }
 
-    fn build(public_key: PublicKey, local_node: LocalNode, name: Option<String>) -> Cell {
+    fn build(config: CellConfig, local_node: LocalNode) -> Result<Cell, Error> {
+        let public_key = PublicKey::decode_base58_string(&config.public_key)
+            .map_err(|err| Error::Cell(anyhow!("Couldn't parse cell public key: {}", err)))?;
         let cell_id = CellId::from_public_key(&public_key);
 
         let mut nodes_map = HashMap::new();
         let local_cell_node = CellNode::new(local_node.node().clone());
         nodes_map.insert(local_node.id().clone(), local_cell_node);
 
-        let name = name.unwrap_or_else(|| public_key.generate_name());
+        let name = Some(config.name.clone())
+            .filter(String::is_empty)
+            .unwrap_or_else(|| public_key.generate_name());
 
         let schemas = Arc::new(Registry::new_with_exocore_types());
 
         let dir = local_node.cell_directory(&cell_id);
 
-        Cell {
+        Ok(Cell {
             identity: Arc::new(Identity {
+                config,
                 public_key,
                 cell_id,
                 local_node,
@@ -182,7 +169,7 @@ impl Cell {
             nodes: Arc::new(RwLock::new(nodes_map)),
             schemas,
             dir,
-        }
+        })
     }
 
     pub fn id(&self) -> &CellId {
@@ -208,6 +195,10 @@ impl Cell {
 
     pub fn public_key(&self) -> &PublicKey {
         &self.identity.public_key
+    }
+
+    pub fn config(&self) -> &CellConfig {
+        &self.identity.config
     }
 
     pub fn nodes(&self) -> CellNodesRead {
@@ -323,29 +314,23 @@ pub struct FullCell {
 }
 
 impl FullCell {
-    pub fn from_keypair(keypair: Keypair, local_node: LocalNode) -> FullCell {
-        Self::build(keypair, local_node, None)
-    }
-
-    pub fn generate_old(local_node: LocalNode) -> FullCell {
-        let cell_keypair = Keypair::generate_ed25519();
-        Self::build(cell_keypair, local_node, None)
-    }
-
     pub fn generate(local_node: LocalNode) -> Result<FullCell, Error> {
-        let cell_keypair = Keypair::generate_ed25519();
+        let keypair = Keypair::generate_ed25519();
+        let config = CellConfig {
+            keypair: keypair.encode_base58_string(),
+            public_key: keypair.public().encode_base58_string(),
+            ..Default::default()
+        };
 
-        let full_cell = Self::build(cell_keypair, local_node, None);
+        let cell = Cell::build(config, local_node)?;
+        let full_cell = Self::build(keypair, cell);
         full_cell.save_config()?;
 
         Ok(full_cell)
     }
 
-    fn build(keypair: Keypair, local_node: LocalNode, name: Option<String>) -> FullCell {
-        FullCell {
-            cell: Cell::build(keypair.public(), local_node, name),
-            keypair,
-        }
+    fn build(keypair: Keypair, cell: Cell) -> FullCell {
+        FullCell { cell, keypair }
     }
 
     pub fn keypair(&self) -> &Keypair {
@@ -387,7 +372,9 @@ impl FullCell {
 
     #[cfg(any(test, feature = "tests-utils"))]
     pub fn with_local_node(self, local_node: LocalNode) -> FullCell {
-        FullCell::from_keypair(self.keypair, local_node)
+        let cell = Cell::from_config(self.cell.config().clone(), local_node)
+            .expect("Couldn't rebuild cell from current cell");
+        cell.unwrap_full()
     }
 }
 

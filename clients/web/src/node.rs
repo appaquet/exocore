@@ -1,4 +1,7 @@
-use exocore_core::cell::{LocalNode as CoreLocalNode, LocalNodeConfigExt};
+use exocore_core::{
+    cell::{LocalNode as CoreLocalNode, LocalNodeConfigExt},
+    dir::ram::RamDirectory,
+};
 use exocore_protos::core::LocalNodeConfig;
 use wasm_bindgen::prelude::*;
 
@@ -26,7 +29,7 @@ impl LocalNode {
     }
 
     pub(crate) fn from_config(config: LocalNodeConfig) -> Result<LocalNode, JsValue> {
-        let node = CoreLocalNode::from_config(config.clone())
+        let node = CoreLocalNode::from_config(RamDirectory::new(), config.clone())
             .map_err(|err| into_js_error("couldn't create node from config", err))?;
 
         Ok(LocalNode {

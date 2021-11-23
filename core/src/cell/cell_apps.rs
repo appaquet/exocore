@@ -7,9 +7,8 @@ use std::{
 
 use exocore_protos::{generated::exocore_core::CellApplicationConfig, registry::Registry};
 
-use crate::dir::DynDirectory;
-
 use super::{Application, ApplicationId, Error};
+use crate::dir::DynDirectory;
 
 /// Applications installed in a cell.
 #[derive(Clone)]

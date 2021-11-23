@@ -103,7 +103,7 @@ pub unsafe extern "C" fn exocore_discovery_join_cell(
 ) {
     let disco = disco.as_mut().unwrap();
     let node = node.as_mut().unwrap();
-    let node_config = node.config.clone();
+    let node_config = node.node.config().clone();
 
     let callback_ctx = CallbackContext { ctx: callback_ctx };
     let client = disco.client.clone();

@@ -131,6 +131,7 @@ pub struct NodeAddresses {
 pub struct NodeCellConfig {
     /// TODO: Add basic info required to define cell (id, name, etc)
     #[prost(string, tag = "3")]
+    #[serde(default)]
     pub id: ::prost::alloc::string::String,
     /// TODO: Should get rid of this
     #[prost(oneof = "node_cell_config::Location", tags = "1, 2")]

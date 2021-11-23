@@ -280,7 +280,7 @@ mod tests {
     #[test]
     fn nodes_add_get() {
         let local_node = LocalNode::generate();
-        let full_cell = FullCell::generate_old(local_node.clone());
+        let full_cell = FullCell::generate(local_node.clone()).unwrap();
 
         {
             let nodes = full_cell.cell().nodes();
@@ -320,7 +320,7 @@ mod tests {
     #[test]
     fn nodes_quorum() {
         let local_node = LocalNode::generate();
-        let full_cell = FullCell::generate_old(local_node);
+        let full_cell = FullCell::generate(local_node).unwrap();
 
         {
             // 1 node
