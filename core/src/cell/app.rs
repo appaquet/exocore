@@ -11,11 +11,11 @@ use crate::{
     dir::DynDirectory,
     sec::{
         hash::{multihash_decode_bs58, multihash_sha3_256, MultihashExt},
-        keys::PublicKey,
+        keys::{Keypair, PublicKey},
     },
 };
 
-const APP_FILE_NAME: &str = "app.yaml";
+pub const MANIFEST_FILE_NAME: &str = "app.yaml";
 
 /// Application that extends the capability of the cell by providing schemas and
 /// WebAssembly logic.
@@ -23,7 +23,7 @@ const APP_FILE_NAME: &str = "app.yaml";
 pub struct Application {
     identity: Arc<Identity>,
     schemas: Arc<[FileDescriptorSet]>,
-    dir: Option<DynDirectory>,
+    dir: DynDirectory,
 }
 
 struct Identity {
@@ -33,18 +33,32 @@ struct Identity {
 }
 
 impl Application {
+    pub fn generate(
+        dir: impl Into<DynDirectory>,
+        name: String,
+    ) -> Result<(Keypair, Application), Error> {
+        let keypair = Keypair::generate_ed25519();
+        let dir = dir.into();
+
+        let manifest = Manifest {
+            name,
+            public_key: keypair.public().encode_base58_string(),
+            version: "0.0.1".to_string(),
+            ..Default::default()
+        };
+
+        Ok((keypair, Application::from_manifest(dir, manifest)?))
+    }
+
     pub fn from_directory(dir: impl Into<DynDirectory>) -> Result<Application, Error> {
         let dir = dir.into();
 
         let manifest = {
-            let manifest_file = dir.open_read(Path::new(APP_FILE_NAME))?;
+            let manifest_file = dir.open_read(Path::new(MANIFEST_FILE_NAME))?;
             Manifest::from_yaml(manifest_file)?
         };
 
-        let mut app = Self::from_manifest(dir.clone(), manifest)?;
-        app.dir = Some(dir);
-
-        Ok(app)
+        Self::from_manifest(dir, manifest)
     }
 
     pub fn from_manifest(
@@ -99,7 +113,7 @@ impl Application {
                 manifest,
             }),
             schemas: schemas.into(),
-            dir: None,
+            dir,
         })
     }
 
@@ -128,7 +142,7 @@ impl Application {
     }
 
     pub fn directory(&self) -> &DynDirectory {
-        self.dir.as_ref().expect("expected application directory")
+        &self.dir
     }
 
     pub fn validate(&self) -> Result<(), Error> {

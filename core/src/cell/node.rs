@@ -251,7 +251,7 @@ impl LocalNode {
         let node = Self::from_config(dir, config.clone())
             .expect("Couldn't create node config generated config");
 
-        node.save_config(config)?;
+        node.save_config(&config)?;
 
         Ok(node)
     }
@@ -315,7 +315,8 @@ impl LocalNode {
         Ok(inlined)
     }
 
-    pub fn save_config(&self, config: LocalNodeConfig) -> Result<(), Error> {
+    pub fn save_config(&self, config: &LocalNodeConfig) -> Result<(), Error> {
+        // TODO: Should swap config
         let config_file = self.dir.open_write(Path::new(CONFIG_FILE_NAME))?;
         config.to_yaml_writer(config_file)?;
         Ok(())
@@ -536,7 +537,7 @@ mod tests {
             id: cell.cell().id().to_string(),
             ..Default::default()
         });
-        node.save_config(node_config).unwrap();
+        node.save_config(&node_config).unwrap();
 
         // Reload node with created cell
         let node = LocalNode::from_directory(node.directory().clone()).unwrap();

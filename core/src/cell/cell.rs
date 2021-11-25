@@ -54,32 +54,6 @@ impl Cell {
             EitherCell::Cell(Box::new(cell))
         };
 
-        {
-            // load nodes from config
-            let mut nodes = either_cell.nodes_mut();
-            for node_config in &config.nodes {
-                let node = Node::from_config(node_config.node.clone().ok_or_else(|| {
-                    Error::Config(anyhow!("Cell node config node is not defined"))
-                })?)?;
-
-                let mut cell_node = CellNode::new(node);
-
-                for role in node_config.roles() {
-                    cell_node.add_role(CellNodeRole::from_config(role)?);
-                }
-
-                nodes.add_cell_node(cell_node);
-            }
-        }
-
-        {
-            // load apps from config
-            let cell = either_cell.cell();
-            let apps_dir = &cell.apps_directory();
-            cell.apps
-                .load_from_cell_apps_conf(apps_dir, config.apps.iter())?;
-        }
-
         Ok(either_cell)
     }
 
@@ -157,9 +131,9 @@ impl Cell {
 
         let dir = local_node.cell_directory(&cell_id);
 
-        Ok(Cell {
+        let cell = Cell {
             identity: Arc::new(Identity {
-                config,
+                config: config.clone(),
                 public_key,
                 cell_id,
                 local_node,
@@ -169,7 +143,34 @@ impl Cell {
             nodes: Arc::new(RwLock::new(nodes_map)),
             schemas,
             dir,
-        })
+        };
+
+        {
+            // load nodes from config
+            let mut nodes = cell.nodes_mut();
+            for node_config in &config.nodes {
+                let node = Node::from_config(node_config.node.clone().ok_or_else(|| {
+                    Error::Config(anyhow!("Cell node config node is not defined"))
+                })?)?;
+
+                let mut cell_node = CellNode::new(node);
+
+                for role in node_config.roles() {
+                    cell_node.add_role(CellNodeRole::from_config(role)?);
+                }
+
+                nodes.add_cell_node(cell_node);
+            }
+        }
+
+        {
+            // load apps from config
+            let apps_dir = &cell.apps_directory();
+            cell.apps
+                .load_from_cell_configurations(apps_dir, config.apps.iter())?;
+        }
+
+        Ok(cell)
     }
 
     pub fn id(&self) -> &CellId {
@@ -322,9 +323,9 @@ impl FullCell {
             ..Default::default()
         };
 
-        let cell = Cell::build(config, local_node)?;
+        let cell = Cell::build(config.clone(), local_node)?;
         let full_cell = Self::build(keypair, cell);
-        full_cell.save_config()?;
+        full_cell.save_config(&config)?;
 
         Ok(full_cell)
     }
@@ -363,9 +364,9 @@ impl FullCell {
         cell_config
     }
 
-    pub fn save_config(&self) -> Result<(), Error> {
+    pub fn save_config(&self, config: &CellConfig) -> Result<(), Error> {
+        // TODO: Should swap config
         let file = self.cell.dir.open_write(Path::new(CELL_CONFIG_FILE))?;
-        let config = self.generate_config(true);
         config.to_yaml_writer(file)?;
         Ok(())
     }
@@ -424,8 +425,13 @@ impl EitherCell {
 
 #[cfg(test)]
 mod tests {
+    use exocore_protos::core::{CellApplicationConfig, NodeCellConfig};
+
     use super::*;
-    use crate::dir::{ram::RamDirectory, Directory};
+    use crate::{
+        cell::{Application, CellApplicationConfigExt, LocalNodeConfigExt},
+        dir::{ram::RamDirectory, Directory},
+    };
 
     #[test]
     fn test_save_load_directory() {
@@ -437,5 +443,27 @@ mod tests {
 
         let cell2 = Cell::from_directory(cell_dir, node).unwrap();
         assert_eq!(cell1.cell().id(), cell2.cell().id());
+    }
+
+    #[test]
+    fn test_load_inlined_cell_apps() {
+        let dir = RamDirectory::new();
+        let node = LocalNode::generate_in_directory(dir.clone()).unwrap();
+
+        let full_cell = FullCell::generate(node.clone()).unwrap();
+
+        // Add an application to the cell
+        let (_kp, app) = Application::generate(dir.clone(), "some app".to_string()).unwrap();
+        let mut cell_config = full_cell.cell().config().clone();
+        cell_config.add_application(CellApplicationConfig::from_manifest(app.manifest().clone()));
+        full_cell.save_config(&cell_config).unwrap();
+
+        // Inline cell config, expect app to be present, but unloaded
+        let inlined_cell_config = cell_config.inlined().unwrap();
+        let full_cell_prime = Cell::from_config(inlined_cell_config, node)
+            .unwrap()
+            .unwrap_full();
+
+        // TODO: generate an app
     }
 }

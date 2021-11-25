@@ -25,7 +25,7 @@ impl CellApplications {
         }
     }
 
-    pub(crate) fn load_from_cell_apps_conf<'c, I>(
+    pub(crate) fn load_from_configurations<'c, I>(
         &self,
         apps_dir: &DynDirectory,
         iter: I,
@@ -36,6 +36,9 @@ impl CellApplications {
         for cell_app in iter {
             let app_id = ApplicationId::from_base58_public_key(&cell_app.public_key)?;
             let app_dir = cell_app_directory(apps_dir, &app_id, &cell_app.version);
+
+            // TODO: Should skip if not on disk
+            
             let app = Application::from_directory(app_dir).map_err(|err| {
                 Error::Application(
                     cell_app.name.clone(),
