@@ -38,7 +38,7 @@ impl CellApplications {
             let app_dir = cell_app_directory(apps_dir, &app_id, &cell_app.version);
 
             // TODO: Should skip if not on disk
-            
+
             let app = Application::from_directory(app_dir).map_err(|err| {
                 Error::Application(
                     cell_app.name.clone(),

@@ -167,7 +167,7 @@ impl Cell {
             // load apps from config
             let apps_dir = &cell.apps_directory();
             cell.apps
-                .load_from_cell_configurations(apps_dir, config.apps.iter())?;
+                .load_from_configurations(apps_dir, config.apps.iter())?;
         }
 
         Ok(cell)
@@ -459,10 +459,10 @@ mod tests {
         full_cell.save_config(&cell_config).unwrap();
 
         // Inline cell config, expect app to be present, but unloaded
-        let inlined_cell_config = cell_config.inlined().unwrap();
-        let full_cell_prime = Cell::from_config(inlined_cell_config, node)
-            .unwrap()
-            .unwrap_full();
+        // let inlined_cell_config = cell_config.inlined().unwrap();
+        // let full_cell_prime = Cell::from_config(inlined_cell_config, node)
+        //     .unwrap()
+        //     .unwrap_full();
 
         // TODO: generate an app
     }
