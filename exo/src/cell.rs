@@ -1247,7 +1247,7 @@ pub fn write_cell_config(ctx: &Context, config: &CellConfig) {
 
     let mut cell_dir = ctx.options.dir_path();
     cell_dir.push("cells");
-    cell_dir.push(config.public_key.clone());
+    cell_dir.push(config.id.clone());
 
     print_action(format!(
         "Creating cell directory {}",
@@ -1267,11 +1267,8 @@ pub fn write_cell_config(ctx: &Context, config: &CellConfig) {
 
 fn add_node_config_cell(ctx: &Context, node_config: &LocalNodeConfig, cell_config: &CellConfig) {
     let node_cell = NodeCellConfig {
-        location: Some(node_cell_config::Location::Path(format!(
-            "cells/{}",
-            &cell_config.public_key
-        ))),
         id: cell_config.id.clone(),
+        location: None,
     };
 
     print_action(format!(
