@@ -305,6 +305,7 @@ mod tests {
         let clock = Clock::new();
 
         let now1 = clock.now_chrono();
+        thread::sleep(Duration::from_nanos(1));
         let now2 = clock.now_chrono();
         assert!(now2 > now1);
 

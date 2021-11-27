@@ -19,8 +19,8 @@ use exocore_core::{
 };
 use exocore_protos::{
     core::{
-        cell_application_config, cell_node_config, node_cell_config, CellConfig, CellNodeConfig,
-        LocalNodeConfig, NodeCellConfig,
+        cell_application_config, cell_node_config, CellConfig, CellNodeConfig, LocalNodeConfig,
+        NodeCellConfig,
     },
     generated::data_chain_capnp::{block_header, chain_operation},
     prost::Message,
@@ -1040,11 +1040,11 @@ fn cmd_app_list(ctx: &Context, cell_opts: &CellOptions, _app_opts: &AppOptions) 
     print_spacer();
     let mut rows = Vec::new();
     for cell_app in cell_apps {
-        let app = cell_app.application();
         rows.push(vec![
-            app.name().to_string(),
-            app.version().to_string(),
-            app.public_key().encode_base58_string(),
+            cell_app.name().to_string(),
+            cell_app.version().to_string(),
+            cell_app.public_key().encode_base58_string(),
+            cell_app.is_loaded().to_string(),
         ]);
     }
 
@@ -1053,6 +1053,7 @@ fn cmd_app_list(ctx: &Context, cell_opts: &CellOptions, _app_opts: &AppOptions) 
             "Name".to_string(),
             "Version".to_string(),
             "Public key".to_string(),
+            "Installed".to_string(),
         ],
         rows,
     );

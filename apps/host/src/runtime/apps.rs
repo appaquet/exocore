@@ -48,10 +48,19 @@ impl<S: Store> Applications<S> {
         store: S,
     ) -> Result<Applications<S>, Error> {
         let mut apps = Vec::new();
-        for app in cell.applications().applications() {
-            let cell_app = app.application();
+        for cell_app in cell.applications().applications() {
+            let app = if let Some(app) = cell_app.get() {
+                app
+            } else {
+                warn!(
+                    "Application '{}' (id={}) not loaded",
+                    cell_app.name(),
+                    cell_app.id()
+                );
+                continue;
+            };
 
-            let app_manifest = cell_app.manifest();
+            let app_manifest = app.manifest();
             let module = if let Some(module) = &app_manifest.module {
                 module
             } else {
@@ -66,7 +75,7 @@ impl<S: Store> Applications<S> {
 
             let app = Application {
                 cell: cell.clone(),
-                cell_app: cell_app.clone(),
+                cell_app: app.clone(),
                 module_path,
             };
             app.cell_app

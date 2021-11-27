@@ -1,14 +1,13 @@
 use std::{
     collections::HashMap,
-    ops::Deref,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, RwLock},
 };
 
 use exocore_protos::{generated::exocore_core::CellApplicationConfig, registry::Registry};
 
-use super::{Application, ApplicationId, Error};
-use crate::dir::DynDirectory;
+use super::{app::MANIFEST_FILE_NAME, Application, ApplicationId, CellId, Error};
+use crate::{dir::DynDirectory, sec::keys::PublicKey};
 
 /// Applications installed in a cell.
 #[derive(Clone)]
@@ -27,6 +26,7 @@ impl CellApplications {
 
     pub(crate) fn load_from_configurations<'c, I>(
         &self,
+        cell_id: &CellId,
         apps_dir: &DynDirectory,
         iter: I,
     ) -> Result<(), Error>
@@ -36,29 +36,70 @@ impl CellApplications {
         for cell_app in iter {
             let app_id = ApplicationId::from_base58_public_key(&cell_app.public_key)?;
             let app_dir = cell_app_directory(apps_dir, &app_id, &cell_app.version);
+            let app_pk = PublicKey::decode_base58_string(&cell_app.public_key)?;
 
-            // TODO: Should skip if not on disk
-
-            let app = Application::from_directory(app_dir).map_err(|err| {
-                Error::Application(
-                    cell_app.name.clone(),
-                    anyhow!("failed to load from directory: {}", err),
-                )
-            })?;
-            self.add_application(app)?;
+            if app_dir.exists(Path::new(MANIFEST_FILE_NAME)) {
+                info!(
+                    "{}: Adding loaded application '{}' (id='{}')",
+                    cell_id, cell_app.name, app_id
+                );
+                let app = Application::from_directory(app_dir).map_err(|err| {
+                    Error::Application(
+                        cell_app.name.clone(),
+                        anyhow!("failed to load from directory: {}", err),
+                    )
+                })?;
+                self.add_loaded_application(app)?;
+            } else {
+                info!(
+                    "{}: Adding unloaded application '{}' (id='{}')",
+                    cell_id, cell_app.name, app_id
+                );
+                self.add_unloaded_application(app_id, app_pk, cell_app.clone())?;
+            }
         }
 
         Ok(())
     }
 
-    pub fn add_application(&self, application: Application) -> Result<(), Error> {
+    fn add_loaded_application(&self, application: Application) -> Result<(), Error> {
         let mut apps = self.applications.write().unwrap();
 
         for fd_set in application.schemas() {
             self.schemas.register_file_descriptor_set(fd_set);
         }
 
-        apps.insert(application.id().clone(), CellApplication { application });
+        apps.insert(
+            application.id().clone(),
+            CellApplication {
+                id: application.id().clone(),
+                name: application.name().to_string(),
+                version: application.version().to_string(),
+                public_key: application.public_key().clone(),
+                application: Some(application),
+            },
+        );
+        Ok(())
+    }
+
+    fn add_unloaded_application(
+        &self,
+        id: ApplicationId,
+        public_key: PublicKey,
+        cell_app: CellApplicationConfig,
+    ) -> Result<(), Error> {
+        let mut apps = self.applications.write().unwrap();
+
+        apps.insert(
+            id.clone(),
+            CellApplication {
+                id,
+                name: cell_app.name,
+                version: cell_app.version,
+                public_key,
+                application: None,
+            },
+        );
         Ok(())
     }
 
@@ -70,20 +111,36 @@ impl CellApplications {
 
 #[derive(Clone)]
 pub struct CellApplication {
-    application: Application,
+    id: ApplicationId,
+    name: String,
+    version: String,
+    public_key: PublicKey,
+    application: Option<Application>,
 }
 
 impl CellApplication {
-    pub fn application(&self) -> &Application {
-        &self.application
+    pub fn id(&self) -> &ApplicationId {
+        &self.id
     }
-}
 
-impl Deref for CellApplication {
-    type Target = Application;
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 
-    fn deref(&self) -> &Self::Target {
-        &self.application
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
+    pub fn public_key(&self) -> &PublicKey {
+        &self.public_key
+    }
+
+    pub fn is_loaded(&self) -> bool {
+        self.application.is_some()
+    }
+
+    pub fn get(&self) -> Option<&Application> {
+        self.application.as_ref()
     }
 }
 

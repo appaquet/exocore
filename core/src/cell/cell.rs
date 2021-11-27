@@ -167,7 +167,7 @@ impl Cell {
             // load apps from config
             let apps_dir = &cell.apps_directory();
             cell.apps
-                .load_from_configurations(apps_dir, config.apps.iter())?;
+                .load_from_configurations(cell.id(), apps_dir, config.apps.iter())?;
         }
 
         Ok(cell)
@@ -425,11 +425,11 @@ impl EitherCell {
 
 #[cfg(test)]
 mod tests {
-    use exocore_protos::core::{CellApplicationConfig, NodeCellConfig};
+    use exocore_protos::core::CellApplicationConfig;
 
     use super::*;
     use crate::{
-        cell::{Application, CellApplicationConfigExt, LocalNodeConfigExt},
+        cell::{Application, CellApplicationConfigExt},
         dir::{ram::RamDirectory, Directory},
     };
 
@@ -458,12 +458,18 @@ mod tests {
         cell_config.add_application(CellApplicationConfig::from_manifest(app.manifest().clone()));
         full_cell.save_config(&cell_config).unwrap();
 
-        // Inline cell config, expect app to be present, but unloaded
-        // let inlined_cell_config = cell_config.inlined().unwrap();
-        // let full_cell_prime = Cell::from_config(inlined_cell_config, node)
-        //     .unwrap()
-        //     .unwrap_full();
+        // Reload cell
+        let full_cell =
+            Cell::from_directory(full_cell.cell().directory().clone(), node.clone()).unwrap();
+        let apps = full_cell.cell().applications().applications().len();
+        assert_eq!(apps, 1);
 
-        // TODO: generate an app
+        // Inline cell config, expect app to be present, but unloaded
+        let inlined_cell_config = cell_config.inlined().unwrap();
+        let full_cell_prime = Cell::from_config(inlined_cell_config, node)
+            .unwrap()
+            .unwrap_full();
+        let apps = full_cell_prime.cell().applications().applications().len();
+        assert_eq!(apps, 1);
     }
 }
