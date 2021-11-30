@@ -31,7 +31,7 @@ pub fn handle_cmd(ctx: &Context, node_opts: &NodeOptions) -> anyhow::Result<()> 
 }
 
 fn cmd_init(ctx: &Context, init_opts: &InitOptions) -> anyhow::Result<()> {
-    let config_path = ctx.options.conf_path();
+    let config_path = ctx.options.node_config_path();
     if config_path.exists() {
         panic!(
             "Cannot initialize node. A file already exists at '{:?}'",

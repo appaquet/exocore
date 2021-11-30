@@ -255,6 +255,17 @@ impl Cell {
     pub fn temp_directory(&self) -> DynDirectory {
         self.directory().scope(PathBuf::from("tmp"))
     }
+
+    pub fn save_config(&self, config: &CellConfig) -> Result<(), Error> {
+        // TODO: Should swap config
+        Self::write_cell_config(self.directory(), config)
+    }
+
+    pub fn write_cell_config(dir: &DynDirectory, config: &CellConfig) -> Result<(), Error> {
+        let file = dir.open_write(Path::new(CELL_CONFIG_FILE))?;
+        config.to_yaml_writer(file)?;
+        Ok(())
+    }
 }
 
 impl std::fmt::Display for Cell {
@@ -325,7 +336,7 @@ impl FullCell {
 
         let cell = Cell::build(config.clone(), local_node)?;
         let full_cell = Self::build(keypair, cell);
-        full_cell.save_config(&config)?;
+        full_cell.cell().save_config(&config)?;
 
         Ok(full_cell)
     }
@@ -362,13 +373,6 @@ impl FullCell {
         }
 
         cell_config
-    }
-
-    pub fn save_config(&self, config: &CellConfig) -> Result<(), Error> {
-        // TODO: Should swap config
-        let file = self.cell.dir.open_write(Path::new(CELL_CONFIG_FILE))?;
-        config.to_yaml_writer(file)?;
-        Ok(())
     }
 
     #[cfg(any(test, feature = "tests-utils"))]
@@ -456,7 +460,7 @@ mod tests {
         let (_kp, app) = Application::generate(dir.clone(), "some app".to_string()).unwrap();
         let mut cell_config = full_cell.cell().config().clone();
         cell_config.add_application(CellApplicationConfig::from_manifest(app.manifest().clone()));
-        full_cell.save_config(&cell_config).unwrap();
+        full_cell.cell().save_config(&cell_config).unwrap();
 
         // Reload cell
         let full_cell =

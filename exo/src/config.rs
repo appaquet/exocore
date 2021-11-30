@@ -64,16 +64,15 @@ pub fn handle_cmd(ctx: &Context, config_opts: &ConfigOptions) -> anyhow::Result<
 }
 
 fn cmd_edit(ctx: &Context, _conf_opts: &ConfigOptions) {
-    let config_path = ctx.options.conf_path();
+    let node_config_before = ctx.options.read_node_config();
 
-    let node_config_before = ctx.options.read_configuration();
-
-    edit_file(config_path, |temp_path| {
+    let node_config_path = ctx.options.node_config_path();
+    edit_file(node_config_path, |temp_path| {
         LocalNodeConfig::from_yaml_file(temp_path)?;
         Ok(())
     });
 
-    let node_config_after = ctx.options.read_configuration();
+    let node_config_after = ctx.options.read_node_config();
 
     if node_config_before.addresses == node_config_after.addresses
         && node_config_before.name == node_config_after.name
@@ -96,7 +95,7 @@ fn cmd_validate(ctx: &Context, _conf_opts: &ConfigOptions) -> anyhow::Result<()>
 }
 
 fn cmd_print(ctx: &Context, _conf_opts: &ConfigOptions, print_opts: &PrintOptions) {
-    let node_config = ctx.options.read_configuration();
+    let node_config = ctx.options.read_node_config();
 
     if !print_opts.cell {
         cmd_print_node_config(node_config, print_opts);

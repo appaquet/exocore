@@ -24,7 +24,7 @@ use crate::{
     },
 };
 
-const CONFIG_FILE_NAME: &str = "node.yaml";
+pub const NODE_CONFIG_FILE: &str = "node.yaml";
 
 /// Represents a machine / process on which Exocore runs. A node can host
 /// multiple `Cell`.
@@ -260,7 +260,7 @@ impl LocalNode {
         let dir = dir.into();
 
         let config = {
-            let config_file = dir.open_read(Path::new(CONFIG_FILE_NAME))?;
+            let config_file = dir.open_read(Path::new(NODE_CONFIG_FILE))?;
             LocalNodeConfig::from_yaml_reader(config_file)?
         };
 
@@ -317,7 +317,7 @@ impl LocalNode {
 
     pub fn save_config(&self, config: &LocalNodeConfig) -> Result<(), Error> {
         // TODO: Should swap config
-        let config_file = self.dir.open_write(Path::new(CONFIG_FILE_NAME))?;
+        let config_file = self.dir.open_write(Path::new(NODE_CONFIG_FILE))?;
         config.to_yaml_writer(config_file)?;
         Ok(())
     }

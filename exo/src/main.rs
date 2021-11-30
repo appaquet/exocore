@@ -18,7 +18,7 @@ use std::{path::PathBuf, str::FromStr};
 
 use clap::Parser;
 use exocore_core::{
-    cell::LocalNodeConfigExt,
+    cell::{Cell, EitherCell, LocalNode, LocalNodeConfigExt},
     dir::{os::OsDirectory, DynDirectory},
 };
 use exocore_protos::core::LocalNodeConfig;
@@ -65,12 +65,19 @@ impl Options {
         OsDirectory::new(self.dir_path()).into()
     }
 
-    pub fn conf_path(&self) -> PathBuf {
-        self.dir.join("node.yaml")
+    pub fn get_node_and_cells(&self) -> (LocalNode, Vec<EitherCell>) {
+        let dir = self.node_directory();
+        let (either_cells, local_node) =
+            Cell::from_local_node_directory(dir).expect("Couldn't create cell from config");
+        (local_node, either_cells)
     }
 
-    pub fn read_configuration(&self) -> LocalNodeConfig {
-        let config_path = self.conf_path();
+    pub fn node_config_path(&self) -> PathBuf {
+        self.dir.join(exocore_core::cell::NODE_CONFIG_FILE)
+    }
+
+    pub fn read_node_config(&self) -> LocalNodeConfig {
+        let config_path = self.node_config_path();
 
         print_info(format!(
             "Using node in directory {}",

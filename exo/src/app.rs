@@ -14,13 +14,13 @@ use exocore_core::{
 };
 use exocore_protos::{
     apps::Manifest,
-    core::{cell_application_config, CellApplicationConfig, CellConfig},
+    core::{cell_application_config, CellApplicationConfig},
 };
 use tempfile::{tempdir_in, TempDir};
 use zip::write::FileOptions;
 
 use crate::{
-    term::{print_error, print_info, print_success, print_warning, style_value},
+    term::{print_action, print_error, print_info, print_success, print_warning, style_value},
     utils::expand_tild,
     Context,
 };
@@ -224,12 +224,7 @@ impl AppPackage {
         })
     }
 
-    pub async fn install(
-        &self,
-        cell: &Cell,
-        cell_config: &mut CellConfig,
-        overwrite: bool,
-    ) -> anyhow::Result<()> {
+    pub async fn install(&self, cell: &Cell, overwrite: bool) -> anyhow::Result<()> {
         let apps_dir = cell.apps_directory();
         let apps_dir_path = apps_dir.as_os_path()?;
         std::fs::create_dir_all(apps_dir_path).expect("Couldn't create app dir");
@@ -277,7 +272,12 @@ impl AppPackage {
         ));
         cell_app_config.package_url = self.url.clone();
 
+        let mut cell_config = cell.config().clone();
         cell_config.add_application(cell_app_config);
+
+        print_action("Writing cell config...");
+        cell.save_config(&cell_config)
+            .expect("Couldn't write cell config");
 
         Ok(())
     }
