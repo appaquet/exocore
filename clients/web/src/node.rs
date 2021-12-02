@@ -10,7 +10,7 @@ use crate::js::into_js_error;
 #[wasm_bindgen]
 #[derive(Clone)]
 pub struct LocalNode {
-    _node: CoreLocalNode,
+    pub(crate) node: CoreLocalNode,
     pub(crate) config: LocalNodeConfig,
 }
 
@@ -22,20 +22,14 @@ impl LocalNode {
             name: format!("web-{}", node.name()),
             ..node.config().clone()
         };
-        LocalNode {
-            _node: node,
-            config,
-        }
+        LocalNode { node, config }
     }
 
     pub(crate) fn from_config(config: LocalNodeConfig) -> Result<LocalNode, JsValue> {
         let node = CoreLocalNode::from_config(RamDirectory::new(), config.clone())
             .map_err(|err| into_js_error("couldn't create node from config", err))?;
 
-        Ok(LocalNode {
-            _node: node,
-            config,
-        })
+        Ok(LocalNode { node, config })
     }
 
     pub fn from_yaml(yaml: String) -> Result<LocalNode, JsValue> {

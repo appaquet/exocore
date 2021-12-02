@@ -53,7 +53,7 @@ impl<S: Store> Applications<S> {
                 app
             } else {
                 warn!(
-                    "Application '{}' (id={}) not loaded",
+                    "Application '{}' (id={}) not loaded. Run unpack to load them.",
                     cell_app.name(),
                     cell_app.id()
                 );
