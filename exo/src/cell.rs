@@ -664,9 +664,7 @@ fn cmd_print(ctx: &Context, cell_opts: &CellOptions, _print_opts: &PrintOptions)
 }
 
 fn cmd_list(ctx: &Context, _cell_opts: &CellOptions) {
-    let node_dir = ctx.options.node_directory();
-    let (either_cells, _local_node) =
-        Cell::from_local_node_directory(node_dir).expect("Couldn't create cell from config");
+    let (_local_node, either_cells) = ctx.options.get_node_and_cells();
 
     print_spacer();
     let mut rows = Vec::new();

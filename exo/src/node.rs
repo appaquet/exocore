@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::path::Path;
 
 use exocore_core::cell::{LocalNode, LocalNodeConfigExt};
 use exocore_protos::core::{LocalNodeConfig, NodeAddresses};
@@ -31,11 +31,11 @@ pub fn handle_cmd(ctx: &Context, node_opts: &NodeOptions) -> anyhow::Result<()> 
 }
 
 fn cmd_init(ctx: &Context, init_opts: &InitOptions) -> anyhow::Result<()> {
-    let config_path = ctx.options.node_config_path();
-    if config_path.exists() {
+    let node_dir = ctx.options.node_directory();
+    if node_dir.exists(Path::new(exocore_core::cell::NODE_CONFIG_FILE)) {
         panic!(
-            "Cannot initialize node. A file already exists at '{:?}'",
-            config_path
+            "Cannot initialize node. A node configuration already exists in '{:?}'",
+            node_dir.as_os_path().unwrap()
         );
     }
 
@@ -81,11 +81,10 @@ fn cmd_init(ctx: &Context, init_opts: &InitOptions) -> anyhow::Result<()> {
         ..local_node.config().clone()
     };
 
-    print_action(format!(
-        "Writing configuration to {}",
-        style_value(&config_path)
-    ));
-    let config_file = File::create(&config_path)?;
+    print_action("Writing node configuration");
+    let config_file = node_dir
+        .open_create(Path::new(exocore_core::cell::NODE_CONFIG_FILE))
+        .expect("Couldn't create node configuration file");
     local_node_config.to_yaml_writer(config_file)?;
 
     print_success(format!(

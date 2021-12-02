@@ -5,9 +5,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use exocore_protos::{
-    apps::Manifest, core::LocalNodeConfig, generated::exocore_core::CellConfig, registry::Registry,
-};
+use exocore_protos::{apps::Manifest, generated::exocore_core::CellConfig, registry::Registry};
 use libp2p::PeerId;
 
 use super::{
@@ -16,7 +14,7 @@ use super::{
     NodeId,
 };
 use crate::{
-    dir::{ram::RamDirectory, DynDirectory},
+    dir::DynDirectory,
     sec::keys::{Keypair, PublicKey},
 };
 
@@ -95,15 +93,6 @@ impl Cell {
         }
 
         Ok(either_cells)
-    }
-
-    #[deprecated]
-    pub fn from_local_node_config(
-        node_config: LocalNodeConfig,
-    ) -> Result<(Vec<EitherCell>, LocalNode), Error> {
-        let local_node = LocalNode::from_config(RamDirectory::new(), node_config)?;
-        let cells = Self::from_local_node(local_node.clone())?;
-        Ok((cells, local_node))
     }
 
     pub fn from_local_node_directory(

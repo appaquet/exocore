@@ -90,14 +90,14 @@ fn cmd_edit(ctx: &Context, _conf_opts: &ConfigOptions) {
 
 fn cmd_validate(ctx: &Context, _conf_opts: &ConfigOptions) -> anyhow::Result<()> {
     // create instance to validate the config
-    let dir = ctx.options.node_directory();
-    let (_cells, _node) = exocore_core::cell::Cell::from_local_node_directory(dir)?;
+    let (_cells, _node) = ctx.options.get_node_and_cells();
 
     Ok(())
 }
 
 fn cmd_print(ctx: &Context, _conf_opts: &ConfigOptions, print_opts: &PrintOptions) {
-    let node_config = ctx.options.read_node_config();
+    let (node, _cells) = ctx.options.get_node_and_cells();
+    let node_config = node.config().clone();
 
     if !print_opts.cell {
         cmd_print_node_config(node_config, print_opts);

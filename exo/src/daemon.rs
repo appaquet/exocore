@@ -22,8 +22,7 @@ use futures::{Future, FutureExt};
 use crate::Context;
 
 pub async fn cmd_daemon(ctx: &Context) -> anyhow::Result<()> {
-    let node_dir = ctx.options.node_directory();
-    let (either_cells, local_node) = Cell::from_local_node_directory(node_dir)?;
+    let (local_node, either_cells) = ctx.options.get_node_and_cells();
     let node_config = local_node.config().clone();
 
     let clock = Clock::new();

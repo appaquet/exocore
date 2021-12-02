@@ -88,8 +88,6 @@ message NodeCellConfig {
     }
 
     string id = 3;
-
-    // TODO: Add basic info required to define cell (id, name, etc)
 }
 
 // Entity store configuration for the node (i.e. not global)

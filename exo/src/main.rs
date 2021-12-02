@@ -18,10 +18,9 @@ use std::{path::PathBuf, str::FromStr};
 
 use clap::Parser;
 use exocore_core::{
-    cell::{Cell, EitherCell, LocalNode, LocalNodeConfigExt},
+    cell::{Cell, EitherCell, LocalNode},
     dir::{os::OsDirectory, DynDirectory},
 };
-use exocore_protos::core::LocalNodeConfig;
 use log::LevelFilter;
 use term::*;
 use utils::expand_tild;
@@ -70,21 +69,6 @@ impl Options {
         let (either_cells, local_node) =
             Cell::from_local_node_directory(dir).expect("Couldn't create cell from config");
         (local_node, either_cells)
-    }
-
-    pub fn node_config_path(&self) -> PathBuf {
-        self.dir.join(exocore_core::cell::NODE_CONFIG_FILE)
-    }
-
-    pub fn read_node_config(&self) -> LocalNodeConfig {
-        let config_path = self.node_config_path();
-
-        print_info(format!(
-            "Using node in directory {}",
-            style_value(config_path.to_string_lossy()),
-        ));
-
-        LocalNodeConfig::from_yaml_file(&config_path).expect("Couldn't read node config")
     }
 }
 

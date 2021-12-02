@@ -98,7 +98,7 @@ where
             .cell()
             .store_directory()
             .as_os_path()
-            .expect("Expected cell to be in a OS directory")
+            .expect("Expected cell to be in an OS directory")
             .join("chain");
         if std::fs::metadata(&chain_index_dir).is_err() {
             std::fs::create_dir_all(&chain_index_dir)?;
