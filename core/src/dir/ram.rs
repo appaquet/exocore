@@ -60,6 +60,19 @@ impl Directory for RamDirectory {
         Ok(Box::new(RamFile { data, cursor: 0 }))
     }
 
+    fn open_create(&self, path: &Path) -> Result<Box<dyn FileWrite>, Error> {
+        if path.parent().is_none() {
+            return Err(Error::Path(anyhow!("expected a non-root path to a file")));
+        }
+
+        let mut files = self.files.write().unwrap();
+
+        let data = RamFileData::default();
+        files.insert(path.to_path_buf(), data.clone());
+
+        Ok(Box::new(RamFile { data, cursor: 0 }))
+    }
+
     fn list(&self, prefix: Option<&Path>) -> Result<Vec<Box<dyn FileStat>>, Error> {
         let prefix = prefix.unwrap_or_else(|| Path::new(""));
         let files = self.files.read().unwrap();

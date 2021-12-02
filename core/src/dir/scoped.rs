@@ -39,6 +39,14 @@ impl Directory for ScopedDirectory {
         self.inner.open_write(&path)
     }
 
+    fn open_create(
+        &self,
+        path: &std::path::Path,
+    ) -> Result<Box<dyn super::FileWrite>, super::Error> {
+        let path = self.join_path(path, true)?;
+        self.inner.open_create(&path)
+    }
+
     fn list(
         &self,
         prefix: Option<&std::path::Path>,

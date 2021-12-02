@@ -6,7 +6,7 @@ use exocore_protos::core::{
 use crate::{
     cell::copy_local_node_to_cells,
     term::{confirm, print_info},
-    utils::edit_file,
+    utils::edit_string,
     Context,
 };
 
@@ -64,18 +64,20 @@ pub fn handle_cmd(ctx: &Context, config_opts: &ConfigOptions) -> anyhow::Result<
 }
 
 fn cmd_edit(ctx: &Context, _conf_opts: &ConfigOptions) {
-    let node_config_before = ctx.options.read_node_config();
+    let (local_node, _cells) = ctx.options.get_node_and_cells();
 
-    let node_config_path = ctx.options.node_config_path();
-    edit_file(node_config_path, |temp_path| {
-        LocalNodeConfig::from_yaml_file(temp_path)?;
-        Ok(())
+    let config_before = local_node.config().clone();
+    let config_before_yaml = config_before
+        .to_yaml()
+        .expect("failed to serialize node config to yaml");
+
+    let node_config_after = edit_string(config_before_yaml, |config_yaml| {
+        let config_bytes = config_yaml.as_bytes();
+        Ok(LocalNodeConfig::from_yaml_reader(config_bytes)?)
     });
 
-    let node_config_after = ctx.options.read_node_config();
-
-    if node_config_before.addresses == node_config_after.addresses
-        && node_config_before.name == node_config_after.name
+    if config_before.addresses == node_config_after.addresses
+        && config_before.name == node_config_after.name
     {
         print_info("Node name or addresses didn't change. Not copying to cell.");
         return;

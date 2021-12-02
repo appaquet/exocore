@@ -78,7 +78,6 @@ fn main() {
                 .field_attribute("LocalNodeConfig.name", "#[serde(default)]")
                 .field_attribute("LocalNodeConfig.id", "#[serde(default)]")
                 .field_attribute("LocalNodeConfig.listen_addresses", "#[serde(default)]")
-                .field_attribute("LocalNodeConfig.path", "#[serde(default)]")
                 .field_attribute("LocalNodeConfig.store", "#[serde(default)]")
                 .field_attribute("NodeStoreConfig.index", "#[serde(default)]")
                 .field_attribute("NodeStoreConfig.query_parallelism", "#[serde(default)]")
@@ -99,10 +98,8 @@ fn main() {
                 .field_attribute("CellConfig.name", "#[serde(default)]")
                 .field_attribute("CellConfig.keypair", "#[serde(default)]")
                 .field_attribute("CellConfig.id", "#[serde(default)]")
-                .field_attribute("CellConfig.path", "#[serde(default)]")
                 .field_attribute("CellConfig.apps", "#[serde(default)]")
                 .field_attribute("CellNodeConfig.roles", "#[serde(default)]")
-                .field_attribute("Manifest.path", "#[serde(default)]")
                 .field_attribute("Manifest.schemas", "#[serde(default)]")
                 .field_attribute("ManifestModule.multihash", "#[serde(default)]");
 

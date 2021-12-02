@@ -14,7 +14,7 @@ use exocore_protos::{
 use libp2p::core::{Multiaddr, PeerId};
 use url::Url;
 
-use super::{error::Error, Cell, CellConfigExt, CellId};
+use super::{error::Error, Cell, CellId};
 use crate::{
     cell::LocalNodeConfigExt,
     dir::{ram::RamDirectory, DynDirectory},
@@ -296,7 +296,6 @@ impl LocalNode {
         &self.ident.config
     }
 
-    #[deprecated]
     pub fn inlined_config(&self) -> Result<LocalNodeConfig, Error> {
         let mut inlined = self.ident.config.clone();
         for cell_config in &mut inlined.cells {
@@ -308,7 +307,7 @@ impl LocalNode {
             let cell_dir = self.cell_directory(&cell_id);
             let cell = Cell::from_directory(cell_dir, self.clone())?;
             cell_config.location = Some(node_cell_config::Location::Inline(
-                cell.cell().config().inlined()?,
+                cell.cell().config().clone(),
             ));
         }
 
@@ -316,8 +315,7 @@ impl LocalNode {
     }
 
     pub fn save_config(&self, config: &LocalNodeConfig) -> Result<(), Error> {
-        // TODO: Should swap config
-        let config_file = self.dir.open_write(Path::new(NODE_CONFIG_FILE))?;
+        let config_file = self.dir.open_create(Path::new(NODE_CONFIG_FILE))?;
         config.to_yaml_writer(config_file)?;
         Ok(())
     }
@@ -552,7 +550,5 @@ mod tests {
 
         let cells = Cell::from_local_node(node).unwrap();
         assert_eq!(cells.len(), 1);
-
-        // TODO: Test inline
     }
 }

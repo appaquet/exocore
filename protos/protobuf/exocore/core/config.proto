@@ -53,6 +53,8 @@ message ConfigResponse {
 }
 
 message LocalNodeConfig {
+    reserved 5;
+
     string keypair = 1;
 
     string public_key = 2;
@@ -60,9 +62,6 @@ message LocalNodeConfig {
     string name = 3;
 
     string id = 4;
-
-    // TODO: Should get rid of this
-    string path = 5;
 
     NodeAddresses listen_addresses = 10;
 
@@ -82,14 +81,14 @@ message NodeAddresses {
 }
 
 message NodeCellConfig {
-    // TODO: Should get rid of this
+    reserved 2;
+
     oneof location {
        CellConfig inline = 1;
-
-       string path = 2;
     }
 
     string id = 3;
+
     // TODO: Add basic info required to define cell (id, name, etc)
 }
 
@@ -175,6 +174,8 @@ message SignedCellConfig {
 }
 
 message CellConfig {
+    reserved 5;
+
     string public_key = 1;
 
     string keypair = 2;
@@ -182,9 +183,6 @@ message CellConfig {
     string name = 3;
 
     string id = 4;
-
-    // TODO: Should get rid of this
-    string path = 5;
 
     repeated CellNodeConfig nodes = 6;
 
@@ -215,6 +213,8 @@ message NodeConfig {
 }
 
 message CellApplicationConfig {
+    reserved 6;
+
     string name = 1;
 
     string version = 2;
@@ -223,12 +223,8 @@ message CellApplicationConfig {
 
     string package_url = 4;
 
-    // TODO: Should get rid of this
     oneof location {
         // Manifest is inline within the config.
         exocore.apps.Manifest inline = 5;
-
-        // Application is unpack into a local directory.
-        string path = 6;
     }
 }

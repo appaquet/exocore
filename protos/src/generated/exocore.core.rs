@@ -101,10 +101,6 @@ pub struct LocalNodeConfig {
     #[prost(string, tag = "4")]
     #[serde(default)]
     pub id: ::prost::alloc::string::String,
-    /// TODO: Should get rid of this
-    #[prost(string, tag = "5")]
-    #[serde(default)]
-    pub path: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "10")]
     #[serde(default)]
     pub listen_addresses: ::core::option::Option<NodeAddresses>,
@@ -129,26 +125,21 @@ pub struct NodeAddresses {
 }
 #[derive(Serialize, Deserialize, Clone, PartialEq, ::prost::Message)]
 pub struct NodeCellConfig {
-    /// TODO: Add basic info required to define cell (id, name, etc)
     #[prost(string, tag = "3")]
     #[serde(default)]
     pub id: ::prost::alloc::string::String,
-    /// TODO: Should get rid of this
-    #[prost(oneof = "node_cell_config::Location", tags = "1, 2")]
+    #[prost(oneof = "node_cell_config::Location", tags = "1")]
     #[serde(flatten)]
     pub location: ::core::option::Option<node_cell_config::Location>,
 }
 /// Nested message and enum types in `NodeCellConfig`.
 pub mod node_cell_config {
-    /// TODO: Should get rid of this
     #[derive(Serialize, Deserialize)]
     #[serde(rename_all = "lowercase")]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Location {
         #[prost(message, tag = "1")]
         Inline(super::CellConfig),
-        #[prost(string, tag = "2")]
-        Path(::prost::alloc::string::String),
     }
 }
 /// Entity store configuration for the node (i.e. not global)
@@ -263,10 +254,6 @@ pub struct CellConfig {
     #[prost(string, tag = "4")]
     #[serde(default)]
     pub id: ::prost::alloc::string::String,
-    /// TODO: Should get rid of this
-    #[prost(string, tag = "5")]
-    #[serde(default)]
-    pub path: ::prost::alloc::string::String,
     #[prost(message, repeated, tag = "6")]
     pub nodes: ::prost::alloc::vec::Vec<CellNodeConfig>,
     #[prost(message, repeated, tag = "7")]
@@ -327,14 +314,12 @@ pub struct CellApplicationConfig {
     pub public_key: ::prost::alloc::string::String,
     #[prost(string, tag = "4")]
     pub package_url: ::prost::alloc::string::String,
-    /// TODO: Should get rid of this
-    #[prost(oneof = "cell_application_config::Location", tags = "5, 6")]
+    #[prost(oneof = "cell_application_config::Location", tags = "5")]
     #[serde(flatten)]
     pub location: ::core::option::Option<cell_application_config::Location>,
 }
 /// Nested message and enum types in `CellApplicationConfig`.
 pub mod cell_application_config {
-    /// TODO: Should get rid of this
     #[derive(Serialize, Deserialize)]
     #[serde(rename_all = "lowercase")]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
@@ -342,9 +327,6 @@ pub mod cell_application_config {
         /// Manifest is inline within the config.
         #[prost(message, tag = "5")]
         Inline(super::super::apps::Manifest),
-        /// Application is unpack into a local directory.
-        #[prost(string, tag = "6")]
-        Path(::prost::alloc::string::String),
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]

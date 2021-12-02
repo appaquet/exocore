@@ -14,6 +14,7 @@ pub mod web;
 pub trait Directory: Send + Sync {
     fn open_read(&self, path: &Path) -> Result<Box<dyn FileRead>, Error>;
     fn open_write(&self, path: &Path) -> Result<Box<dyn FileWrite>, Error>;
+    fn open_create(&self, path: &Path) -> Result<Box<dyn FileWrite>, Error>;
     fn list(&self, prefix: Option<&Path>) -> Result<Vec<Box<dyn FileStat>>, Error>;
     fn stat(&self, path: &Path) -> Result<Box<dyn FileStat>, Error>;
     fn exists(&self, path: &Path) -> bool;
@@ -98,7 +99,7 @@ mod tests {
             // can create file
             assert!(!dir.exists(Path::new("file1")));
 
-            let mut file = dir.open_write(Path::new("file1")).unwrap();
+            let mut file = dir.open_create(Path::new("file1")).unwrap();
             file.write_all(b"Hello ").unwrap();
             file.write_all(b"world").unwrap();
 
@@ -145,6 +146,17 @@ mod tests {
             buf.clear();
             file.read_to_string(&mut buf).unwrap();
             assert_eq!("monde", buf);
+        }
+
+        {
+            // can create / overwrite a file
+            let mut file = dir.open_create(Path::new("file1")).unwrap();
+            file.write_all(b"Yo").unwrap();
+            drop(file);
+
+            let stat = dir.stat(Path::new("file1")).unwrap();
+            assert_eq!(stat.path(), Path::new("file1"));
+            assert_eq!(stat.size(), 2);
         }
 
         {

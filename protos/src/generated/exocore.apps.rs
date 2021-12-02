@@ -11,9 +11,6 @@ pub struct Manifest {
     pub schemas: ::prost::alloc::vec::Vec<ManifestSchema>,
     #[prost(message, optional, tag = "5")]
     pub module: ::core::option::Option<ManifestModule>,
-    #[prost(string, tag = "6")]
-    #[serde(default)]
-    pub path: ::prost::alloc::string::String,
 }
 #[derive(Serialize, Deserialize, Clone, PartialEq, ::prost::Message)]
 pub struct ManifestSchema {

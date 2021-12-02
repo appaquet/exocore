@@ -18,21 +18,13 @@ use exocore_core::{
     time::Clock,
 };
 use exocore_protos::{
-    core::{
-        cell_application_config, cell_node_config, CellConfig, CellNodeConfig, LocalNodeConfig,
-        NodeCellConfig,
-    },
+    core::{cell_node_config, CellConfig, CellNodeConfig, LocalNodeConfig, NodeCellConfig},
     generated::data_chain_capnp::{block_header, chain_operation},
     prost::Message,
     store::EntityMutation,
 };
 
-use crate::{
-    app::AppPackage,
-    disco::prompt_discovery_pin,
-    utils::{edit_file, edit_string},
-    Context, *,
-};
+use crate::{app::AppPackage, disco::prompt_discovery_pin, utils::edit_string, Context, *};
 
 #[derive(clap::Parser, Clone)]
 pub struct CellOptions {
@@ -156,11 +148,7 @@ struct NodeOptions {
 }
 
 #[derive(clap::Parser, Clone)]
-pub struct PrintOptions {
-    /// Inline configuration instead of pointing to external objects.
-    #[clap(long)]
-    pub inline: bool,
-}
+pub struct PrintOptions {}
 
 #[derive(clap::Parser, Clone)]
 enum NodeCommand {
@@ -299,9 +287,7 @@ fn cmd_init(
     _cell_opts: &CellOptions,
     init_opts: &InitOptions,
 ) -> anyhow::Result<()> {
-    let node_dir = ctx.options.node_directory();
-    let local_node =
-        LocalNode::from_directory(node_dir.clone()).expect("Couldn't create node from node config");
+    let (local_node, _cells) = ctx.options.get_node_and_cells();
     let node_config = local_node.config();
 
     let cell_keypair = Keypair::generate_ed25519();
@@ -363,18 +349,18 @@ fn cmd_init(
             ..Default::default()
         };
 
-        write_cell_config(ctx, &local_node, &cell_config);
+        let cell_dir = local_node.cell_directory(&cell_id);
+        Cell::write_cell_config(&cell_dir, &cell_config)
+            .expect("Couldn't write cell configuration");
 
         cell_config
     };
 
-    // TODO: Should use node.save_config
-    add_node_config_cell(ctx, node_config, &cell_config);
+    add_node_cell(&local_node, &cell_config);
 
     if !init_opts.no_genesis {
         // Create genesis block
-        let (either_cells, _local_node) =
-            Cell::from_local_node_directory(node_dir).expect("Couldn't create cell from config");
+        let (_local_node, either_cells) = ctx.options.get_node_and_cells();
 
         let cell = extract_cell_by_pk(either_cells, &cell_config.public_key)
             .expect("Couldn't find just created cell in config");
@@ -400,10 +386,6 @@ async fn cmd_node_add(
 ) -> anyhow::Result<()> {
     let (_, cell) = get_cell(ctx, cell_opts);
     let cell = cell.cell();
-
-    let config_path = cell_config_path(cell);
-    let mut cell_config =
-        CellConfig::from_yaml_file(&config_path).expect("Couldn't read cell config");
 
     let disco_client = ctx.get_discovery_client();
 
@@ -478,19 +460,14 @@ async fn cmd_node_add(
         return Err(anyhow!("Operation aborted"));
     }
 
+    let mut cell_config = cell.config().clone();
     cell_config.add_node(cell_node);
 
-    print_action(format!(
-        "Writing cell config to {}",
-        style_value(&config_path)
-    ));
-    cell_config
-        .to_yaml_file(&config_path)
-        .expect("Couldn't write cell config");
+    print_action("Saving cell config...");
+    cell.save_config(&cell_config)
+        .expect("Couldn't save cell config");
 
-    let cell_config_inlined = cell_config
-        .inlined()
-        .expect("Couldn't inline cell config")
+    let cell_config_yaml = cell_config
         .to_yaml()
         .expect("Couldn't convert cell config to yaml");
 
@@ -499,7 +476,7 @@ async fn cmd_node_add(
             .reply(
                 reply_pin.expect("Expected reply pin, but didn't find one"),
                 reply_token.expect("Expected reply reply, but didn't find one"),
-                cell_config_inlined.as_bytes(),
+                cell_config_yaml.as_bytes(),
                 false,
             )
             .await
@@ -510,7 +487,7 @@ async fn cmd_node_add(
             style_value(node_config.name)
         ));
     } else if confirm(ctx, "Do you want to print cell configuration?") {
-        print!("{}", cell_config_inlined);
+        print!("{}", cell_config_yaml);
     }
 
     Ok(())
@@ -629,9 +606,12 @@ async fn cmd_join(
         )
     };
 
-    write_cell_config(ctx, &local_node, &cell_config);
+    let cell_id = CellId::from_str(&cell_config.id).expect("Invalid cell id");
+    let cell_dir = local_node.cell_directory(&cell_id);
 
-    add_node_config_cell(ctx, node_config, &cell_config);
+    Cell::write_cell_config(&cell_dir, &cell_config).expect("Couldn't write cell config");
+
+    add_node_cell(&local_node, &cell_config);
 
     if !join_opts.no_app_unpack {
         let cell_opts = CellOptions {
@@ -642,8 +622,6 @@ async fn cmd_join(
         let cell = cell.cell();
 
         unpack_cell_apps(cell, &AppUnpackOptions::default()).await;
-
-        write_cell_config(ctx, &local_node, &cell_config);
     }
 
     print_success(format!(
@@ -659,29 +637,30 @@ fn cmd_edit(ctx: &Context, cell_opts: &CellOptions) {
     let (_, cell) = get_cell(ctx, cell_opts);
     let cell = cell.cell();
 
-    // TODO: Use edit_string
-    let config_path = cell_config_path(cell);
-    edit_file(&config_path, |temp_path| {
-        CellConfig::from_yaml_file(temp_path)?;
-        Ok(())
+    let cell_config = cell.config();
+    let cell_config_yaml = cell_config
+        .to_yaml()
+        .expect("Couldn't convert cell config to yaml");
+
+    let new_cell_config = edit_string(cell_config_yaml, |new_config| {
+        let config_bytes = new_config.as_bytes();
+        Ok(CellConfig::from_yaml(config_bytes)?)
     });
+
+    cell.save_config(&new_cell_config)
+        .expect("Couldn't save cell config");
 }
 
-fn cmd_print(ctx: &Context, cell_opts: &CellOptions, print_opts: &PrintOptions) {
+fn cmd_print(ctx: &Context, cell_opts: &CellOptions, _print_opts: &PrintOptions) {
     let (_, cell) = get_cell(ctx, cell_opts);
     let cell = cell.cell();
-    let mut config = cell.config().clone();
 
-    if print_opts.inline {
-        config = config.inlined().expect("Couldn't inline config");
-    }
+    let config_yaml = cell
+        .config()
+        .to_yaml()
+        .expect("Couldn't convert cell config to yaml");
 
-    println!(
-        "{}",
-        config
-            .to_yaml()
-            .expect("Couldn't convert cell config to yaml")
-    );
+    println!("{}", config_yaml,);
 }
 
 fn cmd_list(ctx: &Context, _cell_opts: &CellOptions) {
@@ -1116,39 +1095,37 @@ async fn cmd_app_unpack(
 }
 
 async fn unpack_cell_apps(cell: &Cell, unpack_opts: &AppUnpackOptions) {
-    let cell_config = cell.config().clone();
-    for app in cell_config.apps {
+    for cell_app in cell.applications().applications() {
         if let Some(for_app) = &unpack_opts.app {
-            if *for_app != app.name {
+            if *for_app != cell_app.name() {
                 continue;
             }
         }
-
-        match app.location.as_ref() {
-            None | Some(cell_application_config::Location::Inline(_)) => {
-                print_info(format!(
-                    "Installing app {} ({})",
-                    style_value(app.name),
-                    style_value(app.version)
-                ));
-
-                let pkg = AppPackage::fetch_package_url(cell, &app.package_url)
-                    .await
-                    .expect("Couldn't fetch package");
-
-                pkg.install(cell, !unpack_opts.no_overwrite)
-                    .await
-                    .expect("Couldn't install app");
-
-                let manifest = pkg.app.manifest();
-                print_info(format!(
-                    "Application {} version {} got installed into cell.",
-                    style_value(&manifest.name),
-                    style_value(&manifest.version),
-                ));
-            }
-            _ => {}
+        if cell_app.is_loaded() {
+            // already unpacked
+            continue;
         }
+
+        print_info(format!(
+            "Installing app {} ({})",
+            style_value(cell_app.name()),
+            style_value(cell_app.version())
+        ));
+
+        let pkg = AppPackage::fetch_package_url(cell, cell_app.package_url())
+            .await
+            .expect("Couldn't fetch package");
+
+        pkg.install(cell, !unpack_opts.no_overwrite)
+            .await
+            .expect("Couldn't install app");
+
+        let manifest = pkg.app.manifest();
+        print_info(format!(
+            "Application {} version {} got installed into cell.",
+            style_value(&manifest.name),
+            style_value(&manifest.version),
+        ));
     }
 }
 
@@ -1188,16 +1165,6 @@ fn extract_cell_by_name(either_cells: Vec<EitherCell>, name: &str) -> Option<Eit
     either_cells.into_iter().find(|c| c.cell().name() == name)
 }
 
-#[deprecated]
-pub fn cell_config_path(cell: &Cell) -> PathBuf {
-    // TODO: Move to Cell
-    let cell_directory = cell
-        .directory()
-        .as_os_path()
-        .expect("Cell is not stored in an OS directory");
-    cell_directory.join("cell.yaml")
-}
-
 fn create_genesis_block(cell: FullCell) -> anyhow::Result<()> {
     let chain_dir = cell
         .cell()
@@ -1230,48 +1197,26 @@ fn create_genesis_block(cell: FullCell) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[deprecated]
-pub fn write_cell_config(ctx: &Context, local_node: &LocalNode, config: &CellConfig) {
-    if config.public_key.is_empty() {
-        panic!("Expected cell to have a public key");
-    }
-
-    let cell_id = CellId::from_str(&config.id).expect("Couldn't parse cell id");
-    let cell_dir = local_node.cell_directory(&cell_id);
-
-    print_action(format!("Writing cell config for cell {:?}", cell_id,));
-    Cell::write_cell_config(&cell_dir, config).expect("Couldn't write cell config");
-}
-
-#[deprecated]
-fn add_node_config_cell(ctx: &Context, node_config: &LocalNodeConfig, cell_config: &CellConfig) {
+fn add_node_cell(node: &LocalNode, cell_config: &CellConfig) {
     let node_cell = NodeCellConfig {
         id: cell_config.id.clone(),
         location: None,
     };
 
-    print_action(format!(
-        "Writing cell to node config {}",
-        style_value(ctx.options.node_config_path())
-    ));
+    print_action("Writing cell to node");
 
-    let mut node_config = node_config.clone();
+    let mut node_config = node.config().clone();
     node_config.add_cell(node_cell);
 
-    node_config
-        .to_yaml_file(ctx.options.node_config_path())
+    node.save_config(&node_config)
         .expect("Couldn't write node config");
 }
 
 pub fn copy_local_node_to_cells(ctx: &Context, node_config: LocalNodeConfig) {
-    let (local_node, either_cells) = ctx.options.get_node_and_cells();
+    let (_local_node, either_cells) = ctx.options.get_node_and_cells();
 
     for cell in either_cells {
-        // TOOD: use cell.unwrap_full().save_config(config)
-        let config_path = cell_config_path(cell.cell());
-        let mut cell_config =
-            CellConfig::from_yaml_file(config_path).expect("Couldn't read cell config");
-
+        let mut cell_config = cell.cell().config().clone();
         let changed = if let Some(cell_node_config) = cell_config
             .find_node(&node_config.public_key)
             .and_then(|c| c.node.as_mut())
@@ -1284,7 +1229,9 @@ pub fn copy_local_node_to_cells(ctx: &Context, node_config: LocalNodeConfig) {
         };
 
         if changed {
-            write_cell_config(ctx, &local_node, &cell_config);
+            cell.cell()
+                .save_config(&cell_config)
+                .expect("Couldn't write cell config");
         }
     }
 }

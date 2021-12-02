@@ -59,6 +59,19 @@ impl Directory for OsDirectory {
         Ok(Box::new(OsFile { file }))
     }
 
+    fn open_create(&self, path: &Path) -> Result<Box<dyn FileWrite>, Error> {
+        let path = self.resolve_path(path, true)?;
+        create_parent_path(&path)?;
+
+        let file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .read(true)
+            .truncate(true)
+            .open(path)?;
+        Ok(Box::new(OsFile { file }))
+    }
+
     fn list(&self, prefix: Option<&Path>) -> Result<Vec<Box<dyn FileStat>>, Error> {
         let prefix = if let Some(prefix) = prefix {
             let _ = self.resolve_path(prefix, false)?; // validate

@@ -29,13 +29,19 @@ unsafe impl Send for WebDirectory {}
 impl Directory for WebDirectory {
     fn open_read(&self, path: &Path) -> Result<Box<dyn FileRead>, Error> {
         let key = path_to_key(path, true)?;
-        let file = WebFile::new(self.storage.clone(), key, true)?;
+        let file = WebFile::new(self.storage.clone(), key, false, true)?;
         Ok(Box::new(file))
     }
 
     fn open_write(&self, path: &Path) -> Result<Box<dyn FileWrite>, Error> {
         let key = path_to_key(path, true)?;
-        let file = WebFile::new(self.storage.clone(), key, false)?;
+        let file = WebFile::new(self.storage.clone(), key, false, false)?;
+        Ok(Box::new(file))
+    }
+
+    fn open_create(&self, path: &Path) -> Result<Box<dyn FileWrite>, Error> {
+        let key = path_to_key(path, true)?;
+        let file = WebFile::new(self.storage.clone(), key, true, false)?;
         Ok(Box::new(file))
     }
 
@@ -112,11 +118,16 @@ pub struct WebFile {
 }
 
 impl WebFile {
-    fn new(storage: Arc<Mutex<Storage>>, key: String, readonly: bool) -> Result<Self, Error> {
+    fn new(
+        storage: Arc<Mutex<Storage>>,
+        key: String,
+        new: bool,
+        readonly: bool,
+    ) -> Result<Self, Error> {
         // load data into a ram file
         let data = {
             let storage = storage.lock().unwrap();
-            let data = storage.get_bytes(&key);
+            let data = if !new { storage.get_bytes(&key) } else { None };
 
             if let Some(data) = data {
                 data

@@ -262,7 +262,7 @@ impl Cell {
     }
 
     pub fn write_cell_config(dir: &DynDirectory, config: &CellConfig) -> Result<(), Error> {
-        let file = dir.open_write(Path::new(CELL_CONFIG_FILE))?;
+        let file = dir.open_create(Path::new(CELL_CONFIG_FILE))?;
         config.to_yaml_writer(file)?;
         Ok(())
     }
@@ -468,11 +468,8 @@ mod tests {
         let apps = full_cell.cell().applications().applications().len();
         assert_eq!(apps, 1);
 
-        // Inline cell config, expect app to be present, but unloaded
-        let inlined_cell_config = cell_config.inlined().unwrap();
-        let full_cell_prime = Cell::from_config(inlined_cell_config, node)
-            .unwrap()
-            .unwrap_full();
+        // Load cell from config directly. Should still have the app, but unloaded.
+        let full_cell_prime = Cell::from_config(cell_config, node).unwrap().unwrap_full();
         let apps = full_cell_prime.cell().applications().applications().len();
         assert_eq!(apps, 1);
     }

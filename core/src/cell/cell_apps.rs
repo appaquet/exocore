@@ -49,7 +49,7 @@ impl CellApplications {
                         anyhow!("failed to load from directory: {}", err),
                     )
                 })?;
-                self.add_loaded_application(app)?;
+                self.add_loaded_application(cell_app.clone(), app)?;
             } else {
                 info!(
                     "{}: Adding unloaded application '{}' (id='{}')",
@@ -62,7 +62,11 @@ impl CellApplications {
         Ok(())
     }
 
-    fn add_loaded_application(&self, application: Application) -> Result<(), Error> {
+    fn add_loaded_application(
+        &self,
+        cell_app_config: CellApplicationConfig,
+        application: Application,
+    ) -> Result<(), Error> {
         let mut apps = self.applications.write().unwrap();
 
         for fd_set in application.schemas() {
@@ -77,6 +81,7 @@ impl CellApplications {
                 version: application.version().to_string(),
                 public_key: application.public_key().clone(),
                 application: Some(application),
+                package_url: cell_app_config.package_url,
             },
         );
         Ok(())
@@ -98,6 +103,7 @@ impl CellApplications {
                 version: cell_app.version,
                 public_key,
                 application: None,
+                package_url: cell_app.package_url,
             },
         );
         Ok(())
@@ -116,6 +122,7 @@ pub struct CellApplication {
     version: String,
     public_key: PublicKey,
     application: Option<Application>,
+    package_url: String,
 }
 
 impl CellApplication {
@@ -133,6 +140,10 @@ impl CellApplication {
 
     pub fn public_key(&self) -> &PublicKey {
         &self.public_key
+    }
+
+    pub fn package_url(&self) -> &str {
+        self.package_url.as_str()
     }
 
     pub fn is_loaded(&self) -> bool {

@@ -12,10 +12,7 @@ use exocore_core::{
         keys::Keypair,
     },
 };
-use exocore_protos::{
-    apps::Manifest,
-    core::{cell_application_config, CellApplicationConfig},
-};
+use exocore_protos::{apps::Manifest, core::CellApplicationConfig};
 use tempfile::{tempdir_in, TempDir};
 use zip::write::FileOptions;
 
@@ -67,7 +64,6 @@ fn cmd_generate(_ctx: &Context, _app_opts: &AppOptions, gen_opts: &GenerateOptio
         name: gen_opts.name.clone(),
         version: "0.0.1".to_string(),
         public_key: kp.public().encode_base58_string(),
-        path: String::new(),
         schemas: Vec::new(),
         module: None,
     };
@@ -98,19 +94,16 @@ fn cmd_package(_ctx: &Context, _app_opts: &AppOptions, pkg_opts: &PackageOptions
     let app_dir = expand_tild(app_dir).expect("Couldn't expand app directory");
 
     let manifest_path = app_dir.join("app.yaml");
-    let mut manifest_abs =
+    let mut manifest =
         Manifest::from_yaml_file(manifest_path).expect("Couldn't read manifest file");
 
-    if let Some(module) = &mut manifest_abs.module {
+    if let Some(module) = &mut manifest.module {
         module.multihash = multihash_sha3_256_file(&module.file)
             .expect("Couldn't multihash module")
             .encode_bs58();
     }
 
-    let mut manifest_rel = manifest_abs.clone();
-    manifest_rel.make_relative_paths(&app_dir);
-
-    let zip_file_path = cur_dir.join(format!("{}.zip", manifest_abs.name));
+    let zip_file_path = cur_dir.join(format!("{}.zip", manifest.name));
     let zip_file = File::create(&zip_file_path).expect("Couldn't create zip file");
     let zip_file_buf = BufWriter::new(zip_file);
 
@@ -119,11 +112,11 @@ fn cmd_package(_ctx: &Context, _app_opts: &AppOptions, pkg_opts: &PackageOptions
     zip_archive
         .start_file("app.yaml", FileOptions::default())
         .expect("Couldn't start zip file");
-    manifest_rel
+    manifest
         .to_yaml_writer(&mut zip_archive)
         .expect("Couldn't write manifest to zip");
 
-    if let Some(module) = &manifest_abs.module {
+    if let Some(module) = &manifest.module {
         zip_archive
             .start_file(&module.file, FileOptions::default())
             .expect("Couldn't start zip file");
@@ -132,7 +125,7 @@ fn cmd_package(_ctx: &Context, _app_opts: &AppOptions, pkg_opts: &PackageOptions
         std::io::copy(&mut module_file, &mut zip_archive).expect("Couldn't copy app module to zip");
     }
 
-    for schema in &manifest_rel.schemas {
+    for schema in &manifest.schemas {
         if let Some(exocore_protos::apps::manifest_schema::Source::File(file)) = &schema.source {
             zip_archive
                 .start_file(file, FileOptions::default())
@@ -149,8 +142,8 @@ fn cmd_package(_ctx: &Context, _app_opts: &AppOptions, pkg_opts: &PackageOptions
 
     print_success(format!(
         "Application {} version {} got packaged to {}",
-        style_value(manifest_abs.name),
-        style_value(manifest_abs.version),
+        style_value(manifest.name),
+        style_value(manifest.version),
         style_value(zip_file_path),
     ));
 }
@@ -232,12 +225,8 @@ impl AppPackage {
         let app_dir = cell.app_directory(self.app.manifest()).unwrap();
         let app_dir_path = app_dir.as_os_path()?;
 
-        let cell_dir = cell
-            .directory()
-            .as_os_path()
-            .expect("Cell is not stored in an OS directory");
-
         let temp_dir = OsDirectory::new(self.temp_dir.path().to_path_buf());
+
         let application = Application::from_directory(temp_dir)?;
         application
             .validate()
@@ -263,19 +252,12 @@ impl AppPackage {
         std::fs::rename(&self.temp_dir, &app_dir_path).expect("Couldn't move temp app dir");
 
         let mut cell_app_config = CellApplicationConfig::from_manifest(self.app.manifest().clone());
-        cell_app_config.location = Some(cell_application_config::Location::Path(
-            app_dir_path
-                .strip_prefix(cell_dir)
-                .unwrap()
-                .to_string_lossy()
-                .into(),
-        ));
+        cell_app_config.location = None;
         cell_app_config.package_url = self.url.clone();
 
+        print_action("Writing cell config...");
         let mut cell_config = cell.config().clone();
         cell_config.add_application(cell_app_config);
-
-        print_action("Writing cell config...");
         cell.save_config(&cell_config)
             .expect("Couldn't write cell config");
 
