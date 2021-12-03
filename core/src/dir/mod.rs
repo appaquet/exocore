@@ -26,6 +26,16 @@ pub trait Directory: Send + Sync {
         let dir = self.clone();
         ScopedDirectory::new(dir, path).into()
     }
+
+    fn copy_to(&self, to: DynDirectory) -> Result<(), Error> {
+        let file_stats = self.list(None)?;
+        for file_stat in file_stats {
+            let mut src_file = self.open_read(file_stat.path())?;
+            let mut dst_file = to.open_create(file_stat.path())?;
+            std::io::copy(&mut src_file, &mut dst_file)?;
+        }
+        Ok(())
+    }
 }
 
 pub struct DynDirectory(pub Box<dyn Directory>);
@@ -206,5 +216,38 @@ mod tests {
         dir.delete(Path::new("test")).unwrap();
 
         assert!(!dir.exists(Path::new("test")));
+    }
+
+    #[test]
+    pub fn test_copy_directory() {
+        let src = super::ram::RamDirectory::new();
+
+        {
+            let mut f = src.open_create(Path::new("file1")).unwrap();
+            f.write_all(b"file1").unwrap();
+
+            let mut f = src.open_create(Path::new("dir1/file1")).unwrap();
+            f.write_all(b"dir1/file1").unwrap();
+
+            let mut f = src.open_create(Path::new("dir1/file2")).unwrap();
+            f.write_all(b"dir1/file2").unwrap();
+
+            let mut f = src.open_create(Path::new("dir2/file1")).unwrap();
+            f.write_all(b"dir2/file1").unwrap();
+        }
+
+        let dst = super::ram::RamDirectory::new();
+        src.copy_to(dst.clone()).unwrap();
+
+        let files = dst.list(None).unwrap();
+        assert_eq!(files.len(), 4);
+
+        assert!(dst.exists(Path::new("file1")));
+        assert!(dst.exists(Path::new("dir1/file1")));
+        assert!(dst.exists(Path::new("dir1/file2")));
+        assert!(dst.exists(Path::new("dir2/file1")));
+
+        let stat = dst.stat(Path::new("dir1/file1")).unwrap();
+        assert_eq!(stat.size(), 10);
     }
 }

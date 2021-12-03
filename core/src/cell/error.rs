@@ -18,6 +18,6 @@ pub enum Error {
     #[error("No directory configured in node or cell")]
     NoDirectory,
 
-    #[error("File system error: {0}")]
+    #[error("Directory error: {0}")]
     Directory(#[from] crate::dir::Error),
 }

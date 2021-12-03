@@ -14,7 +14,7 @@ pub struct Manifest {
 }
 #[derive(Serialize, Deserialize, Clone, PartialEq, ::prost::Message)]
 pub struct ManifestSchema {
-    #[prost(oneof = "manifest_schema::Source", tags = "1, 2")]
+    #[prost(oneof = "manifest_schema::Source", tags = "1")]
     #[serde(flatten)]
     pub source: ::core::option::Option<manifest_schema::Source>,
 }
@@ -26,12 +26,6 @@ pub mod manifest_schema {
     pub enum Source {
         #[prost(string, tag = "1")]
         File(::prost::alloc::string::String),
-        #[prost(bytes, tag = "2")]
-        #[serde(
-            serialize_with = "crate::base64::as_base64",
-            deserialize_with = "crate::base64::from_base64"
-        )]
-        Bytes(::prost::alloc::vec::Vec<u8>),
     }
 }
 #[derive(Serialize, Deserialize, Clone, PartialEq, ::prost::Message)]

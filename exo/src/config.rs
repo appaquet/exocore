@@ -1,4 +1,4 @@
-use exocore_core::cell::{LocalNodeConfigExt, NodeConfigExt};
+use exocore_core::cell::{LocalNode, LocalNodeConfigExt, NodeConfigExt};
 use exocore_protos::core::{
     cell_application_config, node_cell_config, LocalNodeConfig, NodeConfig,
 };
@@ -93,20 +93,19 @@ fn cmd_validate(ctx: &Context, _conf_opts: &ConfigOptions) -> anyhow::Result<()>
 
 fn cmd_print(ctx: &Context, _conf_opts: &ConfigOptions, print_opts: &PrintOptions) {
     let (node, _cells) = ctx.options.get_node_and_cells();
-    let node_config = node.config().clone();
 
     if !print_opts.cell {
-        cmd_print_node_config(node_config, print_opts);
+        cmd_print_node_config(node, print_opts);
     } else {
-        cmd_print_cell_node_config(node_config);
+        cmd_print_cell_node_config(node.config().clone());
     }
 }
 
-fn cmd_print_node_config(config: LocalNodeConfig, print_opts: &PrintOptions) {
+fn cmd_print_node_config(node: LocalNode, print_opts: &PrintOptions) {
     let mut config = if print_opts.inline {
-        config.inlined().expect("Couldn't inline configuration")
+        node.inlined_config().expect("Couldn't inline node config")
     } else {
-        config
+        node.config().clone()
     };
 
     if print_opts.exclude_app_schemas {

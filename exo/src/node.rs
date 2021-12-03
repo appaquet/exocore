@@ -1,6 +1,4 @@
-use std::path::Path;
-
-use exocore_core::cell::{LocalNode, LocalNodeConfigExt};
+use exocore_core::cell::LocalNode;
 use exocore_protos::core::{LocalNodeConfig, NodeAddresses};
 
 use crate::{term::*, Context};
@@ -32,7 +30,7 @@ pub fn handle_cmd(ctx: &Context, node_opts: &NodeOptions) -> anyhow::Result<()> 
 
 fn cmd_init(ctx: &Context, init_opts: &InitOptions) -> anyhow::Result<()> {
     let node_dir = ctx.options.node_directory();
-    if node_dir.exists(Path::new(exocore_core::cell::NODE_CONFIG_FILE)) {
+    if LocalNode::config_exists(node_dir.clone()) {
         panic!(
             "Cannot initialize node. A node configuration already exists in '{:?}'",
             node_dir.as_os_path().unwrap()
@@ -40,15 +38,10 @@ fn cmd_init(ctx: &Context, init_opts: &InitOptions) -> anyhow::Result<()> {
     }
 
     print_step("Initializing node directory");
-    let home_path = ctx.options.dir_path();
-    if !home_path.exists() {
-        print_action(format!("Creating directory {}", style_value(&home_path)));
-        std::fs::create_dir_all(home_path).expect("Couldn't create home directory");
-    }
+    let local_node =
+        LocalNode::generate_in_directory(node_dir).expect("Couldn't generate local node");
 
-    let local_node = LocalNode::generate();
     let node = local_node.node();
-
     let mut node_name = node.name().to_string();
     if init_opts.name.is_none() {
         print_spacer();
@@ -82,10 +75,9 @@ fn cmd_init(ctx: &Context, init_opts: &InitOptions) -> anyhow::Result<()> {
     };
 
     print_action("Writing node configuration");
-    let config_file = node_dir
-        .open_create(Path::new(exocore_core::cell::NODE_CONFIG_FILE))
-        .expect("Couldn't create node configuration file");
-    local_node_config.write_yaml(config_file)?;
+    local_node
+        .save_config(&local_node_config)
+        .expect("Couldn't save local node config");
 
     print_success(format!(
         "Node {} with public key {} created",

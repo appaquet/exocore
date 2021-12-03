@@ -1,12 +1,12 @@
 use std::{
     collections::HashMap,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{Arc, RwLock},
 };
 
 use exocore_protos::{generated::exocore_core::CellApplicationConfig, registry::Registry};
 
-use super::{app::MANIFEST_FILE_NAME, Application, ApplicationId, CellId, Error};
+use super::{Application, ApplicationId, CellId, Error};
 use crate::{dir::DynDirectory, sec::keys::PublicKey};
 
 /// Applications installed in a cell.
@@ -38,7 +38,7 @@ impl CellApplications {
             let app_dir = cell_app_directory(apps_dir, &app_id, &cell_app.version);
             let app_pk = PublicKey::decode_base58_string(&cell_app.public_key)?;
 
-            if app_dir.exists(Path::new(MANIFEST_FILE_NAME)) {
+            if Application::manifest_exists(app_dir.clone()) {
                 info!(
                     "{}: Adding loaded application '{}' (id='{}')",
                     cell_id, cell_app.name, app_id
@@ -109,7 +109,7 @@ impl CellApplications {
         Ok(())
     }
 
-    pub fn applications(&self) -> Vec<CellApplication> {
+    pub fn get(&self) -> Vec<CellApplication> {
         let apps = self.applications.read().expect("couldn't lock inner");
         apps.values().cloned().collect()
     }

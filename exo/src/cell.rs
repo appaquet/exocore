@@ -1026,7 +1026,7 @@ fn cmd_app_list(ctx: &Context, cell_opts: &CellOptions, _app_opts: &AppOptions) 
     let (_, cell) = get_cell(ctx, cell_opts);
     let cell = cell.cell();
 
-    let cell_apps = cell.applications().applications();
+    let cell_apps = cell.applications().get();
     if cell_apps.is_empty() {
         print_warning("No applications installed in cell.");
         return;
@@ -1093,7 +1093,7 @@ async fn cmd_app_unpack(
 }
 
 async fn unpack_cell_apps(cell: &Cell, unpack_opts: &AppUnpackOptions) {
-    for cell_app in cell.applications().applications() {
+    for cell_app in cell.applications().get() {
         if let Some(for_app) = &unpack_opts.app {
             if *for_app != cell_app.name() {
                 continue;

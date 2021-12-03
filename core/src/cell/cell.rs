@@ -422,22 +422,38 @@ mod tests {
         let node = LocalNode::generate_in_directory(dir.clone()).unwrap();
 
         let full_cell = FullCell::generate(node.clone()).unwrap();
+        let cell = full_cell.cell();
 
-        // Add an application to the cell
-        let (_kp, app) = Application::generate(dir.clone(), "some app".to_string()).unwrap();
-        let mut cell_config = full_cell.cell().config().clone();
+        // Crate an application in memory
+        let mem_dir = RamDirectory::default();
+        let (_kp, app) = Application::generate(mem_dir.clone(), "some app".to_string()).unwrap();
+        app.save_manifest(app.manifest()).unwrap();
+
+        // Copy application to cell app directory
+        let app_dir = cell.app_directory(app.manifest()).unwrap();
+        mem_dir.copy_to(app_dir).unwrap();
+
+        // Add it to the cell
+        let mut cell_config = cell.config().clone();
         cell_config.add_application(CellApplicationConfig::from_manifest(app.manifest().clone()));
-        full_cell.cell().save_config(&cell_config).unwrap();
+        cell.save_config(&cell_config).unwrap();
 
         // Reload cell
-        let full_cell =
-            Cell::from_directory(full_cell.cell().directory().clone(), node.clone()).unwrap();
-        let apps = full_cell.cell().applications().applications().len();
-        assert_eq!(apps, 1);
+        let full_cell = Cell::from_directory(cell.directory().clone(), node.clone()).unwrap();
+        let cell = full_cell.cell();
+        let apps = cell.applications().get();
+        assert_eq!(apps.len(), 1);
+        assert!(apps[0].is_loaded());
 
         // Load cell from config directly. Should still have the app, but unloaded.
-        let full_cell_prime = Cell::from_config(cell_config, node).unwrap().unwrap_full();
-        let apps = full_cell_prime.cell().applications().applications().len();
-        assert_eq!(apps, 1);
+        let dir = RamDirectory::new();
+        let node_config = node.config().clone();
+        let node_prime = LocalNode::from_config(dir, node_config).unwrap();
+        let full_cell_prime = Cell::from_config(cell_config, node_prime)
+            .unwrap()
+            .unwrap_full();
+        let apps = full_cell_prime.cell().applications().get();
+        assert_eq!(apps.len(), 1);
+        assert!(!apps[0].is_loaded());
     }
 }

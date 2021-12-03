@@ -5,53 +5,6 @@ package exocore.core;
 import "exocore/apps/manifest.proto";
 import "google/protobuf/wrappers.proto";
 
-
-// TODO: Config RPC for apps to edit different configs
-
-message ConfigRequest {
-    message GenNode {
-    }
-    message GetNode {
-    }
-    message PutNode {
-    }
-
-    message ListCells {
-    }
-    message GetCell {
-        enum Format {
-            PROTO = 0;
-            YAML = 1;
-        }
-
-        Format format = 1;
-    }
-    message DeleteCell {
-    }
-
-    oneof request {
-        GenNode gen_node = 1;
-        GetNode get_node = 2;
-        PutNode put_node = 3;
-    }
-}
-
-message ConfigResponse {
-    message GenNode {
-        LocalNodeConfig config = 1;
-    }
-    message GetNode {
-        LocalNodeConfig config = 1;
-    }
-    message PutNode {
-        LocalNodeConfig config = 1;
-    }
-
-    oneof response {
-        GetNode get_node = 1;
-    }
-}
-
 message LocalNodeConfig {
     reserved 5;
 

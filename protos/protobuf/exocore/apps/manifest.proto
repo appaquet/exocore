@@ -17,10 +17,10 @@ message Manifest {
 }
 
 message ManifestSchema {
+    reserved 2;
+
     oneof source {
         string file = 1;
-
-        bytes bytes = 2;
     }
 }
 

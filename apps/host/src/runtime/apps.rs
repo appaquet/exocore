@@ -48,7 +48,7 @@ impl<S: Store> Applications<S> {
         store: S,
     ) -> Result<Applications<S>, Error> {
         let mut apps = Vec::new();
-        for cell_app in cell.applications().applications() {
+        for cell_app in cell.applications().get() {
             let app = if let Some(app) = cell_app.get() {
                 app
             } else {

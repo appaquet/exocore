@@ -1,4 +1,4 @@
-use std::{fs::File, io::prelude::*};
+use std::io::prelude::*;
 
 use exocore_protos::{
     core::{cell_application_config, cell_node_config, CellApplicationConfig, NodeConfig},
@@ -21,8 +21,6 @@ pub trait LocalNodeConfigExt {
     fn to_yaml_string(&self) -> Result<String, Error>;
 
     fn write_yaml<W: Write>(&self, write: W) -> Result<(), Error>;
-
-    fn inlined(&self) -> Result<LocalNodeConfig, Error>;
 
     fn create_cell_node_config(&self, roles: Vec<cell_node_config::Role>) -> CellNodeConfig;
 
@@ -49,24 +47,6 @@ impl LocalNodeConfigExt for LocalNodeConfig {
     fn write_yaml<W: Write>(&self, write: W) -> Result<(), Error> {
         serde_yaml::to_writer(write, self.config())
             .map_err(|err| Error::Config(anyhow!("Couldn't encode node config to YAML: {}", err)))
-    }
-
-    fn inlined(&self) -> Result<LocalNodeConfig, Error> {
-        let mut config = self.config().clone();
-
-        let mut cells = Vec::new();
-        for node_cell_config in &config.cells {
-            let cell_config = CellConfig::from_node_cell(node_cell_config)?;
-
-            let mut node_cell_config = node_cell_config.clone();
-            node_cell_config.location = Some(node_cell_config::Location::Inline(cell_config));
-
-            cells.push(node_cell_config);
-        }
-
-        config.cells = cells;
-
-        Ok(config)
     }
 
     fn create_cell_node_config(&self, roles: Vec<cell_node_config::Role>) -> CellNodeConfig {
@@ -255,8 +235,6 @@ impl CellApplicationConfigExt for CellApplicationConfig {
 pub trait ManifestExt {
     fn manifest(&self) -> &Manifest;
 
-    fn inlined(&self) -> Result<Manifest, Error>;
-
     fn read_yaml<R: Read>(reader: R) -> Result<Manifest, Error>;
 
     fn write_yaml<W: Write>(&self, writer: W) -> Result<(), Error>;
@@ -265,52 +243,6 @@ pub trait ManifestExt {
 impl ManifestExt for Manifest {
     fn manifest(&self) -> &Manifest {
         self
-    }
-
-    fn inlined(&self) -> Result<Manifest, Error> {
-        let mut app_manifest = self.manifest().clone();
-
-        let app_name = app_manifest.name.clone();
-        for schema in app_manifest.schemas.iter_mut() {
-            let final_source = match schema.source.take() {
-                Some(exocore_protos::apps::manifest_schema::Source::File(schema_path)) => {
-                    let mut file = File::open(&schema_path).map_err(|err| {
-                        Error::Application(
-                            app_name.clone(),
-                            anyhow!(
-                                "Couldn't open application schema at path '{:?}': {}",
-                                schema_path,
-                                err
-                            ),
-                        )
-                    })?;
-
-                    let mut content = vec![];
-                    file.read_to_end(&mut content).map_err(|err| {
-                        Error::Application(
-                            app_name.clone(),
-                            anyhow!(
-                                "Couldn't read application schema at path '{:?}': {}",
-                                schema_path,
-                                err
-                            ),
-                        )
-                    })?;
-                    exocore_protos::apps::manifest_schema::Source::Bytes(content)
-                }
-                Some(src @ exocore_protos::apps::manifest_schema::Source::Bytes(_)) => src,
-                other => {
-                    return Err(Error::Application(
-                        app_name,
-                        anyhow!("Unsupported application schema type: {:?}", other),
-                    ));
-                }
-            };
-
-            schema.source = Some(final_source);
-        }
-
-        Ok(app_manifest)
     }
 
     fn read_yaml<R: Read>(reader: R) -> Result<Manifest, Error> {
@@ -477,7 +409,7 @@ mod tests {
     }
 
     #[test]
-    fn write_node_config_to_yaml_writer() -> anyhow::Result<()> {
+    fn write_node_config_to_yaml_read_write() -> anyhow::Result<()> {
         let config_init = LocalNodeConfig {
             name: "node_name".to_string(),
             ..Default::default()
@@ -518,23 +450,15 @@ mod tests {
     }
 
     #[test]
-    fn cell_config_yaml_file() -> anyhow::Result<()> {
+    fn cell_config_yaml_read_write() -> anyhow::Result<()> {
         let config_init = CellConfig {
             ..Default::default()
         };
 
-        let dir = tempfile::tempdir()?;
-        let path = dir.path().join("config.yaml");
+        let mut bytes = Vec::new();
+        config_init.write_yaml(&mut bytes)?;
 
-        {
-            let file = File::create(&path)?;
-            config_init.write_yaml(&file)?;
-        }
-
-        let config_read = {
-            let file = File::open(&path)?;
-            CellConfig::read_yaml(file)?
-        };
+        let config_read = CellConfig::read_yaml(bytes.as_slice())?;
 
         assert_eq!(config_init, config_read);
 

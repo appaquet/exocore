@@ -24,7 +24,7 @@ use crate::{
     },
 };
 
-pub const NODE_CONFIG_FILE: &str = "node.yaml";
+const NODE_CONFIG_FILE: &str = "node.yaml";
 
 /// Represents a machine / process on which Exocore runs. A node can host
 /// multiple `Cell`.
@@ -325,6 +325,10 @@ impl LocalNode {
             self.http_addresses()
         }
     }
+
+    pub fn config_exists(dir: impl Into<DynDirectory>) -> bool {
+        dir.into().exists(Path::new(NODE_CONFIG_FILE))
+    }
 }
 
 impl Deref for LocalNode {
@@ -461,6 +465,9 @@ mod tests {
         assert_eq!(node1, node1);
         assert_eq!(node1, node1.clone());
         assert_ne!(node1, node2);
+
+        assert!(!format!("{:?}", node1).is_empty());
+        assert!(!format!("{:?}", node1.node()).is_empty());
     }
 
     #[test]
@@ -500,6 +507,7 @@ mod tests {
         let dir = RamDirectory::new();
 
         let node1 = LocalNode::generate_in_directory(dir.clone()).unwrap();
+        assert!(LocalNode::config_exists(dir.clone()));
 
         // reload node from file system
         let node2 = LocalNode::from_directory(dir).unwrap();

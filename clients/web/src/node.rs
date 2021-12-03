@@ -46,13 +46,13 @@ impl LocalNode {
 
     pub fn save_to_storage(&self, storage: web_sys::Storage) -> Result<(), JsValue> {
         let config = self
-            .config
-            .inlined()
+            .node
+            .inlined_config()
             .map_err(|err| into_js_error("couldn't inline config", err))?;
-        let config_json = config
+        let config_yaml = config
             .to_yaml_string()
             .map_err(|err| into_js_error("couldn't convert to yaml config", err))?;
-        storage.set("node_config", config_json.as_str())?;
+        storage.set("node_config", config_yaml.as_str())?;
         Ok(())
     }
 

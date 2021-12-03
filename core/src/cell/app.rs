@@ -15,7 +15,7 @@ use crate::{
     },
 };
 
-pub const MANIFEST_FILE_NAME: &str = "app.yaml";
+const MANIFEST_FILE_NAME: &str = "app.yaml";
 
 /// Application that extends the capability of the cell by providing schemas and
 /// WebAssembly logic.
@@ -82,20 +82,6 @@ impl Application {
                     let schema_file = dir.open_read(Path::new(schema_path))?;
                     let fd_set = read_file_descriptor_set(&manifest.name, schema_file)?;
                     schemas.push(fd_set);
-                }
-                Some(Source::Bytes(bytes)) => {
-                    let bytes = bytes.as_slice();
-                    let schema = FileDescriptorSet::parse_from_bytes(bytes).map_err(|err| {
-                        Error::Application(
-                            manifest.name.clone(),
-                            anyhow!(
-                                "Couldn't parse application schema file descriptor set: {}",
-                                err
-                            ),
-                        )
-                    })?;
-
-                    schemas.push(schema)
                 }
                 other => {
                     return Err(Error::Application(
@@ -182,6 +168,16 @@ impl Application {
 
         Ok(())
     }
+
+    pub fn save_manifest(&self, manifest: &Manifest) -> Result<(), Error> {
+        let manifest_file = self.dir.open_write(Path::new(MANIFEST_FILE_NAME))?;
+        manifest.write_yaml(manifest_file)?;
+        Ok(())
+    }
+
+    pub fn manifest_exists(dir: impl Into<DynDirectory>) -> bool {
+        dir.into().exists(Path::new(MANIFEST_FILE_NAME))
+    }
 }
 
 /// Unique identifier of an application, which is built by hashing the public
@@ -248,4 +244,33 @@ fn read_file_descriptor_set(
     })?;
 
     Ok(fd_set)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::dir::ram::RamDirectory;
+
+    use super::*;
+
+    #[test]
+    fn generate_and_validate() -> anyhow::Result<()> {
+        let dir = RamDirectory::new();
+        let (_kp, app) = Application::generate(dir, "some_app".to_string())?;
+        app.validate()?;
+        Ok(())
+    }
+
+    #[test]
+    fn app_id_conversion() {
+        let kp = crate::sec::keys::Keypair::generate_ed25519();
+        let app_id = ApplicationId::from_public_key(&kp.public());
+
+        assert_eq!(app_id, ApplicationId::from_string(app_id.to_string()));
+        assert_eq!(app_id, ApplicationId::from_bytes(app_id.as_bytes()));
+        assert_eq!(
+            app_id,
+            ApplicationId::from_base58_public_key(kp.public().encode_base58_string().as_str())
+                .unwrap()
+        );
+    }
 }

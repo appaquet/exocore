@@ -19,4 +19,4 @@ pub use config::{
     NodeConfigExt,
 };
 pub use error::Error;
-pub use node::{LocalNode, Node, NodeId, NODE_CONFIG_FILE};
+pub use node::{LocalNode, Node, NodeId};
