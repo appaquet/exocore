@@ -5,10 +5,10 @@ CUR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUTPUT=${1:-lcov}
 
 OUTPUT_ARGS=""
-if [[ "$OUTPUT" == "lcov" ]]; then
-	OUTPUT_ARGS="--lcov --output-path $CUR_DIR/../lcov.info"
-else
+if [[ "$OUTPUT" == "html" ]]; then
 	OUTPUT_ARGS="--html"
+else
+	OUTPUT_ARGS="--lcov --output-path $CUR_DIR/../lcov.info"
 fi
 
 cd "$CUR_DIR/.."
@@ -19,4 +19,4 @@ cargo llvm-cov --workspace \
 		--exclude=exocore-client-c \
 		--exclude=exocore-apps-macros \
 		--exclude=exocore-protos \
-		$OUPUT_ARGS
+		$OUTPUT_ARGS
