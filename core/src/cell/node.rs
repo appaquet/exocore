@@ -121,16 +121,6 @@ impl Node {
         self.identity.consistent_clock_id
     }
 
-    pub fn to_config(&self) -> NodeConfig {
-        let addresses = self.addresses.read().unwrap();
-        NodeConfig {
-            public_key: self.identity.public_key.encode_base58_string(),
-            name: self.identity.name.to_string(),
-            id: self.identity.node_id.to_string(),
-            addresses: Some(addresses.to_config()),
-        }
-    }
-
     pub fn p2p_addresses(&self) -> Vec<Multiaddr> {
         let addresses = self.addresses.read().expect("Couldn't get addresses lock");
         addresses.p2p.iter().cloned().collect()
@@ -261,7 +251,7 @@ impl LocalNode {
 
         let config = {
             let config_file = dir.open_read(Path::new(NODE_CONFIG_FILE))?;
-            LocalNodeConfig::from_yaml_reader(config_file)?
+            LocalNodeConfig::read_yaml(config_file)?
         };
 
         let node = LocalNode::from_config(dir, config)?;
@@ -316,7 +306,7 @@ impl LocalNode {
 
     pub fn save_config(&self, config: &LocalNodeConfig) -> Result<(), Error> {
         let config_file = self.dir.open_create(Path::new(NODE_CONFIG_FILE))?;
-        config.to_yaml_writer(config_file)?;
+        config.write_yaml(config_file)?;
         Ok(())
     }
 
@@ -449,13 +439,6 @@ impl Addresses {
         }
 
         Ok(addresses)
-    }
-
-    fn to_config(&self) -> NodeAddresses {
-        NodeAddresses {
-            p2p: self.p2p.iter().map(|addr| addr.to_string()).collect(),
-            http: self.http.iter().map(|url| url.to_string()).collect(),
-        }
     }
 }
 

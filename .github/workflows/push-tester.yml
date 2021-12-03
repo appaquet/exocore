@@ -102,20 +102,17 @@ jobs:
 
       - uses: actions-rs/toolchain@v1.0.7
         with:
-          toolchain: nightly-2021-10-24
+          toolchain: nightly
           profile: minimal
+          components: llvm-tools-preview
 
       - uses: Swatinem/rust-cache@v1
 
-      - name: Install grcov
-        run: |
-          curl -L https://github.com/mozilla/grcov/releases/download/v0.8.0/grcov-linux-x86_64.tar.bz2 | tar jxf -
-          echo `pwd` >> $GITHUB_PATH
-
       - name: Test coverage
         run: |
+          ./tools/coverage.sh lcov
           CODECOV_TOKEN="${{ secrets.CODECOV_TOKEN }}"
-          ./tools/coverage.sh codecov_io
+          bash <(curl -s https://codecov.io/bash) -f lcov.info;
 
   apps_sdk_runtime_tests:
     runs-on: ubuntu-latest

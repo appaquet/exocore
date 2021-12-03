@@ -393,7 +393,7 @@ async fn cmd_node_add(
         let cell_node_ = edit_string(
             "# Paste joining node's public info (result of `exo cell join --manual [--role, [--role, ...]]` on joining node)",
             |config| {
-                let config = CellNodeConfig::from_yaml(config.as_bytes())?;
+                let config = CellNodeConfig::read_yaml(config.as_bytes())?;
                 Ok(config)
             },
         );
@@ -409,7 +409,7 @@ async fn cmd_node_add(
         let cell_node_yml = payload
             .decode_payload()
             .expect("Couldn't decode node payload");
-        let cell_node = CellNodeConfig::from_yaml(cell_node_yml.as_slice())
+        let cell_node = CellNodeConfig::read_yaml(cell_node_yml.as_slice())
             .expect("Couldn't parse joining node config");
 
         (cell_node, payload.reply_pin, payload.reply_token)
@@ -468,7 +468,7 @@ async fn cmd_node_add(
         .expect("Couldn't save cell config");
 
     let cell_config_yaml = cell_config
-        .to_yaml()
+        .to_yaml_string()
         .expect("Couldn't convert cell config to yaml");
 
     if !add_opts.manual {
@@ -565,7 +565,7 @@ async fn cmd_join(
 
     let cell_node = node_config.create_cell_node_config(roles);
     let cell_node_yaml = cell_node
-        .to_yaml()
+        .to_yaml_string()
         .expect("Couldn't convert cell node config to yaml");
 
     let cell_config = if !join_opts.manual {
@@ -589,7 +589,7 @@ async fn cmd_join(
         let cell_config_yml = payload
             .decode_payload()
             .expect("Couldn't decode cell config payload");
-        CellConfig::from_yaml(cell_config_yml.as_slice())
+        CellConfig::read_yaml(cell_config_yml.as_slice())
             .expect("Couldn't parse cell config from host node")
     } else {
         print_info("Paste node cell information on host node:");
@@ -600,7 +600,7 @@ async fn cmd_join(
         edit_string(
             "# Paste config of the cell to join (result of `exo cell print --inline` on host node)",
             |config| {
-                let config = CellConfig::from_yaml(config.as_bytes())?;
+                let config = CellConfig::read_yaml(config.as_bytes())?;
                 Ok(config)
             },
         )
@@ -639,12 +639,12 @@ fn cmd_edit(ctx: &Context, cell_opts: &CellOptions) {
 
     let cell_config = cell.config();
     let cell_config_yaml = cell_config
-        .to_yaml()
+        .to_yaml_string()
         .expect("Couldn't convert cell config to yaml");
 
     let new_cell_config = edit_string(cell_config_yaml, |new_config| {
         let config_bytes = new_config.as_bytes();
-        Ok(CellConfig::from_yaml(config_bytes)?)
+        Ok(CellConfig::read_yaml(config_bytes)?)
     });
 
     cell.save_config(&new_cell_config)
@@ -657,7 +657,7 @@ fn cmd_print(ctx: &Context, cell_opts: &CellOptions, _print_opts: &PrintOptions)
 
     let config_yaml = cell
         .config()
-        .to_yaml()
+        .to_yaml_string()
         .expect("Couldn't convert cell config to yaml");
 
     println!("{}", config_yaml,);

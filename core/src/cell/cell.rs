@@ -63,7 +63,7 @@ impl Cell {
 
         let cell_config = {
             let config_file = dir.open_read(Path::new(CELL_CONFIG_FILE))?;
-            CellConfig::from_yaml(config_file)?
+            CellConfig::read_yaml(config_file)?
         };
 
         Self::from_config(cell_config, local_node)
@@ -252,7 +252,7 @@ impl Cell {
 
     pub fn write_cell_config(dir: &DynDirectory, config: &CellConfig) -> Result<(), Error> {
         let file = dir.open_create(Path::new(CELL_CONFIG_FILE))?;
-        config.to_yaml_writer(file)?;
+        config.write_yaml(file)?;
         Ok(())
     }
 }
@@ -340,28 +340,6 @@ impl FullCell {
 
     pub fn cell(&self) -> &Cell {
         &self.cell
-    }
-
-    pub fn generate_config(&self, full: bool) -> CellConfig {
-        let mut cell_config = CellConfig {
-            public_key: self.cell.public_key().encode_base58_string(),
-            id: self.cell.id().to_string(),
-            name: self.cell.name().to_string(),
-            ..Default::default()
-        };
-
-        if full {
-            cell_config.keypair = self.keypair.encode_base58_string();
-        }
-
-        {
-            let nodes = self.cell.nodes();
-            for node in nodes.iter().all() {
-                cell_config.nodes.push(node.to_config());
-            }
-        }
-
-        cell_config
     }
 
     #[cfg(any(test, feature = "tests-utils"))]

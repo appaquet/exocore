@@ -93,6 +93,9 @@ mod tests {
 
             // inexistent file
             assert!(dir.stat(Path::new("test")).is_err());
+
+            // not under path
+            assert!(dir.open_read(Path::new("/etc/hosts")).is_err());
         }
 
         {

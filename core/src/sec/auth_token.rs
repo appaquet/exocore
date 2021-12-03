@@ -201,6 +201,8 @@ mod tests {
         let mut token = AuthToken::new(cell.cell(), &clock, None)?;
         assert!(token.is_valid(cell.cell(), &clock).is_ok());
 
+        debug!("Auth token: {:?}", token);
+
         // modify signature, shouldn't be valid anymore
         token.signed.signature = vec![0, 1, 2, 3];
         assert!(token.is_valid(cell.cell(), &clock).is_err());

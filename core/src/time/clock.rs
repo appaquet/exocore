@@ -77,15 +77,15 @@ impl Clock {
             // we sleep for a millisecond.
             Self::sleep_next_millisecond();
 
-            // counter is higher than MAX, we try to swap it with 0.
+            // counter is higher than MAX, we try to swap it with 1 (so that we can return 0)
             // if the previous value after swap wasn't equal to what we expected, it
             // means another thread swapped / increased the value, and we need to retry
             if self
                 .consistent_counter
-                .compare_exchange(counter + 1, 0, Ordering::SeqCst, Ordering::Relaxed)
+                .compare_exchange(counter + 1, 1, Ordering::SeqCst, Ordering::Relaxed)
                 .is_ok()
             {
-                break 0;
+                break 0; // we set to 1, but can return 0 since next will return 1
             }
         };
 
@@ -244,9 +244,9 @@ mod tests {
         let local_node = LocalNode::generate();
 
         let mut last_time = ConsistentTimestamp::from(0);
-        for _i in 0..100 {
+        for i in 0..10000 {
             let current_time = mocked_clock.consistent_time(local_node.node());
-            assert_ne!(last_time, current_time);
+            assert_ne!(last_time, current_time, "at iteration {}", i);
             last_time = current_time;
         }
     }

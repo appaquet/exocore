@@ -30,10 +30,6 @@ pub enum ConfigCommand {
 
 #[derive(clap::Parser)]
 pub struct PrintOptions {
-    /// Print format.
-    #[clap(long, default_value = "yaml")]
-    pub format: String,
-
     /// Print configuration in `NodeConfig` format to be used to configure cell
     /// nodes.
     #[clap(long)]
@@ -68,12 +64,12 @@ fn cmd_edit(ctx: &Context, _conf_opts: &ConfigOptions) {
 
     let config_before = local_node.config().clone();
     let config_before_yaml = config_before
-        .to_yaml()
+        .to_yaml_string()
         .expect("failed to serialize node config to yaml");
 
     let node_config_after = edit_string(config_before_yaml, |config_yaml| {
         let config_bytes = config_yaml.as_bytes();
-        Ok(LocalNodeConfig::from_yaml_reader(config_bytes)?)
+        Ok(LocalNodeConfig::read_yaml(config_bytes)?)
     });
 
     if config_before.addresses == node_config_after.addresses
@@ -127,11 +123,10 @@ fn cmd_print_node_config(config: LocalNodeConfig, print_opts: &PrintOptions) {
         }
     }
 
-    if print_opts.format == "json" {
-        println!("{}", config.to_json().expect("Couldn't convert to json"));
-    } else {
-        println!("{}", config.to_yaml().expect("Couldn't convert to yaml"));
-    }
+    println!(
+        "{}",
+        config.to_yaml_string().expect("Couldn't convert to yaml")
+    );
 }
 
 fn cmd_print_cell_node_config(config: LocalNodeConfig) {
@@ -142,5 +137,10 @@ fn cmd_print_cell_node_config(config: LocalNodeConfig) {
         addresses: config.addresses,
     };
 
-    println!("{}", cell_node.to_yaml().expect("Couldn't convert to yaml"));
+    println!(
+        "{}",
+        cell_node
+            .to_yaml_string()
+            .expect("Couldn't convert to yaml")
+    );
 }

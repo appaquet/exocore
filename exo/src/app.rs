@@ -71,7 +71,7 @@ fn cmd_generate(_ctx: &Context, _app_opts: &AppOptions, gen_opts: &GenerateOptio
     let manifest_path = cur_dir.join("app.yaml");
     let manifest_file = File::create(manifest_path).expect("Couldn't create manifest file");
     manifest
-        .to_yaml_writer(manifest_file)
+        .write_yaml(manifest_file)
         .expect("Couldn't write manifest");
 
     print_success(format!(
@@ -94,8 +94,8 @@ fn cmd_package(_ctx: &Context, _app_opts: &AppOptions, pkg_opts: &PackageOptions
     let app_dir = expand_tild(app_dir).expect("Couldn't expand app directory");
 
     let manifest_path = app_dir.join("app.yaml");
-    let mut manifest =
-        Manifest::from_yaml_file(manifest_path).expect("Couldn't read manifest file");
+    let manifest_file = File::open(manifest_path).expect("Couldn't open manifest file");
+    let mut manifest = Manifest::read_yaml(manifest_file).expect("Couldn't read manifest file");
 
     if let Some(module) = &mut manifest.module {
         module.multihash = multihash_sha3_256_file(&module.file)
@@ -113,7 +113,7 @@ fn cmd_package(_ctx: &Context, _app_opts: &AppOptions, pkg_opts: &PackageOptions
         .start_file("app.yaml", FileOptions::default())
         .expect("Couldn't start zip file");
     manifest
-        .to_yaml_writer(&mut zip_archive)
+        .write_yaml(&mut zip_archive)
         .expect("Couldn't write manifest to zip");
 
     if let Some(module) = &manifest.module {

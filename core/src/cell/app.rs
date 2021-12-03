@@ -55,7 +55,7 @@ impl Application {
 
         let manifest = {
             let manifest_file = dir.open_read(Path::new(MANIFEST_FILE_NAME))?;
-            Manifest::from_yaml(manifest_file)?
+            Manifest::read_yaml(manifest_file)?
         };
 
         Self::from_manifest(dir, manifest)

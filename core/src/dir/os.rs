@@ -32,8 +32,6 @@ impl OsDirectory {
             )));
         }
 
-        debug!("resolved to {:?}", joined); // TODO: remove
-
         Ok(joined)
     }
 }

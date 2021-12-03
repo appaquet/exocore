@@ -3,7 +3,7 @@ use std::{
     sync::{RwLockReadGuard, RwLockWriteGuard},
 };
 
-use exocore_protos::{core::CellNodeConfig, generated::exocore_core::cell_node_config};
+use exocore_protos::generated::exocore_core::cell_node_config;
 
 use super::{Cell, Error, LocalNode, Node, NodeId};
 
@@ -97,19 +97,6 @@ impl CellNode {
 
     pub fn has_role(&self, role: CellNodeRole) -> bool {
         self.roles.contains(&role)
-    }
-
-    pub fn to_config(&self) -> CellNodeConfig {
-        let mut config = CellNodeConfig {
-            node: Some(self.node.to_config()),
-            roles: vec![],
-        };
-
-        for role in &self.roles {
-            config.roles.push(role.to_config().into());
-        }
-
-        config
     }
 }
 

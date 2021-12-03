@@ -33,7 +33,7 @@ impl LocalNode {
     }
 
     pub fn from_yaml(yaml: String) -> Result<LocalNode, JsValue> {
-        let config = LocalNodeConfig::from_yaml_reader(yaml.as_bytes())
+        let config = LocalNodeConfig::read_yaml(yaml.as_bytes())
             .map_err(|err| into_js_error("couldn't create node config from yaml", err))?;
         Self::from_config(config)
     }
@@ -50,7 +50,7 @@ impl LocalNode {
             .inlined()
             .map_err(|err| into_js_error("couldn't inline config", err))?;
         let config_json = config
-            .to_yaml()
+            .to_yaml_string()
             .map_err(|err| into_js_error("couldn't convert to yaml config", err))?;
         storage.set("node_config", config_json.as_str())?;
         Ok(())
@@ -58,7 +58,7 @@ impl LocalNode {
 
     pub fn to_yaml(&self) -> Result<String, JsValue> {
         self.config
-            .to_yaml()
+            .to_yaml_string()
             .map_err(|err| into_js_error("couldn't convert to yaml config", err))
     }
 

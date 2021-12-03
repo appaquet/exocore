@@ -85,7 +85,7 @@ fn cmd_init(ctx: &Context, init_opts: &InitOptions) -> anyhow::Result<()> {
     let config_file = node_dir
         .open_create(Path::new(exocore_core::cell::NODE_CONFIG_FILE))
         .expect("Couldn't create node configuration file");
-    local_node_config.to_yaml_writer(config_file)?;
+    local_node_config.write_yaml(config_file)?;
 
     print_success(format!(
         "Node {} with public key {} created",
