@@ -152,8 +152,8 @@ impl CellConfigExt for CellConfig {
             .map_err(|err| Error::Config(anyhow!("Couldn't encode cell config to YAML: {}", err)))
     }
 
-    fn write_yaml<W: Write>(&self, write: W) -> Result<(), Error> {
-        serde_yaml::to_writer(write, self.config())
+    fn write_yaml<W: Write>(&self, writer: W) -> Result<(), Error> {
+        serde_yaml::to_writer(writer, self.config())
             .map_err(|err| Error::Config(anyhow!("Couldn't encode cell config to YAML: {}", err)))
     }
 

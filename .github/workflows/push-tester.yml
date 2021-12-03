@@ -106,13 +106,21 @@ jobs:
           profile: minimal
           components: llvm-tools-preview
 
+      - name: Install cargo-llvm-cov
+        run: curl -LsSf https://github.com/taiki-e/cargo-llvm-cov/releases/latest/download/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz | tar xzf - -C ~/.cargo/bin
+
       - uses: Swatinem/rust-cache@v1
 
       - name: Test coverage
         run: |
           ./tools/coverage.sh lcov
-          CODECOV_TOKEN="${{ secrets.CODECOV_TOKEN }}"
-          bash <(curl -s https://codecov.io/bash) -f lcov.info;
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
+          files: lcov.info
+          fail_ci_if_error: true
 
   apps_sdk_runtime_tests:
     runs-on: ubuntu-latest
