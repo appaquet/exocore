@@ -42,14 +42,15 @@ fn cmd_init(ctx: &Context, init_opts: &InitOptions) -> anyhow::Result<()> {
         LocalNode::generate_in_directory(node_dir).expect("Couldn't generate local node");
 
     let node = local_node.node();
-    let mut node_name = node.name().to_string();
-    if init_opts.name.is_none() {
+    let node_name = if let Some(name) = init_opts.name.as_ref() {
+        name.clone()
+    } else {
         print_spacer();
-        node_name = dialoguer::Input::with_theme(ctx.dialog_theme.as_ref())
+        dialoguer::Input::with_theme(ctx.dialog_theme.as_ref())
             .with_prompt("Enter the name of the node")
             .default(node.name().to_string())
-            .interact_text()?;
-    }
+            .interact_text()?
+    };
 
     // generate port randomly
     let port_rand = 10 + rand::random::<u8>() % 90;

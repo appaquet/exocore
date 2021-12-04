@@ -298,14 +298,15 @@ fn cmd_init(
         style_value(local_node.name())
     ));
 
-    let mut cell_name = local_node.name().to_string();
-    if init_opts.name.is_none() {
+    let cell_name = if let Some(name) = init_opts.name.as_ref() {
+        name.clone()
+    } else {
         print_spacer();
-        cell_name = dialoguer::Input::with_theme(ctx.dialog_theme.as_ref())
+        dialoguer::Input::with_theme(ctx.dialog_theme.as_ref())
             .with_prompt("Enter the name of the cell")
             .default(cell_keypair.public().generate_name())
-            .interact_text()?;
-    }
+            .interact_text()?
+    };
 
     // Create a configuration for the node in the cell
     let cell_node = {

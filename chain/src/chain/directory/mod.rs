@@ -431,17 +431,9 @@ impl ChainStore for DirectoryChainStore {
 }
 
 /// Metadata information of the chain directory store persisted to disk.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct DirectoryChainMetadata {
     segments: Vec<segment::SegmentMetadata>,
-}
-
-impl Default for DirectoryChainMetadata {
-    fn default() -> Self {
-        DirectoryChainMetadata {
-            segments: Vec::new(),
-        }
-    }
 }
 
 /// Iterator over blocks stored in this directory based chain persistence.

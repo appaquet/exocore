@@ -248,9 +248,8 @@ fn read_file_descriptor_set(
 
 #[cfg(test)]
 mod tests {
-    use crate::dir::ram::RamDirectory;
-
     use super::*;
+    use crate::dir::ram::RamDirectory;
 
     #[test]
     fn generate_and_validate() -> anyhow::Result<()> {

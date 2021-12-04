@@ -83,7 +83,6 @@ impl Cell {
                     Error::Cell(anyhow!("Failed to load cell id '{}': {}", cell_id, err))
                 })?
             } else {
-                // TODO: Remove when refactoring done
                 warn!("Loading from inlined cell config...");
                 let cell_config = CellConfig::from_node_cell(node_cell_config)?;
                 Self::from_config(cell_config, local_node.clone())?
@@ -246,7 +245,6 @@ impl Cell {
     }
 
     pub fn save_config(&self, config: &CellConfig) -> Result<(), Error> {
-        // TODO: Should swap config
         Self::write_cell_config(self.directory(), config)
     }
 

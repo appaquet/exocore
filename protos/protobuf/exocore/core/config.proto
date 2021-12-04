@@ -118,12 +118,6 @@ message EntityGarbageCollectorConfig {
     google.protobuf.UInt32Value queue_size = 2;
 }
 
-message SignedCellConfig {
-    bytes cell = 1;
-
-    bytes signature = 2;
-}
-
 message CellConfig {
     reserved 5;
 

@@ -77,7 +77,7 @@ pub enum Error {
     #[error("File not found: {0}")]
     NotFound(PathBuf),
 
-    #[error("path error: {0}")]
+    #[error("Path error: {0}")]
     Path(#[source] anyhow::Error),
 
     #[error("Not a OsDirectory")]
@@ -200,8 +200,6 @@ mod tests {
         assert_eq!(dir.list(Some(Path::new(""))).unwrap().len(), 6);
         assert_eq!(dir.list(None).unwrap().len(), 6);
         assert_eq!(dir.list(Some(Path::new("not/found"))).unwrap().len(), 0);
-
-        // TODO: Validate path
     }
 
     pub fn test_delete(dir: impl Into<DynDirectory>) {

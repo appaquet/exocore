@@ -161,13 +161,6 @@ pub struct EntityGarbageCollectorConfig {
     #[serde(default)]
     pub queue_size: ::core::option::Option<u32>,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct SignedCellConfig {
-    #[prost(bytes = "vec", tag = "1")]
-    pub cell: ::prost::alloc::vec::Vec<u8>,
-    #[prost(bytes = "vec", tag = "2")]
-    pub signature: ::prost::alloc::vec::Vec<u8>,
-}
 #[derive(Serialize, Deserialize, Clone, PartialEq, ::prost::Message)]
 pub struct CellConfig {
     #[prost(string, tag = "1")]

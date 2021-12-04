@@ -6,21 +6,14 @@ use std::{
 
 use super::*;
 
+#[derive(Default)]
 pub struct RamDirectory {
     files: Arc<RwLock<BTreeMap<PathBuf, RamFileData>>>,
 }
 
 impl RamDirectory {
     pub fn new() -> Self {
-        RamDirectory {
-            files: Arc::new(RwLock::new(BTreeMap::new())),
-        }
-    }
-}
-
-impl Default for RamDirectory {
-    fn default() -> Self {
-        Self::new()
+        Self::default()
     }
 }
 
@@ -138,6 +131,7 @@ impl From<Vec<u8>> for RamFileData {
     }
 }
 
+#[derive(Default)]
 pub struct RamFile {
     data: RamFileData,
     cursor: usize,
@@ -150,6 +144,7 @@ impl RamFile {
 }
 
 impl FileRead for RamFile {}
+
 impl FileWrite for RamFile {}
 
 impl Read for RamFile {
