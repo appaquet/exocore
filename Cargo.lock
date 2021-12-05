@@ -1021,7 +1021,7 @@ dependencies = [
 
 [[package]]
 name = "exo"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1051,7 +1051,7 @@ dependencies = [
 
 [[package]]
 name = "exocore"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "exocore-apps-sdk",
@@ -1075,7 +1075,7 @@ dependencies = [
 
 [[package]]
 name = "exocore-apps-host"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "exocore-core",
@@ -1090,7 +1090,7 @@ dependencies = [
 
 [[package]]
 name = "exocore-apps-macros"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "futures",
@@ -1102,7 +1102,7 @@ dependencies = [
 
 [[package]]
 name = "exocore-apps-sdk"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1119,7 +1119,7 @@ dependencies = [
 
 [[package]]
 name = "exocore-chain"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -1140,7 +1140,7 @@ dependencies = [
 
 [[package]]
 name = "exocore-client-android"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "exocore-core",
@@ -1151,7 +1151,7 @@ dependencies = [
 
 [[package]]
 name = "exocore-client-c"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "exocore-core",
  "exocore-discovery",
@@ -1168,7 +1168,7 @@ dependencies = [
 
 [[package]]
 name = "exocore-client-web"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "console_error_panic_hook",
@@ -1190,7 +1190,7 @@ dependencies = [
 
 [[package]]
 name = "exocore-core"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "bs58",
@@ -1226,7 +1226,7 @@ dependencies = [
 
 [[package]]
 name = "exocore-discovery"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "base64",
@@ -1246,7 +1246,7 @@ dependencies = [
 
 [[package]]
 name = "exocore-protos"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "base64",
@@ -1264,7 +1264,7 @@ dependencies = [
 
 [[package]]
 name = "exocore-store"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1288,7 +1288,7 @@ dependencies = [
 
 [[package]]
 name = "exocore-transport"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "byteorder",
