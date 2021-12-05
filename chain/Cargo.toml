@@ -12,7 +12,7 @@ version = "0.1.15"
 [features]
 default = ["engine", "directory-chain", "memory-pending"]
 directory-chain = ["mmap", "extindex"]
-engine = []
+engine = ["exocore-core/runtime"]
 memory-pending = []
 mmap = ["memmap2"]
 tests-utils = ["engine", "tempfile", "directory-chain", "memory-pending", "exocore-core/tests-utils", "exocore-transport/tests-utils"]
