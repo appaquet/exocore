@@ -11,7 +11,7 @@ version = "0.1.15"
 
 [features]
 default = ["p2p-full", "http-server"]
-http-server = ["hyper", "url"]
+http-server = ["hyper", "url", "exocore-core/runtime"]
 p2p-base = ["libp2p"]
 p2p-full = ["p2p-base", "libp2p/tcp-tokio"]
 p2p-web = ["p2p-base", "libp2p/wasm-ext-websocket"]
