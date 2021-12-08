@@ -14,7 +14,7 @@ default = ["p2p-full", "http-server"]
 http-server = ["hyper", "url", "exocore-core/runtime"]
 p2p-base = ["libp2p"]
 p2p-full = ["p2p-base", "libp2p/tcp-tokio"]
-p2p-web = ["p2p-base", "libp2p/wasm-ext-websocket"]
+p2p-web = ["p2p-base", "libp2p/wasm-ext-websocket", "libp2p/wasm-bindgen"]
 tests-utils = ["exocore-core/tests-utils"]
 
 [dependencies]
