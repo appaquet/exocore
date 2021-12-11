@@ -45,7 +45,7 @@ jobs:
         with:
           toolchain: stable
           target: ${{ matrix.pair.target }}
-          override: true
+          profile: minimal
 
       - uses: actions-rs/cargo@v1.0.3
         with:
