@@ -1,9 +1,9 @@
 mod behaviour;
+mod bytes_channel;
 mod config;
 mod handles;
 mod protocol;
 mod transport;
-mod bytes_channel;
 
 #[cfg(test)]
 mod tests;
