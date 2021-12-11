@@ -64,7 +64,9 @@ jobs:
 
       - name: Make sure Rust target is installed
         run: |
-          if [[ "$matrix.pair.cross" == "false" ]]; then
+          if [[ "${{ matrix.pair.cross }}" == "true" ]]; then 
+            echo "Using cross. Not installing target. ${{ matrix.pair.cross }} ${{ matrix.pair.target }}"
+          else 
             rustup target add $matrix.pair.target
           fi
 
