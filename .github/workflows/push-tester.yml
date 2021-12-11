@@ -67,7 +67,7 @@ jobs:
           if [[ "${{ matrix.pair.cross }}" == "true" ]]; then 
             echo "Using cross. Not installing target. ${{ matrix.pair.cross }} ${{ matrix.pair.target }}"
           else 
-            rustup target add $matrix.pair.target
+            rustup target add ${{ matrix.pair.target }}
           fi
 
       - uses: actions-rs/cargo@v1.0.3
