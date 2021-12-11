@@ -46,6 +46,9 @@ jobs:
           - target: armv7-unknown-linux-gnueabihf
             os: ubuntu-latest
             cross: true
+          - target: aarch64-apple-darwin
+            os: ubuntu-latest
+            cross: true
 
     runs-on: ${{ matrix.pair.os }}
 
