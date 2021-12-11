@@ -47,8 +47,8 @@ jobs:
             os: ubuntu-latest
             cross: true
           - target: aarch64-apple-darwin
-            os: ubuntu-latest
-            cross: true
+            os: macOS-11
+            cross: false
 
     runs-on: ${{ matrix.pair.os }}
 
@@ -61,6 +61,12 @@ jobs:
           profile: minimal
 
       - uses: Swatinem/rust-cache@v1
+
+      - name: Make sure Rust target is installed
+        run: |
+          if [[ "$matrix.pair.cross" == "false" ]]; then
+            rustup target add $matrix.pair.target
+          fi
 
       - uses: actions-rs/cargo@v1.0.3
         with:
