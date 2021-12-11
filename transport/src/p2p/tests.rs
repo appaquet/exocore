@@ -73,14 +73,9 @@ async fn test_integration() -> anyhow::Result<()> {
             .send_stream_msg(n2.node().clone(), 124, stream)
             .await;
 
-        let mut msg = handle2.recv_rdv(124).await;
+        let msg = handle2.recv_rdv(124).await;
         let mut out = String::new();
-        msg.stream
-            .as_mut()
-            .unwrap()
-            .read_to_string(&mut out)
-            .await
-            .unwrap();
+        msg.stream.unwrap().read_to_string(&mut out).await.unwrap();
         assert_eq!(out, "hello world");
     }
 

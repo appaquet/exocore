@@ -120,9 +120,7 @@ mod tests {
                 for _ in 0..size {
                     data.push(size);
                 }
-                println!("Sending {}", size);
                 sender.write(&data).await.unwrap();
-                println!("Sent...");
             }
         });
 
