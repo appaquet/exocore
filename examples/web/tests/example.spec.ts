@@ -53,26 +53,22 @@ const TODO_ITEMS = [
 test.describe('Exocore', () => {
   test.beforeEach(async ({ page }) => {
     const config = page.locator('#config');
-    if (!config) {
-      return;
+    if (config) {
+      await page.locator('#config').fill(nodeConfig);
+      await page.locator('#config-save').click();
     }
 
-    await page.locator('#config').fill(nodeConfig);
-    await page.locator('#config-save').click();
-
-    page.waitForSelector('#input-text');
+    await page.waitForSelector('#input-text');
+    await page.waitForFunction(() => !document.querySelector('.loading'), null);
   });
 
   test('should allow me to add todo items', async ({ page }) => {
-    await page.locator('#input-text').fill('hello');
-
     const countBefore = await page.locator('.item').count();
 
+    await page.locator('#input-text').fill('hello');
     await page.locator('#input-add').click();
 
-    page.waitForFunction(() => {
-      return document.querySelectorAll('.item').length === countBefore + 1;
-    })
+    await page.waitForFunction(() => !document.querySelector('.loading'), null);
 
     expect(await page.locator('.item').count()).toBe(countBefore + 1);
 

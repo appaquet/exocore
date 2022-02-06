@@ -11,7 +11,8 @@ interface IListItem {
 }
 
 interface IListState {
-    items: IListItem[]
+    items: IListItem[];
+    loading: boolean;
 }
 
 export default class List extends React.Component<IListProps, IListState> {
@@ -20,7 +21,10 @@ export default class List extends React.Component<IListProps, IListState> {
     constructor(props: IListProps) {
         super(props);
 
-        this.state = { items: [] };
+        this.state = {
+            items: [],
+            loading: true,
+        };
 
         this.registerQuery();
     }
@@ -29,6 +33,8 @@ export default class List extends React.Component<IListProps, IListState> {
         return (
             <div>
                 <Input onAdd={this.onAdd} />
+
+                {this.state.loading && <div className="loading">Loading...</div>}
 
                 <ul>
                     {this.renderList()}
@@ -48,6 +54,8 @@ export default class List extends React.Component<IListProps, IListState> {
     }
 
     onAdd = async (text: string) => {
+        this.setState({ loading: true });
+
         const mutation = MutationBuilder
             .createEntity()
             .putTrait(new exocore.test.TestMessage({
@@ -83,7 +91,8 @@ export default class List extends React.Component<IListProps, IListState> {
             });
 
             this.setState({
-                items: res
+                items: res,
+                loading: false,
             })
         });
     }
