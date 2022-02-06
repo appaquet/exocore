@@ -149,7 +149,7 @@ function NodeConfig(props: { onConfigChanged: (config: string) => void }) {
                 />
             </div>
 
-            <div><button id="save-config" onClick={() => props.onConfigChanged(config)}>Save</button></div>
+            <div><button id="config-save" onClick={() => props.onConfigChanged(config)}>Save</button></div>
         </div>
     );
 }

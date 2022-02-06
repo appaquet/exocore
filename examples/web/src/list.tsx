@@ -43,7 +43,7 @@ export default class List extends React.Component<IListProps, IListState> {
         };
 
         return this.state.items.map(item =>
-            <li key={item.entity.id}>{item.message.string1} (<DeleteButton item={item} />)</li>
+            <li key={item.entity.id} className="item"><span className="text">{item.message.string1}</span> (<DeleteButton item={item} />)</li>
         );
     }
 
@@ -113,8 +113,8 @@ class Input extends React.Component<IInputProps, IInputState> {
     render() {
         return (
             <div>
-                <input value={this.state.text} onChange={this.onTextChange} />
-                <button onClick={this.onAddClick}>Add</button>
+                <input value={this.state.text} onChange={this.onTextChange} id="input-text" />
+                <button onClick={this.onAddClick} id="input-add">Add</button>
             </div>
         )
     }

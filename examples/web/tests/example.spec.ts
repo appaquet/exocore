@@ -1,5 +1,45 @@
 import { test, expect, Page } from '@playwright/test';
 
+const nodeConfig = `
+---
+keypair: ae5n1bGfpoKw3MV1omTMtDPBLn8vsqba773iYwRBn3xcqwSAV14Nc78MRh8daFb1K6MCgiY9bwkMtEpQbju6m1KgRM
+public_key: peENxZEQi4RGKdpWFv7oeQuarWKNDUh2yqsEJByJw5LJNs
+name: optionally-prime-anteater
+id: 12D3KooWPCKiyYHmcAb8EPmLkQPkgNwLohG7ij4KppfDMJ5yEF6o
+listen_addresses: ~
+addresses: ~
+cells:
+  - inline:
+      public_key: pe2AgPyBmJNztntK9n4vhLuEYN8P2kRfFXnaZFsiXqWacQ
+      keypair: ae55Nfv11ppyFVxCDaYovcxTcaTDaSzSFjiVoiC3VwGARfEuaqGcgoJUdVpqfwKQVDN4rvGKUvt4yqQc6w7it7PCpG
+      name: first
+      id: 12D3KooWAz3ZiKM1ZuAHJCfChXSgg2dCci5PTML1kAvHFhgjQXLL
+      nodes:
+        - node:
+            public_key: peB5zdALLVajPwr2JUggkkrx37L1ujBqbbk5ZVaA26AgL6
+            name: server
+            id: 12D3KooWKuMnuTvCmdfSFuouKHW6dk7wpLxNDXg5hfvWx9Az4d42
+            addresses:
+              p2p:
+                - /ip4/127.0.0.1/tcp/3365
+                - /ip4/127.0.0.1/tcp/3465/ws
+              http:
+                - "http://127.0.0.1:8065"
+          roles:
+            - 1
+            - 2
+            - 3
+        - node:
+            public_key: peENxZEQi4RGKdpWFv7oeQuarWKNDUh2yqsEJByJw5LJNs
+            name: optionally-prime-anteater
+            id: 12D3KooWPCKiyYHmcAb8EPmLkQPkgNwLohG7ij4KppfDMJ5yEF6o
+            addresses: ~
+          roles: []
+      apps: []
+store: ~
+chain: ~
+`;
+
 test.beforeEach(async ({ page }) => {
   await page.goto('http://localhost:8080');
 });
@@ -10,8 +50,34 @@ const TODO_ITEMS = [
   'book a doctors appointment'
 ];
 
-test.describe('New Todo', () => {
+test.describe('Exocore', () => {
+  test.beforeEach(async ({ page }) => {
+    const config = page.locator('#config');
+    if (!config) {
+      return;
+    }
+
+    await page.locator('#config').fill(nodeConfig);
+    await page.locator('#config-save').click();
+
+    page.waitForSelector('#input-text');
+  });
+
   test('should allow me to add todo items', async ({ page }) => {
+    await page.locator('#input-text').fill('hello');
+
+    const countBefore = await page.locator('.item').count();
+
+    await page.locator('#input-add').click();
+
+    page.waitForFunction(() => {
+      return document.querySelectorAll('.item').length === countBefore + 1;
+    })
+
+    expect(await page.locator('.item').count()).toBe(countBefore + 1);
+
+
+
     // // Create 1st todo.
     // await page.locator('.new-todo').fill(TODO_ITEMS[0]);
     // await page.locator('.new-todo').press('Enter');
