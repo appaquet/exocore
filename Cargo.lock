@@ -3034,9 +3034,9 @@ dependencies = [
 
 [[package]]
 name = "protobuf"
-version = "2.27.0"
+version = "2.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "315b4773dbbe8eda7cc9c15a178b7a5c354030d0ffad360cff41cc748d97eeed"
+checksum = "cf7e6d18738ecd0902d30d1ad232c9125985a3422929b16c65517b38adc14f96"
 
 [[package]]
 name = "psm"
