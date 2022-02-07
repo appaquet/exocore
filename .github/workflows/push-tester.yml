@@ -184,15 +184,13 @@ jobs:
           npm install
           npm run build
 
-      - name: Build & run server
+      - name: Run end-to-end tests
         run: |
           cd $GITHUB_WORKSPACE
-          ./tools/install.sh
+          ./tools/install.sh --debug
           cd $GITHUB_WORKSPACE/examples/web/tests
           exo -d node daemon &
 
-      - name: Build server
-        run: |
           cd $GITHUB_WORKSPACE/examples/web
           npm exec playwright test
 
