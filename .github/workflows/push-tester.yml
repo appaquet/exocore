@@ -149,7 +149,7 @@ jobs:
           command: test
           args: --all --all-features
 
-  web_client_build:
+  web_client_test:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2.4.0
@@ -183,6 +183,18 @@ jobs:
           cd $GITHUB_WORKSPACE/examples/web
           npm install
           npm run build
+
+      - name: Build & run server
+        run: |
+          cd $GITHUB_WORKSPACE
+          ./tools/install.sh
+          cd $GITHUB_WORKSPACE/examples/web/tests
+          exo -d node daemon &
+
+      - name: Build server
+        run: |
+          cd $GITHUB_WORKSPACE/examples/web
+          npm exec playwright test
 
   ios_client_build:
     runs-on: macos-11 # See https://github.com/actions/virtual-environments/blob/main/images/macos for versions
