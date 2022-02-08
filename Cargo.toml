@@ -74,9 +74,6 @@ members = [
   "clients/c",
 ]
 
-# [profile.dev]
-# panic = "abort"
-
 [profile.release]
 codegen-units = 1
 lto = "thin"

@@ -187,9 +187,9 @@ jobs:
 
       - name: Run end-to-end tests
         run: |
-          cd $GITHUB_WORKSPACE
           cd $GITHUB_WORKSPACE/examples/web/tests
           exo -d node daemon &
+
           sleep 5
 
           cd $GITHUB_WORKSPACE/examples/web

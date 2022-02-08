@@ -20,6 +20,8 @@
 
 ## End to end testing
 
+* Install Playwright dependencies `npx playwright install --with-deps`
+
 * Run test server in background `cd tests && exo -d node daemon &`
 
 * Run tests `cd .. && npm exec playwright test`
