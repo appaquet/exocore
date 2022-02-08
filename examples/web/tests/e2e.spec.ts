@@ -45,10 +45,12 @@ store: ~
 chain: ~
 `;
 
-test.describe('Exocore', () => {
-  test('should allow adding items', async ({ page }) => {
-    await page.goto('http://localhost:8080');
+test.beforeEach(async ({ page }) => {
+  await page.goto('http://localhost:8080');
+});
 
+test.describe('Exocore', () => {
+  test.beforeEach(async ({ page }) => {
     const config = page.locator('#config');
     if (config) {
       await page.locator('#config').fill(nodeConfig);
@@ -57,8 +59,9 @@ test.describe('Exocore', () => {
 
     await page.waitForSelector('#input-text');
     await page.waitForFunction(() => !document.querySelector('.loading'), null);
+  });
 
-
+  test('should allow adding items', async ({ page }) => {
     const countBefore = await page.locator('.item').count();
 
     await page.locator('#input-text').fill('hello');
