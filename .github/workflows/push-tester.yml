@@ -12,142 +12,142 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  rust_checks:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2.4.0
+  # rust_checks:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2.4.0
 
-      - uses: actions-rs/toolchain@v1.0.7
-        with:
-          toolchain: stable
-          profile: minimal
-          components: rustfmt, clippy
+  #     - uses: actions-rs/toolchain@v1.0.7
+  #       with:
+  #         toolchain: stable
+  #         profile: minimal
+  #         components: rustfmt, clippy
 
-      - uses: Swatinem/rust-cache@v1
+  #     - uses: Swatinem/rust-cache@v1
 
-      - name: Check formatting
-        uses: actions-rs/cargo@v1.0.3
-        with:
-          command: fmt
-          args: --all -- --check
+  #     - name: Check formatting
+  #       uses: actions-rs/cargo@v1.0.3
+  #       with:
+  #         command: fmt
+  #         args: --all -- --check
 
-      - name: Clippy & check
-        uses: actions-rs/clippy-check@v1.0.7
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features
+  #     - name: Clippy & check
+  #       uses: actions-rs/clippy-check@v1.0.7
+  #       with:
+  #         token: ${{ secrets.GITHUB_TOKEN }}
+  #         args: --all-features
 
-  # Make sure that `exo` compiles on some targets that we don't run tests on.
-  exo_build_check:
-    strategy:
-      fail-fast: true
-      matrix:
-        pair:
-          - target: armv7-unknown-linux-gnueabihf
-            os: ubuntu-latest
-            cross: true
-          - target: aarch64-apple-darwin
-            os: macOS-11
-            cross: false
+  # # Make sure that `exo` compiles on some targets that we don't run tests on.
+  # exo_build_check:
+  #   strategy:
+  #     fail-fast: true
+  #     matrix:
+  #       pair:
+  #         - target: armv7-unknown-linux-gnueabihf
+  #           os: ubuntu-latest
+  #           cross: true
+  #         - target: aarch64-apple-darwin
+  #           os: macOS-11
+  #           cross: false
 
-    runs-on: ${{ matrix.pair.os }}
+  #   runs-on: ${{ matrix.pair.os }}
 
-    steps:
-      - uses: actions/checkout@v2.4.0
+  #   steps:
+  #     - uses: actions/checkout@v2.4.0
 
-      - uses: actions-rs/toolchain@v1.0.7
-        with:
-          toolchain: stable
-          target: ${{ matrix.pair.target }}
-          profile: minimal
+  #     - uses: actions-rs/toolchain@v1.0.7
+  #       with:
+  #         toolchain: stable
+  #         target: ${{ matrix.pair.target }}
+  #         profile: minimal
 
-      - uses: Swatinem/rust-cache@v1
+  #     - uses: Swatinem/rust-cache@v1
 
-      - uses: actions-rs/cargo@v1.0.3
-        with:
-          use-cross: ${{ matrix.pair.cross }}
-          command: check
-          args: -p exo --target ${{ matrix.pair.target }}
+  #     - uses: actions-rs/cargo@v1.0.3
+  #       with:
+  #         use-cross: ${{ matrix.pair.cross }}
+  #         command: check
+  #         args: -p exo --target ${{ matrix.pair.target }}
 
-  rust_tests:
-    strategy:
-      fail-fast: true
-      matrix:
-        pair:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-          - target: x86_64-apple-darwin
-            os: macOS-11
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
+  # rust_tests:
+  #   strategy:
+  #     fail-fast: true
+  #     matrix:
+  #       pair:
+  #         - target: x86_64-unknown-linux-gnu
+  #           os: ubuntu-latest
+  #         - target: x86_64-apple-darwin
+  #           os: macOS-11
+  #         - target: x86_64-pc-windows-msvc
+  #           os: windows-latest
 
-    runs-on: ${{ matrix.pair.os }}
+  #   runs-on: ${{ matrix.pair.os }}
 
-    steps:
-      - uses: actions/checkout@v2.4.0
+  #   steps:
+  #     - uses: actions/checkout@v2.4.0
 
-      - uses: actions-rs/toolchain@v1.0.7
-        with:
-          toolchain: stable
-          profile: minimal
+  #     - uses: actions-rs/toolchain@v1.0.7
+  #       with:
+  #         toolchain: stable
+  #         profile: minimal
 
-      - uses: Swatinem/rust-cache@v1
+  #     - uses: Swatinem/rust-cache@v1
 
-      - name: Tests
-        uses: actions-rs/cargo@v1.0.3
-        with:
-          command: test
-          args: --all --all-features
+  #     - name: Tests
+  #       uses: actions-rs/cargo@v1.0.3
+  #       with:
+  #         command: test
+  #         args: --all --all-features
 
-  rust_tests_coverage:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2.4.0
+  # rust_tests_coverage:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2.4.0
 
-      - uses: actions-rs/toolchain@v1.0.7
-        with:
-          toolchain: nightly
-          profile: minimal
-          components: llvm-tools-preview
+  #     - uses: actions-rs/toolchain@v1.0.7
+  #       with:
+  #         toolchain: nightly
+  #         profile: minimal
+  #         components: llvm-tools-preview
 
-      - name: Install cargo-llvm-cov
-        run: curl -LsSf https://github.com/taiki-e/cargo-llvm-cov/releases/latest/download/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz | tar xzf - -C ~/.cargo/bin
+  #     - name: Install cargo-llvm-cov
+  #       run: curl -LsSf https://github.com/taiki-e/cargo-llvm-cov/releases/latest/download/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz | tar xzf - -C ~/.cargo/bin
 
-      - uses: Swatinem/rust-cache@v1
+  #     - uses: Swatinem/rust-cache@v1
 
-      - name: Test coverage
-        run: |
-          ./tools/coverage.sh lcov
+  #     - name: Test coverage
+  #       run: |
+  #         ./tools/coverage.sh lcov
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v2.1.0
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
-          files: lcov.info
-          fail_ci_if_error: true
+  #     - name: Upload coverage to Codecov
+  #       uses: codecov/codecov-action@v2.1.0
+  #       with:
+  #         token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
+  #         files: lcov.info
+  #         fail_ci_if_error: true
 
-  apps_sdk_runtime_tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2.4.0
+  # apps_sdk_runtime_tests:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2.4.0
 
-      - uses: actions-rs/toolchain@v1.0.7
-        with:
-          toolchain: stable
-          profile: minimal
-          target: wasm32-unknown-unknown
+  #     - uses: actions-rs/toolchain@v1.0.7
+  #       with:
+  #         toolchain: stable
+  #         profile: minimal
+  #         target: wasm32-unknown-unknown
 
-      - uses: Swatinem/rust-cache@v1
+  #     - uses: Swatinem/rust-cache@v1
 
-      - name: Generate sample WASM fixtures
-        run: |
-          ./apps/tools/build_fixtures.sh
+  #     - name: Generate sample WASM fixtures
+  #       run: |
+  #         ./apps/tools/build_fixtures.sh
 
-      - name: Tests
-        uses: actions-rs/cargo@v1.0.3
-        with:
-          command: test
-          args: --all --all-features
+  #     - name: Tests
+  #       uses: actions-rs/cargo@v1.0.3
+  #       with:
+  #         command: test
+  #         args: --all --all-features
 
   web_client_test:
     runs-on: ubuntu-20.04
@@ -193,7 +193,7 @@ jobs:
           sleep 5
 
           cd $GITHUB_WORKSPACE/examples/web
-          CI=1 npm exec playwright test
+          DEBUG=pw:api npm exec playwright test
 
       - uses: actions/upload-artifact@v2
         if: always()
@@ -202,41 +202,41 @@ jobs:
           path: examples/web/playwright-report
           retention-days: 7
 
-  ios_client_build:
-    runs-on: macos-11 # See https://github.com/actions/virtual-environments/blob/main/images/macos for versions
-    steps:
-      - uses: actions/checkout@v2.4.0
+  # ios_client_build:
+  #   runs-on: macos-11 # See https://github.com/actions/virtual-environments/blob/main/images/macos for versions
+  #   steps:
+  #     - uses: actions/checkout@v2.4.0
 
-      - uses: actions-rs/toolchain@v1.0.7
-        with:
-          toolchain: stable
-          profile: minimal
+  #     - uses: actions-rs/toolchain@v1.0.7
+  #       with:
+  #         toolchain: stable
+  #         profile: minimal
 
-      - uses: Swatinem/rust-cache@v1
+  #     - uses: Swatinem/rust-cache@v1
 
-      - name: Install dependencies
-        run: |
-          HOMEBREW_NO_INSTALL_CLEANUP=1 brew install swift-protobuf
-          rustup target add aarch64-apple-ios x86_64-apple-ios aarch64-apple-ios-sim # actions-rs doesn't support multiple targets: https://github.com/actions-rs/toolchain/issues/16
-          cargo install cargo-lipo --debug # make build faster, no need for speed from it
+  #     - name: Install dependencies
+  #       run: |
+  #         HOMEBREW_NO_INSTALL_CLEANUP=1 brew install swift-protobuf
+  #         rustup target add aarch64-apple-ios x86_64-apple-ios aarch64-apple-ios-sim # actions-rs doesn't support multiple targets: https://github.com/actions-rs/toolchain/issues/16
+  #         cargo install cargo-lipo --debug # make build faster, no need for speed from it
 
-      - name: Build client & pod
-        run: |
-          cd $GITHUB_WORKSPACE/clients/ios
-          ./tools/generate.sh
-          ./tools/build.sh
+  #     - name: Build client & pod
+  #       run: |
+  #         cd $GITHUB_WORKSPACE/clients/ios
+  #         ./tools/generate.sh
+  #         ./tools/build.sh
 
-          cd $GITHUB_WORKSPACE/
-          pod lib lint --verbose --allow-warnings
+  #         cd $GITHUB_WORKSPACE/
+  #         pod lib lint --verbose --allow-warnings
 
-      - name: Build example project
-        run: |
-          cd $GITHUB_WORKSPACE/examples/ios
-          pod install
-          xcodebuild -workspace ExamplesIos.xcworkspace -scheme ExamplesIos -destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO
+  #     - name: Build example project
+  #       run: |
+  #         cd $GITHUB_WORKSPACE/examples/ios
+  #         pod install
+  #         xcodebuild -workspace ExamplesIos.xcworkspace -scheme ExamplesIos -destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO
 
-  markdown_links_check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2.4.0
-      - uses: gaurav-nelson/github-action-markdown-link-check@1.0.13
+  # markdown_links_check:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2.4.0
+  #     - uses: gaurav-nelson/github-action-markdown-link-check@1.0.13
