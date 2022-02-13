@@ -77,4 +77,4 @@ members = [
 [profile.production]
 inherits = "release"
 codegen-units = 1
-lto = true
+lto = "thin"
