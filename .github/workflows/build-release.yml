@@ -123,7 +123,7 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE/clients/ios
           ./tools/generate.sh
-          ./tools/build.sh production
+          ./tools/build.sh release
 
           cd $GITHUB_WORKSPACE
           mkdir archive
