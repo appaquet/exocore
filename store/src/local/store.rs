@@ -890,16 +890,16 @@ pub mod tests {
                 .build();
             async_expect_eventually_fallible(|| async {
                 let query = QueryBuilder::with_id("entity1").include_deleted().build();
-                let res = store_handle.query(query).await.unwrap();
+                let res = store_handle.query(query).await?;
                 let is_deleted = res.entities.is_empty();
 
                 if !is_deleted {
                     // if not yet deleted, we create a new mutation on another entity to make sure
                     // entity deletion is in chain
                     store_handle.mutate(ent2_mut.clone()).await.unwrap();
-                    false
+                    Err(anyhow!("entities still not deleted"))
                 } else {
-                    true
+                    Ok(())
                 }
             })
             .await?;

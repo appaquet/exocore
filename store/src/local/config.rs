@@ -29,21 +29,20 @@ pub struct StoreConfig {
     /// to control rate of collection.
     pub garbage_collect_interval: Duration,
 
-    /// Specifies the interval at which new blocks in the chain are indexed.
-    /// New blocks may not necessarily be indexed immediately if they don't
-    /// fall in the interval of `chain_index_min_depth` and
-    /// `chain_index_depth_leeway`
+    /// Specifies the interval at which new blocks in the chain get indexed.
+    /// New blocks may not necessarily get immediately indexed if they don't
+    /// fall in the interval of `chain_index_min_depth` and `chain_index_depth_leeway`.
     ///
     /// Indexation can also be prevented if user queries were recently executed
-    /// (see `chain_index_deferred_min_query_secs`)
+    /// (see `chain_index_deferred_query_secs`)
     ///
-    /// If "0" is specified, deferred indexation is disabled and blocks are
-    /// indexed when the chain layer emits events.
+    /// If '0' is specified, deferred indexation is disabled and blocks are indexed
+    /// when the chain layer emits events.
     pub chain_index_deferred_interval: Option<Duration>,
 
     /// Specifies the minimum interval to wait before indexing chain blocks
-    /// after receiving a user query. This prevents potential slow down of the
-    /// chain indexation if a user query is executed frequently.
+    /// after receiving a user query. It prevents potential slow downs caused
+    /// by chain indexation if a user query get executed frequently.
     pub chain_index_deferred_query_interval: Duration,
 
     /// Specifies the maximum interval for which indexation may be blocked by

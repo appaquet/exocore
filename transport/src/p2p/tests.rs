@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Duration};
 use exocore_core::{
     cell::{FullCell, LocalNode},
     futures::{sleep, spawn_future},
-    tests_utils::async_expect_eventually,
+    tests_utils::{async_expect_eventually, result_assert_equal, result_assert_true},
     time::{ConsistentTimestamp, Instant},
 };
 use futures::{io::Cursor, AsyncRead, AsyncReadExt};
@@ -44,8 +44,17 @@ async fn test_integration() -> anyhow::Result<()> {
 
     // wait for nodes to be connected
     async_expect_eventually(|| async {
-        handle1.node_status(n2.id()).await == Some(ConnectionStatus::Connected)
-            && handle2.node_status(n1.id()).await == Some(ConnectionStatus::Connected)
+        result_assert_equal(
+            handle1.node_status(n2.id()).await,
+            Some(ConnectionStatus::Connected),
+        )?;
+
+        result_assert_equal(
+            handle2.node_status(n1.id()).await,
+            Some(ConnectionStatus::Connected),
+        )?;
+
+        Ok(())
     })
     .await;
 
@@ -63,7 +72,11 @@ async fn test_integration() -> anyhow::Result<()> {
         // send 2 to 1, should expect receiving 1 new messages (so total 3 because of
         // prev reply)
         handle2.send_rdv(n1.node().clone(), 345).await;
-        async_expect_eventually(|| async { handle1.received_count().await == 3 }).await;
+        async_expect_eventually(|| async {
+            result_assert_equal(handle1.received_count().await, 3)?;
+            Ok(())
+        })
+        .await;
     }
 
     {
@@ -113,14 +126,19 @@ async fn handle_removal_and_transport_kill() -> anyhow::Result<()> {
     async_expect_eventually(|| async {
         let inner = inner_weak.upgrade().unwrap();
         let inner = inner.read().unwrap();
-        inner.service_handles.len() == 1
+        result_assert_equal(inner.service_handles.len(), 1)?;
+        Ok(())
     })
     .await;
 
     // we drop second handle, we expect inner to be dropped and therefor transport
     // killed
     drop(handle2);
-    async_expect_eventually(|| async { inner_weak.upgrade().is_none() }).await;
+    async_expect_eventually(|| async {
+        result_assert_true(inner_weak.upgrade().is_none())?;
+        Ok(())
+    })
+    .await;
 
     Ok(())
 }

@@ -39,7 +39,14 @@ async fn mutation_and_query() -> anyhow::Result<()> {
             let mut test_remote_store = test_remote_store.lock().await;
             let query = QueryBuilder::matches("hello").build();
             let results = test_remote_store.send_and_await_query(query).await.unwrap();
-            results.entities.len() == 1
+            if results.entities.len() == 1 {
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!(
+                    "Expected 1 result, got {}",
+                    results.entities.len()
+                ))
+            }
         })
         .await;
     }
