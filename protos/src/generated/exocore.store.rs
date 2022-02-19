@@ -63,15 +63,15 @@ pub struct EntityQuery {
     /// empty with the `skipped_hash` field set to `true`.
     #[prost(uint64, tag = "9")]
     pub result_hash: u64,
-    /// Include deleted mutations matches. Can be used to return recently
+    /// Include deleted mutations matches. This can be used to return recently
     /// modified entities that also include deletions. Deleted traits will
-    /// be included in the results, but will have a `deletion_date` field
+    /// be included in the results but will have a `deletion_date` field
     /// with the date of the deletion.
     #[prost(bool, tag = "12")]
     pub include_deleted: bool,
     /// Indicates that the query comes from an automated / programmatic logic.
-    /// Since heavier operation can be differed from human interaction, this
-    /// can be used to indicate that the query is not a user action.
+    /// This is used since chain indexation may be deferred until no user
+    /// queries got received for a while.
     #[prost(bool, tag = "13")]
     pub programmatic: bool,
     /// Main search predicate on individual traits of the entity.

@@ -125,15 +125,18 @@ pub struct EntityIndexConfig {
     /// If "0" is specified, deferred indexation is disabled and blocks are
     /// indexed when the chain layer emits events.
     #[prost(message, optional, tag = "6")]
+    #[serde(default)]
     pub chain_index_deferred_interval_secs: ::core::option::Option<u64>,
     /// Specifies the minimum interval to wait before indexing chain blocks
     /// after receiving a user query. This prevents potential slow down of the
     /// chain indexation if a user query is executed frequently.
     #[prost(message, optional, tag = "7")]
+    #[serde(default)]
     pub chain_index_deferred_query_secs: ::core::option::Option<u64>,
     /// Specifies the maximum interval for which indexation may be blocked by
     /// incoming user queries.
     #[prost(message, optional, tag = "8")]
+    #[serde(default)]
     pub chain_index_deferred_max_secs: ::core::option::Option<u64>,
     /// Configuration for the in-memory traits index that are in the pending
     /// store

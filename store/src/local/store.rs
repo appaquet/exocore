@@ -417,7 +417,8 @@ where
             let inner = weak_inner.upgrade().ok_or(Error::Dropped)?;
             let mut inner = inner.write()?;
 
-            // if deferred commit is enabled, we don't forward new chain block events to the entity index
+            // if deferred commit is enabled, we don't forward new chain block events to the
+            // entity index
             let deferred_commit = inner.config.chain_index_deferred_interval.is_some();
             let filtered_events = events
                 .into_iter()
