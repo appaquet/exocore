@@ -69,6 +69,11 @@ pub struct EntityQuery {
     /// with the date of the deletion.
     #[prost(bool, tag = "12")]
     pub include_deleted: bool,
+    /// Indicates that the query comes from an automated / programmatic logic.
+    /// Since heavier operation can be differed from human interaction, this
+    /// can be used to indicate that the query is not a user action.
+    #[prost(bool, tag = "13")]
+    pub programmatic: bool,
     /// Main search predicate on individual traits of the entity.
     #[prost(oneof = "entity_query::Predicate", tags = "1, 2, 3, 4, 10, 11, 99")]
     pub predicate: ::core::option::Option<entity_query::Predicate>,

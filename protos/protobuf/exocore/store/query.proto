@@ -38,6 +38,10 @@ message EntityQuery {
     // also include deletions. Deleted traits will be included in the results, but will have a
     // `deletion_date` field with the date of the deletion.
     bool include_deleted = 12;
+
+    // Indicates that the query comes from an automated / programmatic logic. Since heavier operation
+    // can be differed from human interaction, this can be used to indicate that the query is not a user action.
+    bool programmatic = 13;
 }
 
 message Projection {
