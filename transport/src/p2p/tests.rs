@@ -73,8 +73,7 @@ async fn test_integration() -> anyhow::Result<()> {
         // prev reply)
         handle2.send_rdv(n1.node().clone(), 345).await;
         async_expect_eventually(|| async {
-            assert_equal_res(handle1.received_count().await, 3)?;
-            Ok(())
+            assert_equal_res(handle1.received_count().await, 3)
         })
         .await;
     }
@@ -126,8 +125,7 @@ async fn handle_removal_and_transport_kill() -> anyhow::Result<()> {
     async_expect_eventually(|| async {
         let inner = inner_weak.upgrade().unwrap();
         let inner = inner.read().unwrap();
-        assert_equal_res(inner.service_handles.len(), 1)?;
-        Ok(())
+        assert_equal_res(inner.service_handles.len(), 1)
     })
     .await;
 
@@ -135,8 +133,7 @@ async fn handle_removal_and_transport_kill() -> anyhow::Result<()> {
     // killed
     drop(handle2);
     async_expect_eventually(|| async {
-        assert_res(inner_weak.upgrade().is_none())?;
-        Ok(())
+        assert_res(inner_weak.upgrade().is_none())
     })
     .await;
 
