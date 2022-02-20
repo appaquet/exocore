@@ -19,8 +19,7 @@ use exocore_core::{
 };
 use exocore_protos::{
     generated::exocore_store::{
-        entity_mutation::Mutation, EntityMutation, EntityQuery, EntityResult as EntityResultProto,
-        EntityResults, Trait,
+        entity_mutation::Mutation, EntityMutation, EntityQuery, EntityResults, Trait,
     },
     prost::{Message, ProstDateTimeExt},
     registry::Registry,
@@ -30,7 +29,7 @@ use gc::GarbageCollector;
 use itertools::Itertools;
 
 use super::mutation_index::{IndexOperation, MutationIndex, MutationMetadata};
-use crate::{error::Error, ordering::OrderingValueWrapper};
+use crate::error::Error;
 
 mod config;
 pub use config::*;
@@ -624,7 +623,7 @@ where
     /// from the chain layer.
     fn populate_results_traits(
         &self,
-        entity_results: &mut Vec<EntityResult>,
+        entity_results: &mut Vec<searcher::EntityResult>,
         include_deleted: bool,
     ) {
         for entity_result in entity_results {
@@ -745,20 +744,4 @@ where
             Ok(None)
         }
     }
-}
-
-/// Wrapper for entity result with matched mutation from store layer along
-/// aggregated traits.
-pub struct EntityResult {
-    pub matched_mutation: MutationMetadata,
-    pub ordering_value: OrderingValueWrapper,
-    pub original_ordering_value: OrderingValueWrapper,
-    pub proto: EntityResultProto,
-    pub mutations: Rc<EntityAggregator>,
-}
-
-fn opt_date_to_proto(
-    dt: Option<chrono::DateTime<chrono::Utc>>,
-) -> Option<exocore_protos::prost::Timestamp> {
-    dt.map(|t| t.to_proto_timestamp())
 }

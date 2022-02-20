@@ -4,24 +4,26 @@ use std::{
     time::Instant,
 };
 
-use exocore_protos::store::{
-    Entity, EntityQuery, EntityResult as EntityResultProto, EntityResultSource, EntityResults,
-    Projection,
+use exocore_protos::{
+    prost::ProstDateTimeExt,
+    store::{
+        Entity, EntityQuery, EntityResult as EntityResultProto, EntityResultSource, EntityResults,
+        Projection,
+    },
 };
 use itertools::Itertools;
 
+use super::{gc::GarbageCollector, EntityAggregator};
 use crate::{
     entity::EntityId,
     error::Error,
     local::{
-        entity_index::{opt_date_to_proto, result_hasher},
+        entity_index::result_hasher,
         mutation_index::{MutationIndex, MutationMetadata},
         top_results::ReScoredTopResultsIterable,
     },
-    ordering::OrderingValueExt,
+    ordering::{OrderingValueExt, OrderingValueWrapper},
 };
-
-use super::{gc::GarbageCollector, EntityAggregator, EntityResult};
 
 pub struct Searcher<'i, M, E>
 where
@@ -276,4 +278,20 @@ where
 
         Ok((chain_hits, pending_hits, combined_results))
     }
+}
+
+/// Wrapper for entity result with matched mutation from store layer along
+/// aggregated traits.
+pub struct EntityResult {
+    pub matched_mutation: MutationMetadata,
+    pub ordering_value: OrderingValueWrapper,
+    pub original_ordering_value: OrderingValueWrapper,
+    pub proto: EntityResultProto,
+    pub mutations: Rc<EntityAggregator>,
+}
+
+fn opt_date_to_proto(
+    dt: Option<chrono::DateTime<chrono::Utc>>,
+) -> Option<exocore_protos::prost::Timestamp> {
+    dt.map(|t| t.to_proto_timestamp())
 }
