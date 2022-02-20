@@ -5,7 +5,7 @@ use exocore_core::tests_utils::{
 };
 use exocore_protos::{
     generated::{exocore_store::Paging, exocore_test::TestMessage},
-    store::Reference,
+    store::{EntityResultSource, Reference},
     test::TestMessage2,
 };
 use test_index::*;
