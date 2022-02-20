@@ -91,7 +91,7 @@ where
     }
 }
 
-pub fn result_assert_equal<A: PartialEq + Debug>(left: A, right: A) -> anyhow::Result<()> {
+pub fn assert_equal_res<A: PartialEq + Debug>(left: A, right: A) -> anyhow::Result<()> {
     if left == right {
         Ok(())
     } else {
@@ -99,19 +99,11 @@ pub fn result_assert_equal<A: PartialEq + Debug>(left: A, right: A) -> anyhow::R
     }
 }
 
-pub fn result_assert_true(value: bool) -> anyhow::Result<()> {
+pub fn assert_res(value: bool) -> anyhow::Result<()> {
     if value {
         Ok(())
     } else {
         Err(anyhow!("value is not true"))
-    }
-}
-
-pub fn result_assert_false(value: bool) -> anyhow::Result<()> {
-    if value {
-        Err(anyhow!("value is not false"))
-    } else {
-        Ok(())
     }
 }
 

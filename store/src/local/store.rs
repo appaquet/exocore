@@ -216,14 +216,14 @@ where
             Ok::<(), Error>(())
         };
 
-        // Index chain at interval when on idle
+        // Index chain at interval when idling
         let last_user_query = last_user_query_shared.clone();
         let weak_inner = Arc::downgrade(&self.inner);
         let chain_indexer = async move {
             let interval_dur = if let Some(dur) = self.config.chain_index_deferred_interval {
                 dur
             } else {
-                future::pending::<()>().await; // wait forever
+                future::pending::<()>().await; // deferred disabled, wait forever
                 return Ok(());
             };
 

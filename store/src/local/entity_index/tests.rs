@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
 use exocore_core::tests_utils::{
-    async_expect_eventually_fallible, async_test_retry, result_assert_equal, result_assert_true,
+    assert_equal_res, assert_res, async_expect_eventually_fallible, async_test_retry,
 };
 use exocore_protos::{
     generated::{exocore_store::Paging, exocore_test::TestMessage},
@@ -66,8 +66,8 @@ async fn index_full_pending_to_chain() -> anyhow::Result<()> {
             let pending_res = count_results_source(&res, EntityResultSource::Pending);
             let chain_res = count_results_source(&res, EntityResultSource::Chain);
 
-            result_assert_equal(pending_res + chain_res, 10)?;
-            result_assert_true(chain_res >= 5)?;
+            assert_equal_res(pending_res + chain_res, 10)?;
+            assert_res(chain_res >= 5)?;
             Ok(())
         })
         .await?;
