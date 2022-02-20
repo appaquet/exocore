@@ -72,10 +72,8 @@ async fn test_integration() -> anyhow::Result<()> {
         // send 2 to 1, should expect receiving 1 new messages (so total 3 because of
         // prev reply)
         handle2.send_rdv(n1.node().clone(), 345).await;
-        async_expect_eventually(|| async {
-            assert_equal_res(handle1.received_count().await, 3)
-        })
-        .await;
+        async_expect_eventually(|| async { assert_equal_res(handle1.received_count().await, 3) })
+            .await;
     }
 
     {
@@ -132,10 +130,7 @@ async fn handle_removal_and_transport_kill() -> anyhow::Result<()> {
     // we drop second handle, we expect inner to be dropped and therefor transport
     // killed
     drop(handle2);
-    async_expect_eventually(|| async {
-        assert_res(inner_weak.upgrade().is_none())
-    })
-    .await;
+    async_expect_eventually(|| async { assert_res(inner_weak.upgrade().is_none()) }).await;
 
     Ok(())
 }
