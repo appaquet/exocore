@@ -1,6 +1,5 @@
 use std::{
     borrow::Borrow,
-    collections::HashMap,
     path::{Path, PathBuf},
     rc::Rc,
     sync::Arc,
@@ -552,7 +551,7 @@ where
 
     /// Fetches indexed mutations metadata from pending and chain indices for
     /// this entity id and aggregate them.
-    pub fn fetch_aggregated_entity_mutations(
+    pub(super) fn fetch_aggregated_entity_mutations(
         &self,
         entity_id: &str,
     ) -> Result<EntityAggregator, Error> {
@@ -562,7 +561,7 @@ where
 
     /// Fetches indexed mutations metadata from pending and chain indices for
     /// this entity id.
-    pub fn fetch_entity_mutations_metadata(
+    pub(super) fn fetch_entity_mutations_metadata(
         &self,
         entity_id: &str,
     ) -> Result<impl Iterator<Item = MutationMetadata>, Error> {
@@ -588,7 +587,7 @@ where
     /// Fetches and cache indexed mutations metadata.
     fn fetch_and_cache_entity_mutations_metadata(
         &self,
-        cache: &mut HashMap<String, Rc<EntityAggregator>>,
+        cache: &mut searcher::EntityMetaCache,
         entity_id: &str,
         projections: &[Projection],
     ) -> Option<Rc<EntityAggregator>> {
@@ -623,7 +622,7 @@ where
     /// from the chain layer.
     fn populate_results_traits(
         &self,
-        entity_results: &mut Vec<searcher::EntityResult>,
+        entity_results: &mut Vec<searcher::SearchResult>,
         include_deleted: bool,
     ) {
         for entity_result in entity_results {

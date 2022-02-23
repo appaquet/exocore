@@ -6,10 +6,7 @@ use std::{
 
 use exocore_protos::{
     prost::ProstDateTimeExt,
-    store::{
-        Entity, EntityQuery, EntityResult as EntityResultProto, EntityResultSource, EntityResults,
-        Projection,
-    },
+    store::{Entity, EntityQuery, EntityResult, EntityResultSource, EntityResults, Projection},
 };
 use itertools::Itertools;
 
@@ -25,14 +22,12 @@ use crate::{
     ordering::{OrderingValueExt, OrderingValueWrapper},
 };
 
+pub type EntityMetaCache = HashMap<EntityId, Rc<EntityAggregator>>;
+
 pub struct Searcher<'i, M, E>
 where
-    M: Fn(
-        &mut HashMap<String, Rc<EntityAggregator>>,
-        &str,
-        &[Projection],
-    ) -> Option<Rc<EntityAggregator>>,
-    E: Fn(&mut Vec<EntityResult>, bool),
+    M: Fn(&mut EntityMetaCache, &str, &[Projection]) -> Option<Rc<EntityAggregator>>,
+    E: Fn(&mut Vec<SearchResult>, bool),
 {
     chain_index: &'i MutationIndex,
     pending_index: &'i MutationIndex,
@@ -44,12 +39,8 @@ where
 
 impl<'i, M, E> Searcher<'i, M, E>
 where
-    M: Fn(
-        &mut HashMap<String, Rc<EntityAggregator>>,
-        &str,
-        &[Projection],
-    ) -> Option<Rc<EntityAggregator>>,
-    E: Fn(&mut Vec<EntityResult>, bool),
+    M: Fn(&mut EntityMetaCache, &str, &[Projection]) -> Option<Rc<EntityAggregator>>,
+    E: Fn(&mut Vec<SearchResult>, bool),
 {
     pub fn new(
         chain_index: &'i MutationIndex,
@@ -144,11 +135,11 @@ where
                 };
 
                 if ordering_value.value.is_within_page_bound(&query_page) {
-                    let result = EntityResult {
+                    let result = SearchResult {
                         matched_mutation,
                         ordering_value: ordering_value.clone(),
                         original_ordering_value,
-                        proto: EntityResultProto {
+                        proto: EntityResult {
                             entity: Some(Entity {
                                 id: entity_id,
                                 traits: Vec::new(),
@@ -174,7 +165,7 @@ where
             // this steps consumes the results up until we reach the best 10 results based on the
             // score of the highest matching trait, but re-scored negatively based on
             // other traits
-            .top_negatively_rescored_results(query_page.count as usize, |result: &EntityResult| {
+            .top_negatively_rescored_results(query_page.count as usize, |result: &SearchResult| {
                 (
                     result.original_ordering_value.clone(),
                     result.ordering_value.clone(),
@@ -183,7 +174,7 @@ where
             // accumulate results
             .fold(
                 Vec::new(),
-                |mut results: Vec<EntityResult>, result: EntityResult| {
+                |mut results: Vec<SearchResult>, result: SearchResult| {
                     digest.update(&result.mutations.hash.to_ne_bytes());
                     results.push(result);
                     results
@@ -192,25 +183,7 @@ where
 
         let after_aggregate_instant = Instant::now();
 
-        let next_page = if let Some(last_result) = entity_results.last() {
-            let mut new_page = query_page.clone();
-
-            let ascending = self
-                .query
-                .ordering
-                .as_ref()
-                .map(|s| s.ascending)
-                .unwrap_or(false);
-            if !ascending {
-                new_page.before_ordering_value = Some(last_result.ordering_value.value.clone());
-            } else {
-                new_page.after_ordering_value = Some(last_result.ordering_value.value.clone());
-            }
-
-            Some(new_page)
-        } else {
-            None
-        };
+        let next_page = self.next_paging(&entity_results, &query_page);
 
         // if query specifies a `result_hash` and that new results have the same hash,
         // we don't fetch results' data
@@ -278,15 +251,41 @@ where
 
         Ok((chain_hits, pending_hits, combined_results))
     }
+
+    fn next_paging(
+        &self,
+        entity_results: &[SearchResult],
+        query_paging: &exocore_protos::store::Paging,
+    ) -> Option<exocore_protos::store::Paging> {
+        if let Some(last_result) = entity_results.last() {
+            let mut new_paging = query_paging.clone();
+
+            let ascending = self
+                .query
+                .ordering
+                .as_ref()
+                .map(|s| s.ascending)
+                .unwrap_or(false);
+            if !ascending {
+                new_paging.before_ordering_value = Some(last_result.ordering_value.value.clone());
+            } else {
+                new_paging.after_ordering_value = Some(last_result.ordering_value.value.clone());
+            }
+
+            Some(new_paging)
+        } else {
+            None
+        }
+    }
 }
 
 /// Wrapper for entity result with matched mutation from store layer along
 /// aggregated traits.
-pub struct EntityResult {
+pub struct SearchResult {
     pub matched_mutation: MutationMetadata,
     pub ordering_value: OrderingValueWrapper,
     pub original_ordering_value: OrderingValueWrapper,
-    pub proto: EntityResultProto,
+    pub proto: EntityResult,
     pub mutations: Rc<EntityAggregator>,
 }
 
