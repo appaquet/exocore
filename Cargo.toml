@@ -74,6 +74,11 @@ members = [
   "clients/c",
 ]
 
+[patch.crates-io]
+# exocore = {path = "../exocore"}
+# exocore = { git = "https://github.com/appaquet/exocore.git", tag = "v0.1.19" }
+libp2p = {git = "https://github.com/mxinden/rust-libp2p.git", branch = "test-yamux-v0.10.1-rc.1"}
+
 [profile.production]
 inherits = "release"
 codegen-units = 1
