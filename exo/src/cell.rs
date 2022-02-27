@@ -1,9 +1,10 @@
 use std::{io::Write, path::PathBuf, time::Duration};
 
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use bytes::Bytes;
 use console::style;
 use exocore_chain::{
-    block::{Block, BlockBuilder, BlockOperations, DataBlock},
+    block::{Block, BlockBuilder, BlockOffset, BlockOperations, DataBlock},
     chain::{ChainData, ChainStore},
     operation::{OperationBuilder, OperationFrame, OperationId},
     DirectoryChainStore, DirectoryChainStoreConfig,
@@ -23,8 +24,11 @@ use exocore_protos::{
     prost::Message,
     reflect::ReflectMessage,
     registry::Registry,
+    serde, serde_derive, serde_json,
     store::EntityMutation,
 };
+use exocore_store::local::ChainEntityMutationIterator;
+use extsort::ExternalSorter;
 
 use crate::{app::AppPackage, disco::prompt_discovery_pin, utils::edit_string, Context, *};
 
@@ -90,6 +94,9 @@ enum CellChainCommand {
 
     /// Exports the chain's data.
     Export(ChainExportOptions),
+
+    /// Exports the chain's entities.
+    ExportEntities(ChainExportEntitiesOptions),
 
     /// Imports the chain's data.
     Import(ChainImportOptions),
@@ -180,6 +187,16 @@ struct ChainExportOptions {
     /// Export the chain data in a JSON line format.
     #[clap(long)]
     json: bool,
+
+    /// Treat errors as warnings.
+    #[clap(long)]
+    warning: bool,
+}
+
+#[derive(clap::Parser, Clone)]
+struct ChainExportEntitiesOptions {
+    /// File in which chain entities will be exported.
+    file: PathBuf,
 
     /// Treat errors as warnings.
     #[clap(long)]
@@ -283,6 +300,9 @@ pub async fn handle_cmd(ctx: &Context, cell_opts: &CellOptions) -> anyhow::Resul
             CellChainCommand::Init => cmd_create_genesis_block(ctx, cell_opts),
             CellChainCommand::Check => cmd_check_chain(ctx, cell_opts),
             CellChainCommand::Export(export_opts) => cmd_export_chain(ctx, cell_opts, export_opts),
+            CellChainCommand::ExportEntities(export_opts) => {
+                cmd_export_chain_entities(ctx, cell_opts, export_opts)
+            }
             CellChainCommand::Import(import_opts) => cmd_import_chain(ctx, cell_opts, import_opts),
         },
         CellCommand::GenerateAuthToken(gen_opts) => {
@@ -928,6 +948,49 @@ fn export_operation_json(
     }
 
     out.write_all("\n".as_bytes())?;
+
+    Ok(())
+}
+
+fn cmd_export_chain_entities(
+    ctx: &Context,
+    cell_opts: &CellOptions,
+    export_opts: &ChainExportEntitiesOptions,
+) -> anyhow::Result<()> {
+    let (local_node, cell) = get_cell(ctx, cell_opts);
+    let schemas = cell.cell().schemas().as_ref();
+
+    let chain_dir = cell
+        .cell()
+        .chain_directory()
+        .as_os_path()
+        .expect("Cell is not stored in an OS directory");
+
+    let chain_config = local_node
+        .config()
+        .chain
+        .as_ref()
+        .cloned()
+        .unwrap_or_default();
+    let chain_store = DirectoryChainStore::create_or_open(chain_config.into(), &chain_dir)
+        .expect("Couldn't open chain");
+
+    let file = std::fs::File::create(&export_opts.file).expect("Couldn't open exported file");
+    let mut file_buf = std::io::BufWriter::new(file);
+
+    print_step(format!(
+        "Exporting chain to {}",
+        style_value(&export_opts.file)
+    ));
+
+    print_spacer();
+
+    let mut_iter = ChainEntityMutationIterator::new(&chain_store).unwrap();
+    for mutation in mut_iter {
+        println!("{:?}", mutation);
+    }
+
+    file_buf.flush().expect("Couldn't flush file buffer");
 
     Ok(())
 }
