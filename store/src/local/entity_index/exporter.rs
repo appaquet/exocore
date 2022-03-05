@@ -1,15 +1,21 @@
-use std::{cell::Cell, cmp::Ordering, io::Write};
+use std::{cell::Cell, cmp::Ordering, io::Write, iter::Peekable};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use exocore_chain::{block::Block, chain::ChainStore};
 use exocore_protos::{
     generated::data_chain_capnp::chain_operation,
-    prost::Message,
-    store::{CommittedEntityMutation, EntityMutation},
+    prost::{Message, ProstTimestampExt},
+    store::{CommittedEntityMutation, EntityMutation, OrderingValue},
 };
 use extsort::ExternalSorter;
 
-use crate::error::Error;
+use crate::{
+    error::Error,
+    local::mutation_index::{MutationMetadata, MutationType, PutTraitMetadata},
+    ordering::OrderingValueWrapper,
+};
+
+use super::EntityAggregator;
 
 pub struct ChainEntityMutationIterator<'s> {
     iter: Box<dyn Iterator<Item = SortableMutation> + 's>,
@@ -96,14 +102,16 @@ impl<'s> Iterator for ChainEntityMutationIterator<'s> {
 }
 
 pub struct ChainEntityIterator<'s> {
-    mutation_iterator: ChainEntityMutationIterator<'s>,
+    mutations: Peekable<ChainEntityMutationIterator<'s>>,
+    buffer: Vec<MutationMetadata>,
 }
 
 impl<'s> ChainEntityIterator<'s> {
-    pub fn new<S: ChainStore>(
-        chain_store: &'s S,
-    ) -> Result<ChainEntityMutationIterator<'s>, Error> {
-        Ok(ChainEntityMutationIterator::new(chain_store)?)
+    pub fn new<S: ChainStore>(chain_store: &'s S) -> Result<ChainEntityIterator<'s>, Error> {
+        Ok(ChainEntityIterator {
+            mutations: ChainEntityMutationIterator::new(chain_store)?.peekable(),
+            buffer: Vec::new(),
+        })
     }
 }
 
@@ -111,10 +119,109 @@ impl<'s> Iterator for ChainEntityIterator<'s> {
     type Item = EntityMutation;
 
     fn next(&mut self) -> Option<Self::Item> {
-        todo!()
+        self.buffer.clear();
+
+        let entity_id = self.mutations.peek()?.mutation.as_ref()?.entity_id.clone();
+        loop {
+            let next = self.mutations.peek()?;
+            let next_id = &next.mutation.as_ref()?.entity_id;
+            if entity_id != *next_id {
+                break;
+            }
+
+            let mutation = self.mutations.next()?;
+            self.buffer
+                .push(entity_to_mutation_metadata(&mutation).ok()??); // TODO: fix me, check error
+        }
+
+        let aggr = EntityAggregator::new(self.buffer.drain(..));
+
+        None
     }
 }
 
+fn entity_to_mutation_metadata(
+    committed_entity: &CommittedEntityMutation,
+) -> Result<Option<MutationMetadata>, Error> {
+    use exocore_protos::store::entity_mutation::Mutation;
+    let mutation = committed_entity
+        .mutation
+        .as_ref()
+        .ok_or_else(|| Error::Other(anyhow!("no entity mutation")))?;
+
+    let mutation_type = mutation
+        .mutation
+        .as_ref()
+        .ok_or_else(|| Error::Other(anyhow!("no entity mutation")))?;
+
+    let metadata = match mutation_type {
+        Mutation::PutTrait(put) => Some(put_trait_to_metadata(put, &committed_entity, mutation)?),
+        Mutation::DeleteTrait(del) => Some(del_trait_to_metadata(&committed_entity, mutation, del)),
+        Mutation::DeleteEntity(del) => {
+            Some(del_entity_to_metadata(&committed_entity, mutation, del))
+        }
+        _ => None,
+    };
+
+    Ok(metadata)
+}
+
+// TODO: prevent cloning
+
+fn put_trait_to_metadata(
+    put: &exocore_protos::store::PutTraitMutation,
+    committed_entity: &CommittedEntityMutation,
+    mutation: &EntityMutation,
+) -> Result<MutationMetadata, Error> {
+    let trt = put
+        .r#trait
+        .as_ref()
+        .ok_or_else(|| Error::Other(anyhow!("no trait in PutTrait mutation")))?;
+    Ok(MutationMetadata {
+        operation_id: committed_entity.operation_id,
+        block_offset: Some(committed_entity.block_offset),
+        entity_id: mutation.entity_id.clone(),
+        mutation_type: MutationType::TraitPut(PutTraitMetadata {
+            trait_id: trt.id.clone(),
+            trait_type: None,
+            creation_date: trt.creation_date.as_ref().map(|d| d.to_chrono_datetime()),
+            modification_date: trt
+                .modification_date
+                .as_ref()
+                .map(|d| d.to_chrono_datetime()),
+            has_reference: false,
+        }),
+        sort_value: OrderingValueWrapper::default(),
+    })
+}
+
+fn del_trait_to_metadata(
+    committed_entity: &CommittedEntityMutation,
+    mutation: &EntityMutation,
+    del: &exocore_protos::store::DeleteTraitMutation,
+) -> MutationMetadata {
+    MutationMetadata {
+        operation_id: committed_entity.operation_id,
+        block_offset: Some(committed_entity.block_offset),
+        entity_id: mutation.entity_id.clone(),
+        mutation_type: MutationType::TraitTombstone(del.trait_id.clone()),
+        sort_value: OrderingValueWrapper::default(),
+    }
+}
+
+fn del_entity_to_metadata(
+    committed_entity: &CommittedEntityMutation,
+    mutation: &EntityMutation,
+    del: &exocore_protos::store::DeleteEntityMutation,
+) -> MutationMetadata {
+    MutationMetadata {
+        operation_id: committed_entity.operation_id,
+        block_offset: Some(committed_entity.block_offset),
+        entity_id: mutation.entity_id.clone(),
+        mutation_type: MutationType::EntityTombstone,
+        sort_value: OrderingValueWrapper::default(),
+    }
+}
 struct SortableMutation {
     entity_mutation: CommittedEntityMutation,
 }
