@@ -9,7 +9,7 @@ mod watched_queries;
 #[cfg(feature = "local")]
 pub use config::StoreConfig;
 #[cfg(feature = "local")]
-pub use entity_index::{exporter::ChainEntityMutationIterator, EntityIndex, EntityIndexConfig};
+pub use entity_index::{exporter::ChainEntityMutationIterator, exporter::ChainEntityIterator, EntityIndex, EntityIndexConfig};
 #[cfg(feature = "local")]
 pub use store::{Store, StoreHandle};
 

@@ -81,7 +81,6 @@ fn reflect_message_to_json<M: ReflectMessage>(
                     values.insert(name, Value::String(v.to_rfc3339()));
                 }
                 FieldValue::Message(typ, msg) => {
-                    // TODO: better error handling
                     if let Ok(msg) = FieldValue::Message(typ, msg).into_message(registry) {
                         let msg_val = msg.encode_json(registry)?;
                         values.insert(name, msg_val);

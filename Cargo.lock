@@ -1046,7 +1046,6 @@ name = "exo"
 version = "0.1.19"
 dependencies = [
  "anyhow",
- "byteorder",
  "bytes",
  "clap 3.1.5",
  "console",
@@ -1059,7 +1058,6 @@ dependencies = [
  "exocore-protos",
  "exocore-store",
  "exocore-transport",
- "extsort",
  "futures",
  "indicatif",
  "log",

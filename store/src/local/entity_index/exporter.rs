@@ -1,11 +1,11 @@
-use std::{cell::Cell, cmp::Ordering, io::Write, iter::Peekable};
+use std::{cell::Cell, cmp::Ordering, collections::HashMap, io::Write, iter::Peekable};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use exocore_chain::{block::Block, chain::ChainStore};
 use exocore_protos::{
     generated::data_chain_capnp::chain_operation,
-    prost::{Message, ProstTimestampExt},
-    store::{CommittedEntityMutation, EntityMutation, OrderingValue},
+    prost::{Message, ProstDateTimeExt, ProstTimestampExt},
+    store::{entity_mutation, CommittedEntityMutation, Entity, EntityMutation},
 };
 use extsort::ExternalSorter;
 
@@ -29,7 +29,6 @@ impl<'s> ChainEntityMutationIterator<'s> {
         let has_error = Cell::new(false);
         let mutations = chain_store
             .blocks_iter(0)
-            .take(1000)
             .take_while(|_| !has_error.get())
             .flat_map(|block| match extract_block_mutations(block) {
                 Ok(mutations) => mutations,
@@ -116,12 +115,13 @@ impl<'s> ChainEntityIterator<'s> {
 }
 
 impl<'s> Iterator for ChainEntityIterator<'s> {
-    type Item = EntityMutation;
+    type Item = Entity;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.buffer.clear();
 
         let entity_id = self.mutations.peek()?.mutation.as_ref()?.entity_id.clone();
+        let mut traits = HashMap::new();
         loop {
             let next = self.mutations.peek()?;
             let next_id = &next.mutation.as_ref()?.entity_id;
@@ -130,13 +130,50 @@ impl<'s> Iterator for ChainEntityIterator<'s> {
             }
 
             let mutation = self.mutations.next()?;
-            self.buffer
-                .push(entity_to_mutation_metadata(&mutation).ok()??); // TODO: fix me, check error
+            let op_id = mutation.operation_id;
+
+            if let Some(metadata) = entity_to_mutation_metadata(&mutation).unwrap() {
+                self.buffer.push(metadata);
+
+                if let Some(entity_mutation::Mutation::PutTrait(put)) =
+                    mutation.mutation.and_then(|em| em.mutation)
+                {
+                    if let Some(trt) = put.r#trait {
+                        traits.insert(op_id, trt);
+                    }
+                }
+            }
         }
 
         let aggr = EntityAggregator::new(self.buffer.drain(..));
 
-        None
+        let mut entity = Entity {
+            id: entity_id,
+            traits: vec![],
+            creation_date: aggr.creation_date.map(|d| d.to_proto_timestamp()),
+            modification_date: aggr.modification_date.map(|d| d.to_proto_timestamp()),
+            deletion_date: aggr.deletion_date.map(|d| d.to_proto_timestamp()),
+            last_operation_id: aggr.last_operation_id,
+        };
+
+        for (_trait_id, trait_aggr) in aggr.traits {
+            let (mut_meta, _put_mut) = if let Some(tup) = trait_aggr.last_put_mutation() {
+                tup
+            } else {
+                continue;
+            };
+
+            if let Some(mut trt) = traits.remove(&mut_meta.operation_id) {
+                trt.creation_date = trait_aggr.creation_date.map(|d| d.to_proto_timestamp());
+                trt.modification_date =
+                    trait_aggr.modification_date.map(|d| d.to_proto_timestamp());
+                trt.deletion_date = trait_aggr.deletion_date.map(|d| d.to_proto_timestamp());
+                trt.last_operation_id = trait_aggr.last_operation_id.unwrap_or_default();
+                entity.traits.push(trt);
+            }
+        }
+
+        Some(entity)
     }
 }
 
@@ -155,18 +192,16 @@ fn entity_to_mutation_metadata(
         .ok_or_else(|| Error::Other(anyhow!("no entity mutation")))?;
 
     let metadata = match mutation_type {
-        Mutation::PutTrait(put) => Some(put_trait_to_metadata(put, &committed_entity, mutation)?),
-        Mutation::DeleteTrait(del) => Some(del_trait_to_metadata(&committed_entity, mutation, del)),
+        Mutation::PutTrait(put) => Some(put_trait_to_metadata(put, committed_entity, mutation)?),
+        Mutation::DeleteTrait(del) => Some(del_trait_to_metadata(committed_entity, mutation, del)),
         Mutation::DeleteEntity(del) => {
-            Some(del_entity_to_metadata(&committed_entity, mutation, del))
+            Some(del_entity_to_metadata(committed_entity, mutation, del))
         }
         _ => None,
     };
 
     Ok(metadata)
 }
-
-// TODO: prevent cloning
 
 fn put_trait_to_metadata(
     put: &exocore_protos::store::PutTraitMutation,
@@ -212,7 +247,7 @@ fn del_trait_to_metadata(
 fn del_entity_to_metadata(
     committed_entity: &CommittedEntityMutation,
     mutation: &EntityMutation,
-    del: &exocore_protos::store::DeleteEntityMutation,
+    _del: &exocore_protos::store::DeleteEntityMutation,
 ) -> MutationMetadata {
     MutationMetadata {
         operation_id: committed_entity.operation_id,
@@ -222,6 +257,7 @@ fn del_entity_to_metadata(
         sort_value: OrderingValueWrapper::default(),
     }
 }
+
 struct SortableMutation {
     entity_mutation: CommittedEntityMutation,
 }
@@ -236,7 +272,7 @@ impl extsort::Sortable for SortableMutation {
     }
 
     fn decode<R: std::io::Read>(reader: &mut R) -> Option<Self> {
-        let len = reader.read_u64::<LittleEndian>().unwrap();
+        let len = reader.read_u64::<LittleEndian>().ok()?; // interpret failure as end of stream
         let mut data = vec![0; len as usize];
         reader.read_exact(&mut data).unwrap();
 

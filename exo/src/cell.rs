@@ -1,10 +1,9 @@
-use std::{io::Write, path::PathBuf, time::Duration};
+use std::{collections::HashSet, io::Write, path::PathBuf, time::Duration};
 
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use bytes::Bytes;
 use console::style;
 use exocore_chain::{
-    block::{Block, BlockBuilder, BlockOffset, BlockOperations, DataBlock},
+    block::{Block, BlockBuilder, BlockOperations, DataBlock},
     chain::{ChainData, ChainStore},
     operation::{OperationBuilder, OperationFrame, OperationId},
     DirectoryChainStore, DirectoryChainStoreConfig,
@@ -16,19 +15,21 @@ use exocore_core::{
     },
     framing::{sized::SizedFrameReaderIterator, FrameReader},
     sec::{auth_token::AuthToken, keys::Keypair},
-    time::Clock,
+    time::{Clock, DateTime, Utc},
 };
 use exocore_protos::{
     core::{cell_node_config, CellConfig, CellNodeConfig, LocalNodeConfig, NodeCellConfig},
     generated::data_chain_capnp::{block_header, chain_operation},
-    prost::Message,
+    prost::{Message, ProstTimestampExt},
     reflect::ReflectMessage,
     registry::Registry,
-    serde, serde_derive, serde_json,
-    store::EntityMutation,
+    serde_derive, serde_json,
+    store::{Entity, EntityMutation, Trait},
 };
-use exocore_store::local::ChainEntityMutationIterator;
-use extsort::ExternalSorter;
+use exocore_store::{
+    entity::{EntityId, EntityIdRef, TraitId},
+    local::ChainEntityIterator,
+};
 
 use crate::{app::AppPackage, disco::prompt_discovery_pin, utils::edit_string, Context, *};
 
@@ -191,6 +192,10 @@ struct ChainExportOptions {
     /// Treat errors as warnings.
     #[clap(long)]
     warning: bool,
+
+    /// Limit export to the given list of entity ids.
+    #[clap(long)]
+    entities: Vec<String>,
 }
 
 #[derive(clap::Parser, Clone)]
@@ -823,6 +828,8 @@ fn cmd_export_chain(
     print_spacer();
     let bar = indicatif::ProgressBar::new(last_block.get_height()?);
 
+    let opts: ExportOptions = export_opts.into();
+
     for block in chain_store.blocks_iter(0) {
         let block = block?;
 
@@ -843,9 +850,9 @@ fn cmd_export_chain(
             .expect("Couldn't iterate operations from block");
         for operation in operations {
             let res = if export_opts.json {
-                export_operation_json(operation, &mut file_buf, schemas)
+                export_operation_json(operation, &mut file_buf, schemas, &opts)
             } else {
-                export_operation_frame(operation, &mut file_buf, export_opts)
+                export_operation_frame(operation, &mut file_buf, &opts)
             };
 
             if let Err(err) = res {
@@ -876,10 +883,32 @@ fn cmd_export_chain(
     Ok(())
 }
 
+struct ExportOptions<'o> {
+    opts: &'o ChainExportOptions,
+    entities: HashSet<EntityId>,
+}
+
+impl<'o> From<&'o ChainExportOptions> for ExportOptions<'o> {
+    fn from(opts: &'o ChainExportOptions) -> Self {
+        let entities = opts.entities.iter().cloned().collect::<HashSet<_>>();
+        ExportOptions { opts, entities }
+    }
+}
+
+impl<'o> ExportOptions<'o> {
+    fn can_export(&self, entity: EntityIdRef) -> bool {
+        if self.entities.is_empty() {
+            true
+        } else {
+            self.entities.contains(entity)
+        }
+    }
+}
+
 fn export_operation_frame(
     operation: OperationFrame<&[u8]>,
     out: &mut impl Write,
-    export_opts: &ChainExportOptions,
+    opts: &ExportOptions<'_>,
 ) -> anyhow::Result<()> {
     {
         let reader = operation
@@ -893,10 +922,14 @@ fn export_operation_frame(
             _ => return Ok(()),
         };
 
-        // don't keep deleted operations since they were part of the index management
-        if export_opts.drop_operation_deletions {
-            let mutation = EntityMutation::decode(data)?;
+        let mutation = EntityMutation::decode(data)?;
 
+        if !opts.can_export(&mutation.entity_id) {
+            return Ok(());
+        }
+
+        // don't keep deleted operations since they were part of the index management
+        if opts.opts.drop_operation_deletions {
             use exocore_protos::store::entity_mutation::Mutation;
             match mutation.mutation {
                 Some(Mutation::DeleteOperations(_del)) => return Ok(()),
@@ -917,6 +950,7 @@ fn export_operation_json(
     operation: OperationFrame<&[u8]>,
     mut out: &mut impl Write,
     schemas: &Registry,
+    opts: &ExportOptions<'_>,
 ) -> anyhow::Result<()> {
     let reader = operation
         .get_reader()
@@ -930,6 +964,10 @@ fn export_operation_json(
     };
 
     let mutation = EntityMutation::decode(data)?;
+
+    if !opts.can_export(&mutation.entity_id) {
+        return Ok(());
+    }
 
     use exocore_protos::store::entity_mutation::Mutation;
     if let Some(Mutation::PutTrait(put)) = mutation.mutation {
@@ -979,20 +1017,84 @@ fn cmd_export_chain_entities(
     let mut file_buf = std::io::BufWriter::new(file);
 
     print_step(format!(
-        "Exporting chain to {}",
+        "Exporting entities to {}",
         style_value(&export_opts.file)
     ));
 
-    print_spacer();
+    let bar = indicatif::ProgressBar::new_spinner();
 
-    let mut_iter = ChainEntityMutationIterator::new(&chain_store).unwrap();
-    for mutation in mut_iter {
-        println!("{:?}", mutation);
+    print_step("Sorting mutations...".to_string());
+    let entity_iter = ChainEntityIterator::new(&chain_store).unwrap();
+    print_step("Mutations sorted, writing entities...".to_string());
+
+    let mut entity_count = 0;
+    for (i, entity) in entity_iter.enumerate() {
+        if entity.deletion_date.is_some() {
+            continue;
+        }
+
+        let exp = ExportedEntity::from(entity, schemas);
+        exocore_protos::serde_json::to_writer(&mut file_buf, &exp).unwrap();
+        file_buf.write_all("\n".as_bytes()).unwrap();
+
+        entity_count = i;
+        bar.set_message(format!("{i}"));
+        bar.set_position(i as u64);
     }
+
+    bar.finish_and_clear();
 
     file_buf.flush().expect("Couldn't flush file buffer");
 
+    print_success(format!("Exported {} entities", style_value(entity_count)));
+
     Ok(())
+}
+
+#[derive(serde_derive::Serialize)]
+struct ExportedEntity {
+    entity_id: EntityId,
+    creation_date: Option<DateTime<Utc>>,
+    modification_date: Option<DateTime<Utc>>,
+    traits: Vec<ExportedTrait>,
+}
+
+impl ExportedEntity {
+    fn from(entity: Entity, schemas: &Registry) -> Self {
+        Self {
+            entity_id: entity.id,
+            creation_date: entity.creation_date.map(|d| d.to_chrono_datetime()),
+            modification_date: entity.modification_date.map(|d| d.to_chrono_datetime()),
+            traits: entity
+                .traits
+                .into_iter()
+                .map(|e| ExportedTrait::from(e, schemas))
+                .collect(),
+        }
+    }
+}
+
+#[derive(serde_derive::Serialize)]
+struct ExportedTrait {
+    trait_id: TraitId,
+    creation_date: Option<DateTime<Utc>>,
+    modification_date: Option<DateTime<Utc>>,
+    value: serde_json::Value,
+}
+
+impl ExportedTrait {
+    fn from(trt: Trait, schemas: &Registry) -> Self {
+        let msg = trt.message.unwrap();
+        let msg_dyn = exocore_protos::reflect::from_prost_any(schemas, &msg).unwrap();
+        let msg_json_val = msg_dyn.encode_json(schemas).unwrap();
+
+        Self {
+            trait_id: trt.id,
+            creation_date: trt.creation_date.map(|d| d.to_chrono_datetime()),
+            modification_date: trt.modification_date.map(|d| d.to_chrono_datetime()),
+            value: msg_json_val,
+        }
+    }
 }
 
 fn cmd_import_chain(
