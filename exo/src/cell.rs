@@ -1029,6 +1029,8 @@ fn cmd_export_chain_entities(
 
     let mut entity_count = 0;
     for (i, entity) in entity_iter.enumerate() {
+        let entity = entity.expect("failed to read next entity");
+
         if entity.deletion_date.is_some() {
             continue;
         }

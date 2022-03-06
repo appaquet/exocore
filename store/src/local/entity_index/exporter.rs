@@ -74,11 +74,11 @@ fn extract_block_mutations(
             .which()
             .map_err(|err| Error::Serialization(err.into()))?
         {
-            chain_operation::operation::Entry(entry) => entry.unwrap().get_data().unwrap(),
+            chain_operation::operation::Entry(Ok(entry)) => entry.get_data()?,
             _ => continue,
         };
 
-        let entity_mutation = EntityMutation::decode(data).unwrap();
+        let entity_mutation = EntityMutation::decode(data)?;
         mutations.push(SortableMutation {
             entity_mutation: CommittedEntityMutation {
                 block_offset: block.offset(),
@@ -112,27 +112,40 @@ impl<'s> ChainEntityIterator<'s> {
             buffer: Vec::new(),
         })
     }
-}
 
-impl<'s> Iterator for ChainEntityIterator<'s> {
-    type Item = Entity;
-
-    fn next(&mut self) -> Option<Self::Item> {
+    fn extract_next_entity(&mut self) -> Result<Option<Entity>, Error> {
         self.buffer.clear();
 
-        let entity_id = self.mutations.peek()?.mutation.as_ref()?.entity_id.clone();
+        let next = if let Some(next) = self.mutations.peek() {
+            next
+        } else {
+            return Ok(None);
+        };
+        let entity_id = next
+            .mutation
+            .as_ref()
+            .expect("entity mutation didn't have a mutation")
+            .entity_id
+            .clone();
+
         let mut traits = HashMap::new();
-        loop {
-            let next = self.mutations.peek()?;
-            let next_id = &next.mutation.as_ref()?.entity_id;
+        while let Some(next) = self.mutations.peek() {
+            let next_id = &next
+                .mutation
+                .as_ref()
+                .expect("entity mutation didn't have a mutation")
+                .entity_id;
             if entity_id != *next_id {
                 break;
             }
 
-            let mutation = self.mutations.next()?;
+            let mutation = self
+                .mutations
+                .next()
+                .expect("had a peek, but couldn't get next");
             let op_id = mutation.operation_id;
 
-            if let Some(metadata) = entity_to_mutation_metadata(&mutation).unwrap() {
+            if let Some(metadata) = entity_to_mutation_metadata(&mutation)? {
                 self.buffer.push(metadata);
 
                 if let Some(entity_mutation::Mutation::PutTrait(put)) =
@@ -173,7 +186,15 @@ impl<'s> Iterator for ChainEntityIterator<'s> {
             }
         }
 
-        Some(entity)
+        Ok(Some(entity))
+    }
+}
+
+impl<'s> Iterator for ChainEntityIterator<'s> {
+    type Item = Result<Entity, Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.extract_next_entity().transpose()
     }
 }
 
@@ -306,5 +327,57 @@ impl SortableMutation {
         a.entity_mutation
             .operation_id
             .cmp(&b.entity_mutation.operation_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use exocore_protos::store::Trait;
+
+    use crate::local::entity_index::test_index::TestEntityIndex;
+
+    use super::*;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_entity_iterator() -> anyhow::Result<()> {
+        let config = TestEntityIndex::test_config();
+        let mut ti = TestEntityIndex::new_with_config(config).await?;
+
+        let ops = vec![
+            ti.put_test_trait("entity1", "trait1", "data")?,
+            ti.put_test_trait("entity1", "trait2", "data")?,
+            ti.put_test_trait("entity1", "trait3", "data")?,
+            ti.put_test_trait("entity2", "trait1", "data")?,
+            ti.delete_trait("entity1", "trait2")?,
+            ti.put_test_trait("entity3", "trait1", "data")?,
+            ti.delete_entity("entity3")?,
+        ];
+
+        ti.wait_operations_committed(&ops);
+
+        // restart node to get access to its store (since engine takes ownership on start)
+        ti.cluster.stop_node(0);
+        ti.cluster.create_node(0)?;
+
+        let chain_store = ti.cluster.chain_stores[0].as_ref().unwrap();
+        let iter = ChainEntityIterator::new(chain_store).unwrap();
+        let entities = iter.collect::<Result<Vec<Entity>, Error>>()?;
+
+        assert_eq!(entities.len(), 3);
+        assert_eq!(entities[0].id, "entity1"); // they are sorted by id by the iterator
+        assert_eq!(entities[1].id, "entity2");
+        assert_eq!(entities[2].id, "entity3");
+
+        assert_eq!(entities[0].traits.len(), 3);
+        assert!(find_trait(&entities[0].traits, "trait1").deletion_date.is_none());
+        assert!(find_trait(&entities[0].traits, "trait2").deletion_date.is_some()); // trait2 got deleted
+ 
+        assert!(entities[2].deletion_date.is_some());
+
+        Ok(())
+    }
+
+    fn find_trait<'t>(traits: &'t [Trait], id: &str) -> &'t Trait {
+        traits.iter().find(|trt| trt.id == id).unwrap()
     }
 }
