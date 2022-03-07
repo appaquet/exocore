@@ -11,7 +11,19 @@ version = "0.1.19"
 
 [features]
 default = ["local", "remote"]
-local = ["tantivy", "exocore-chain/engine", "crc", "lru", "exocore-core", "exocore-chain"]
+local = [
+  "exocore-chain/engine",
+  "exocore-core",
+  "exocore-chain",
+  "byteorder",
+  "crc",
+  "extsort",
+  "lru",
+  "serde",
+  "serde_derive",
+  "serde_json",
+  "tantivy"
+]
 remote = ["exocore-core", "exocore-transport"]
 tests-utils = []
 
