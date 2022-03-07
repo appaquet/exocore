@@ -369,9 +369,13 @@ mod tests {
         assert_eq!(entities[2].id, "entity3");
 
         assert_eq!(entities[0].traits.len(), 3);
-        assert!(find_trait(&entities[0].traits, "trait1").deletion_date.is_none());
-        assert!(find_trait(&entities[0].traits, "trait2").deletion_date.is_some()); // trait2 got deleted
- 
+        assert!(find_trait(&entities[0].traits, "trait1")
+            .deletion_date
+            .is_none());
+        assert!(find_trait(&entities[0].traits, "trait2")
+            .deletion_date
+            .is_some()); // trait2 got deleted
+
         assert!(entities[2].deletion_date.is_some());
 
         Ok(())

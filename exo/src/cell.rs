@@ -863,7 +863,6 @@ fn cmd_export_chain(
             }
 
             operation_count += 1;
-            operation_count += 1;
         }
 
         bar.set_position(block_count);
@@ -970,19 +969,38 @@ fn export_operation_json(
     }
 
     use exocore_protos::store::entity_mutation::Mutation;
-    if let Some(Mutation::PutTrait(put)) = mutation.mutation {
-        let trt = put.r#trait.unwrap();
-        let msg = trt.message.unwrap();
-        let msg_dyn = exocore_protos::reflect::from_prost_any(schemas, &msg)?;
-        let msg_json_val = msg_dyn.encode_json(schemas)?;
+    match mutation.mutation {
+        Some(Mutation::PutTrait(put)) => {
+            let trt = put.r#trait.unwrap();
+            let msg = trt.message.unwrap();
+            let msg_dyn = exocore_protos::reflect::from_prost_any(schemas, &msg)?;
+            let msg_json_val = msg_dyn.encode_json(schemas)?;
 
-        let out_obj = exocore_protos::serde_json::json!({
-            "entity_id": mutation.entity_id,
-            "trait_id": trt.id,
-            "message": msg_json_val,
-        });
+            let out_obj = exocore_protos::serde_json::json!({
+                "type": "put_trait",
+                "entity_id": mutation.entity_id,
+                "trait_id": trt.id,
+                "message": msg_json_val,
+            });
+            exocore_protos::serde_json::to_writer(&mut out, &out_obj)?;
+        }
+        Some(Mutation::DeleteTrait(del)) => {
+            let out_obj = exocore_protos::serde_json::json!({
+                "type": "delete_trait",
+                "entity_id": mutation.entity_id,
+                "trait_id": del.trait_id,
+            });
+            exocore_protos::serde_json::to_writer(&mut out, &out_obj)?;
+        }
+        Some(Mutation::DeleteEntity(_del)) => {
+            let out_obj = exocore_protos::serde_json::json!({
+                "type": "delete_entity",
+                "entity_id": mutation.entity_id,
+            });
+            exocore_protos::serde_json::to_writer(&mut out, &out_obj)?;
+        }
 
-        exocore_protos::serde_json::to_writer(&mut out, &out_obj)?;
+        _ => (),
     }
 
     out.write_all("\n".as_bytes())?;
@@ -1058,6 +1076,7 @@ struct ExportedEntity {
     entity_id: EntityId,
     creation_date: Option<DateTime<Utc>>,
     modification_date: Option<DateTime<Utc>>,
+    deletion_date: Option<DateTime<Utc>>,
     traits: Vec<ExportedTrait>,
 }
 
@@ -1067,6 +1086,7 @@ impl ExportedEntity {
             entity_id: entity.id,
             creation_date: entity.creation_date.map(|d| d.to_chrono_datetime()),
             modification_date: entity.modification_date.map(|d| d.to_chrono_datetime()),
+            deletion_date: entity.deletion_date.map(|d| d.to_chrono_datetime()),
             traits: entity
                 .traits
                 .into_iter()
@@ -1081,6 +1101,7 @@ struct ExportedTrait {
     trait_id: TraitId,
     creation_date: Option<DateTime<Utc>>,
     modification_date: Option<DateTime<Utc>>,
+    deletion_date: Option<DateTime<Utc>>,
     value: serde_json::Value,
 }
 
@@ -1094,6 +1115,7 @@ impl ExportedTrait {
             trait_id: trt.id,
             creation_date: trt.creation_date.map(|d| d.to_chrono_datetime()),
             modification_date: trt.modification_date.map(|d| d.to_chrono_datetime()),
+            deletion_date: trt.deletion_date.map(|d| d.to_chrono_datetime()),
             value: msg_json_val,
         }
     }
