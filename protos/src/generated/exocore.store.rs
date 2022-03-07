@@ -435,6 +435,7 @@ pub struct TestMutation {
     #[prost(bool, tag = "1")]
     pub success: bool,
 }
+/// Internal message used by entity iterator for external sorting.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CommittedEntityMutation {
     #[prost(uint64, tag = "1")]

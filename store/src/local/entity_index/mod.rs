@@ -41,7 +41,8 @@ pub use gc::GarbageCollectorConfig;
 
 mod searcher;
 
-pub mod exporter;
+pub mod iterator;
+
 #[cfg(test)]
 pub(crate) mod test_index;
 #[cfg(test)]

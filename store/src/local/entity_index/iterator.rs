@@ -9,14 +9,18 @@ use exocore_protos::{
 };
 use extsort::ExternalSorter;
 
+use super::EntityAggregator;
 use crate::{
     error::Error,
     local::mutation_index::{MutationMetadata, MutationType, PutTraitMetadata},
     ordering::OrderingValueWrapper,
 };
 
-use super::EntityAggregator;
-
+/// Iterator over entity mutations of a chain store.
+///
+/// The iterator first sorts all mutations by entities, blocks and operation
+/// ids. Because of this, entity mutations are always returned in the same order
+/// by entities, blocks and operation ids.
 pub struct ChainEntityMutationIterator<'s> {
     iter: Box<dyn Iterator<Item = SortableMutation> + 's>,
 }
@@ -42,9 +46,10 @@ impl<'s> ChainEntityMutationIterator<'s> {
         let sorter = ExternalSorter::new();
         let sorted_mutations = sorter
             .sort_by(mutations, SortableMutation::compare)
-            .map_err(|err| Error::Other(anyhow!("error sorting mutations: {}", err)))?;
+            .map_err(|err| Error::Other(anyhow!("couldn't sort mutations: {}", err)))?;
 
-        // since the sorter goes through all mutations, any error found decoding mutations will be found at this point
+        // since the sorter goes through all mutations, any error found decoding
+        // mutations will be found at this point
         if let Some(err) = error {
             return Err(err);
         }
@@ -78,12 +83,11 @@ fn extract_block_mutations(
             _ => continue,
         };
 
-        let entity_mutation = EntityMutation::decode(data)?;
         mutations.push(SortableMutation {
-            entity_mutation: CommittedEntityMutation {
+            inner: CommittedEntityMutation {
                 block_offset: block.offset(),
                 operation_id: operation_reader.get_operation_id(),
-                mutation: Some(entity_mutation),
+                mutation: Some(EntityMutation::decode(data)?),
             },
         });
     }
@@ -96,10 +100,11 @@ impl<'s> Iterator for ChainEntityMutationIterator<'s> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let mutation = self.iter.next()?;
-        Some(mutation.entity_mutation)
+        Some(mutation.inner)
     }
 }
 
+/// Iterator over the entities of the chain.
 pub struct ChainEntityIterator<'s> {
     mutations: Peekable<ChainEntityMutationIterator<'s>>,
     buffer: Vec<MutationMetadata>,
@@ -116,18 +121,7 @@ impl<'s> ChainEntityIterator<'s> {
     fn extract_next_entity(&mut self) -> Result<Option<Entity>, Error> {
         self.buffer.clear();
 
-        let next = if let Some(next) = self.mutations.peek() {
-            next
-        } else {
-            return Ok(None);
-        };
-        let entity_id = next
-            .mutation
-            .as_ref()
-            .expect("entity mutation didn't have a mutation")
-            .entity_id
-            .clone();
-
+        let mut entity_id = String::new();
         let mut traits = HashMap::new();
         while let Some(next) = self.mutations.peek() {
             let next_id = &next
@@ -135,7 +129,9 @@ impl<'s> ChainEntityIterator<'s> {
                 .as_ref()
                 .expect("entity mutation didn't have a mutation")
                 .entity_id;
-            if entity_id != *next_id {
+            if entity_id.is_empty() {
+                entity_id = next_id.clone();
+            } else if entity_id != *next_id {
                 break;
             }
 
@@ -158,8 +154,11 @@ impl<'s> ChainEntityIterator<'s> {
             }
         }
 
-        let aggr = EntityAggregator::new(self.buffer.drain(..));
+        if entity_id.is_empty() {
+            return Ok(None);
+        }
 
+        let aggr = EntityAggregator::new(self.buffer.drain(..));
         let mut entity = Entity {
             id: entity_id,
             traits: vec![],
@@ -279,13 +278,18 @@ fn del_entity_to_metadata(
     }
 }
 
+/// Entity mutation wrapper used for external sorting.
+///
+/// External sorting needs to be able to serialize and deserialize
+/// since it uses disk-based storage when sorted data wouldn't fit
+/// in memory.
 struct SortableMutation {
-    entity_mutation: CommittedEntityMutation,
+    inner: CommittedEntityMutation,
 }
 
 impl extsort::Sortable for SortableMutation {
     fn encode<W: Write>(&self, writer: &mut W) {
-        let mutation = self.entity_mutation.encode_to_vec();
+        let mutation = self.inner.encode_to_vec();
         writer
             .write_u64::<LittleEndian>(mutation.len() as u64)
             .unwrap();
@@ -298,15 +302,15 @@ impl extsort::Sortable for SortableMutation {
         reader.read_exact(&mut data).unwrap();
 
         Some(SortableMutation {
-            entity_mutation: CommittedEntityMutation::decode(data.as_ref()).unwrap(),
+            inner: CommittedEntityMutation::decode(data.as_ref()).unwrap(),
         })
     }
 }
 
 impl SortableMutation {
     fn compare(a: &SortableMutation, b: &SortableMutation) -> Ordering {
-        let a_entity = a.entity_mutation.mutation.as_ref().unwrap();
-        let b_entity = b.entity_mutation.mutation.as_ref().unwrap();
+        let a_entity = a.inner.mutation.as_ref().unwrap();
+        let b_entity = b.inner.mutation.as_ref().unwrap();
 
         match a_entity.entity_id.cmp(&b_entity.entity_id) {
             Ordering::Less => return Ordering::Less,
@@ -314,19 +318,13 @@ impl SortableMutation {
             Ordering::Greater => return Ordering::Greater,
         }
 
-        match a
-            .entity_mutation
-            .block_offset
-            .cmp(&b.entity_mutation.block_offset)
-        {
+        match a.inner.block_offset.cmp(&b.inner.block_offset) {
             Ordering::Less => return Ordering::Less,
             Ordering::Equal => (),
             Ordering::Greater => return Ordering::Greater,
         }
 
-        a.entity_mutation
-            .operation_id
-            .cmp(&b.entity_mutation.operation_id)
+        a.inner.operation_id.cmp(&b.inner.operation_id)
     }
 }
 
@@ -334,9 +332,8 @@ impl SortableMutation {
 mod tests {
     use exocore_protos::store::Trait;
 
-    use crate::local::entity_index::test_index::TestEntityIndex;
-
     use super::*;
+    use crate::local::entity_index::test_index::TestEntityIndex;
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_entity_iterator() -> anyhow::Result<()> {
@@ -355,7 +352,8 @@ mod tests {
 
         ti.wait_operations_committed(&ops);
 
-        // restart node to get access to its store (since engine takes ownership on start)
+        // restart node to get access to its store (since engine takes ownership on
+        // start)
         ti.cluster.stop_node(0);
         ti.cluster.create_node(0)?;
 

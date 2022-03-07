@@ -202,10 +202,6 @@ struct ChainExportOptions {
 struct ChainExportEntitiesOptions {
     /// File in which chain entities will be exported.
     file: PathBuf,
-
-    /// Treat errors as warnings.
-    #[clap(long)]
-    warning: bool,
 }
 
 #[derive(clap::Parser, Clone)]
@@ -870,7 +866,8 @@ fn cmd_export_chain(
 
     file_buf.flush().expect("Couldn't flush file buffer");
 
-    bar.finish();
+    bar.finish_and_clear();
+
     print_success(format!(
         "Exported {} operations from {} blocks from chain to {} ({} warnings)",
         style_value(operation_count),
@@ -976,31 +973,32 @@ fn export_operation_json(
             let msg_dyn = exocore_protos::reflect::from_prost_any(schemas, &msg)?;
             let msg_json_val = msg_dyn.encode_json(schemas)?;
 
-            let out_obj = exocore_protos::serde_json::json!({
+            let out_obj = serde_json::json!({
                 "type": "put_trait",
                 "entity_id": mutation.entity_id,
                 "trait_id": trt.id,
                 "message": msg_json_val,
             });
-            exocore_protos::serde_json::to_writer(&mut out, &out_obj)?;
+            serde_json::to_writer(&mut out, &out_obj)?;
         }
         Some(Mutation::DeleteTrait(del)) => {
-            let out_obj = exocore_protos::serde_json::json!({
+            let out_obj = serde_json::json!({
                 "type": "delete_trait",
                 "entity_id": mutation.entity_id,
                 "trait_id": del.trait_id,
             });
-            exocore_protos::serde_json::to_writer(&mut out, &out_obj)?;
+            serde_json::to_writer(&mut out, &out_obj)?;
         }
         Some(Mutation::DeleteEntity(_del)) => {
-            let out_obj = exocore_protos::serde_json::json!({
+            let out_obj = serde_json::json!({
                 "type": "delete_entity",
                 "entity_id": mutation.entity_id,
             });
-            exocore_protos::serde_json::to_writer(&mut out, &out_obj)?;
+            serde_json::to_writer(&mut out, &out_obj)?;
         }
-
-        _ => (),
+        None | Some(Mutation::DeleteOperations(_)) | Some(Mutation::Test(_)) => {
+            return Ok(());
+        }
     }
 
     out.write_all("\n".as_bytes())?;
@@ -1054,7 +1052,7 @@ fn cmd_export_chain_entities(
         }
 
         let exp = ExportedEntity::from(entity, schemas);
-        exocore_protos::serde_json::to_writer(&mut file_buf, &exp).unwrap();
+        serde_json::to_writer(&mut file_buf, &exp).unwrap();
         file_buf.write_all("\n".as_bytes()).unwrap();
 
         entity_count = i;
