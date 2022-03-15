@@ -1977,7 +1977,8 @@ checksum = "1bf2e165bb3457c8e098ea76f3e3bc9db55f87aa90d52d0e6be741470916aaa4"
 [[package]]
 name = "libp2p"
 version = "0.43.0"
-source = "git+https://github.com/mxinden/rust-libp2p.git?branch=test-yamux-v0.10.1-rc.1#5cddf54a9d83bc93daf81d33f7b5cefd5a278fc1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e8570e25fa03d4385405dbeaf540ba00e3ee50942f03d84e1a8928a029f35f9"
 dependencies = [
  "atomic",
  "bytes",
@@ -2009,7 +2010,8 @@ dependencies = [
 [[package]]
 name = "libp2p-core"
 version = "0.32.0"
-source = "git+https://github.com/mxinden/rust-libp2p.git?branch=test-yamux-v0.10.1-rc.1#5cddf54a9d83bc93daf81d33f7b5cefd5a278fc1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9164ec41455856e8187addc870bb4fe1ea2ee28e1a9244831d449a2429b32c1a"
 dependencies = [
  "asn1_der",
  "bs58",
@@ -2043,7 +2045,8 @@ dependencies = [
 [[package]]
 name = "libp2p-dns"
 version = "0.32.0"
-source = "git+https://github.com/mxinden/rust-libp2p.git?branch=test-yamux-v0.10.1-rc.1#5cddf54a9d83bc93daf81d33f7b5cefd5a278fc1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7838647d33978b77f943687412f4a39e74234c8342cbfdad14282b465b272cb4"
 dependencies = [
  "futures",
  "libp2p-core",
@@ -2055,7 +2058,8 @@ dependencies = [
 [[package]]
 name = "libp2p-identify"
 version = "0.34.0"
-source = "git+https://github.com/mxinden/rust-libp2p.git?branch=test-yamux-v0.10.1-rc.1#5cddf54a9d83bc93daf81d33f7b5cefd5a278fc1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f219b4d4660fe3a04bf5fe6b5970902b7c1918e25b2536be8c70efc480f88f8"
 dependencies = [
  "futures",
  "futures-timer",
@@ -2071,7 +2075,8 @@ dependencies = [
 [[package]]
 name = "libp2p-metrics"
 version = "0.4.0"
-source = "git+https://github.com/mxinden/rust-libp2p.git?branch=test-yamux-v0.10.1-rc.1#5cddf54a9d83bc93daf81d33f7b5cefd5a278fc1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d29e4e5e4c5aa567fe1ee3133afe088dc2d2fd104e20c5c2c5c2649f75129677"
 dependencies = [
  "libp2p-core",
  "libp2p-identify",
@@ -2083,7 +2088,8 @@ dependencies = [
 [[package]]
 name = "libp2p-mplex"
 version = "0.32.0"
-source = "git+https://github.com/mxinden/rust-libp2p.git?branch=test-yamux-v0.10.1-rc.1#5cddf54a9d83bc93daf81d33f7b5cefd5a278fc1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "442eb0c9fff0bf22a34f015724b4143ce01877e079ed0963c722d94c07c72160"
 dependencies = [
  "asynchronous-codec",
  "bytes",
@@ -2100,7 +2106,8 @@ dependencies = [
 [[package]]
 name = "libp2p-noise"
 version = "0.35.0"
-source = "git+https://github.com/mxinden/rust-libp2p.git?branch=test-yamux-v0.10.1-rc.1#5cddf54a9d83bc93daf81d33f7b5cefd5a278fc1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9dd7e0c94051cda67123be68cf6b65211ba3dde7277be9068412de3e7ffd63ef"
 dependencies = [
  "bytes",
  "curve25519-dalek 3.2.0",
@@ -2121,7 +2128,8 @@ dependencies = [
 [[package]]
 name = "libp2p-ping"
 version = "0.34.0"
-source = "git+https://github.com/mxinden/rust-libp2p.git?branch=test-yamux-v0.10.1-rc.1#5cddf54a9d83bc93daf81d33f7b5cefd5a278fc1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ab44a12d372d6abdd326c468c1d5b002be06fbd923c5a799d6a9d3b36646ca3"
 dependencies = [
  "futures",
  "futures-timer",
@@ -2136,7 +2144,8 @@ dependencies = [
 [[package]]
 name = "libp2p-swarm"
 version = "0.34.0"
-source = "git+https://github.com/mxinden/rust-libp2p.git?branch=test-yamux-v0.10.1-rc.1#5cddf54a9d83bc93daf81d33f7b5cefd5a278fc1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53ab2d4eb8ef2966b10fdf859245cdd231026df76d3c6ed2cf9e418a8f688ec9"
 dependencies = [
  "either",
  "fnv",
@@ -2155,7 +2164,8 @@ dependencies = [
 [[package]]
 name = "libp2p-swarm-derive"
 version = "0.27.0"
-source = "git+https://github.com/mxinden/rust-libp2p.git?branch=test-yamux-v0.10.1-rc.1#5cddf54a9d83bc93daf81d33f7b5cefd5a278fc1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b8153a6472e84ec888ef2bf21deafe8d4214e811f0f162abbf07156c27f8fa8"
 dependencies = [
  "quote",
  "syn",
@@ -2164,7 +2174,8 @@ dependencies = [
 [[package]]
 name = "libp2p-tcp"
 version = "0.32.0"
-source = "git+https://github.com/mxinden/rust-libp2p.git?branch=test-yamux-v0.10.1-rc.1#5cddf54a9d83bc93daf81d33f7b5cefd5a278fc1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "193447aa729c85aac2376828df76d171c1a589c9e6b58fcc7f9d9a020734122c"
 dependencies = [
  "futures",
  "futures-timer",
@@ -2180,7 +2191,8 @@ dependencies = [
 [[package]]
 name = "libp2p-wasm-ext"
 version = "0.32.0"
-source = "git+https://github.com/mxinden/rust-libp2p.git?branch=test-yamux-v0.10.1-rc.1#5cddf54a9d83bc93daf81d33f7b5cefd5a278fc1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4f6ea0f84a967ef59a16083f222c18115ae2e91db69809dce275df62e101b279"
 dependencies = [
  "futures",
  "js-sys",
@@ -2193,7 +2205,8 @@ dependencies = [
 [[package]]
 name = "libp2p-websocket"
 version = "0.34.0"
-source = "git+https://github.com/mxinden/rust-libp2p.git?branch=test-yamux-v0.10.1-rc.1#5cddf54a9d83bc93daf81d33f7b5cefd5a278fc1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c932834c3754501c368d1bf3d0fb458487a642b90fc25df082a3a2f3d3b32e37"
 dependencies = [
  "either",
  "futures",
@@ -2210,7 +2223,8 @@ dependencies = [
 [[package]]
 name = "libp2p-yamux"
 version = "0.36.0"
-source = "git+https://github.com/mxinden/rust-libp2p.git?branch=test-yamux-v0.10.1-rc.1#5cddf54a9d83bc93daf81d33f7b5cefd5a278fc1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be902ebd89193cd020e89e89107726a38cfc0d16d18f613f4a37d046e92c7517"
 dependencies = [
  "futures",
  "libp2p-core",
@@ -2543,7 +2557,8 @@ checksum = "e5ce46fe64a9d73be07dcbe690a38ce1b293be448fd8ce1e6c1b8062c9f72c6a"
 [[package]]
 name = "multistream-select"
 version = "0.11.0"
-source = "git+https://github.com/mxinden/rust-libp2p.git?branch=test-yamux-v0.10.1-rc.1#5cddf54a9d83bc93daf81d33f7b5cefd5a278fc1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "363a84be6453a70e63513660f4894ef815daf88e3356bffcda9ca27d810ce83b"
 dependencies = [
  "bytes",
  "futures",
@@ -4717,9 +4732,9 @@ dependencies = [
 
 [[package]]
 name = "yamux"
-version = "0.10.1-rc.1"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2fc635a09431b0b10b823b97c6126d604e3c52f4a40cf6da4466c4b02a70c710"
+checksum = "0c0608f53c1dc0bad505d03a34bbd49fbf2ad7b51eb036123e896365532745a1"
 dependencies = [
  "futures",
  "log",
