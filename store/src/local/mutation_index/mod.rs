@@ -1,6 +1,6 @@
 use std::{
     borrow::Borrow,
-    collections::HashMap,
+    collections::BTreeMap,
     ops::Deref,
     path::Path,
     result::Result,
@@ -637,7 +637,7 @@ impl MutationIndex {
         dyn_message: &DynamicMessage,
         prefix: Option<&str>,
         field_desc: &FieldDescriptor,
-        message_mappings: &HashMap<String, schema::MappedDynamicField>,
+        message_mappings: &BTreeMap<String, schema::MappedDynamicField>,
         has_reference: &mut bool,
     ) {
         let field_value = match dyn_message.get_field_value(field_desc.id) {
@@ -827,32 +827,37 @@ impl MutationIndex {
         trait_name: &str,
         predicate: &TraitFieldPredicate,
     ) -> Result<Box<dyn tantivy::query::Query>, Error> {
-        // TODO: We may have to recurse and use multiple fields here
-
-        let field = self
-            .fields
-            .get_dynamic_trait_field(trait_name, &predicate.field)?;
-
         use reflect::FieldType as FT;
         use trait_field_predicate::Value as PV;
-        match (&field.field_type, &predicate.value) {
-            (FT::String, Some(PV::String(value))) => {
-                let term = Term::from_field_text(field.field, value);
-                Ok(Box::new(TermQuery::new(term, IndexRecordOption::Basic)))
-            }
-            (ft, pv) => {
-                Err(
-                    Error::QueryParsing(
-                        anyhow!(
-                            "Incompatible field type vs field value in predicate: trait_name={} field={}, field_type={:?}, value={:?}",
-                            trait_name,
-                            predicate.field,
-                            ft,
-                            pv,
-                        ))
-                )
+
+        let fields = self
+            .fields
+            .get_dynamic_trait_field_prefix(trait_name, &predicate.field)?;
+
+        let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+        for field in fields {
+            match (&field.field_type, &predicate.value) {
+                (FT::String, Some(PV::String(value))) => {
+                    let term = Term::from_field_text(field.field, value);
+
+                    queries.push((Occur::Should, Box::new(TermQuery::new(term, IndexRecordOption::Basic))));
+                }
+                (ft, pv) => {
+                    return Err(
+                        Error::QueryParsing(
+                            anyhow!(
+                                "Incompatible field type vs field value in predicate: trait_name={} field={}, field_type={:?}, value={:?}",
+                                trait_name,
+                                predicate.field,
+                                ft,
+                                pv,
+                            ))
+                    )
+                }
             }
         }
+
+        Ok(Box::new(BooleanQuery::from(queries)))
     }
 
     /// Transforms a trait's field reference predicate to Tantivy query.

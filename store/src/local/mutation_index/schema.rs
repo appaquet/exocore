@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use exocore_protos::{
     reflect::{FieldDescriptor, FieldType, ReflectMessageDescriptor},
@@ -40,14 +40,9 @@ impl Fields {
         trait_name: &str,
         field_name: &str,
     ) -> Result<&MappedDynamicField, Error> {
-        let fields_mapping = self.dynamic_mappings.get(trait_name).ok_or_else(|| {
-            Error::QueryParsing(anyhow!(
-                "Trait '{}' doesn\'t have any dynamic fields",
-                trait_name
-            ))
-        })?;
+        let trait_fields = self.trait_fields(trait_name)?;
 
-        let field = fields_mapping.get(field_name).ok_or_else(|| {
+        let field = trait_fields.get(field_name).ok_or_else(|| {
             Error::QueryParsing(anyhow!(
                 "Trait '{}' doesn\'t have any dynamic field with name '{}'",
                 trait_name,
@@ -58,14 +53,45 @@ impl Fields {
         Ok(field)
     }
 
+    pub fn get_dynamic_trait_field_prefix(
+        &self,
+        trait_name: &str,
+        field_or_prefix: &str,
+    ) -> Result<Vec<&MappedDynamicField>, Error> {
+        let trait_fields = self.trait_fields(trait_name)?;
+
+        let field_or_prefix_clone = field_or_prefix.to_string();
+        let field_prefix = format!("{}.", field_or_prefix);
+
+        trait_fields
+            .range(field_or_prefix_clone..)
+            .take_while(|field| field.0 == field_or_prefix || field.0.starts_with(&field_prefix))
+            .map(|(_field_name, field)| Ok(field))
+            .collect()
+    }
+
     pub fn register_tokenizers(&self, index: &tantivy::Index) {
         index
             .tokenizers()
             .register("references", self.references_tokenizer.clone());
     }
+
+    fn trait_fields(
+        &self,
+        trait_name: &str,
+    ) -> Result<&BTreeMap<String, MappedDynamicField>, Error> {
+        let trait_fields = self.dynamic_mappings.get(trait_name).ok_or_else(|| {
+            Error::QueryParsing(anyhow!(
+                "Trait '{}' doesn\'t have any dynamic fields",
+                trait_name
+            ))
+        })?;
+
+        Ok(trait_fields)
+    }
 }
 
-pub(crate) type DynamicFieldsMapping = HashMap<String, HashMap<String, MappedDynamicField>>;
+pub(crate) type DynamicFieldsMapping = HashMap<String, BTreeMap<String, MappedDynamicField>>;
 
 /// Dynamic fields reused across trait types. Tantivy doesn't allow adding new
 /// fields once the index has been created. We pre-alloc a certain number of
@@ -247,7 +273,7 @@ fn build_dynamic_fields_tantivy_schema(
 // Fields mapping for a trait.
 #[derive(Default)]
 struct MsgFields {
-    mapping: HashMap<String, MappedDynamicField>,
+    mapping: BTreeMap<String, MappedDynamicField>,
     ref_count: usize,
     text_count: usize,
     string_count: usize,

@@ -1025,7 +1025,30 @@ fn search_by_trait_sub_message_fields() -> anyhow::Result<()> {
     }
 
     {
-        // TODO: test query by sub field
+        // can search by field.subfield
+        let query = Q::with_trait_name_query(
+            "exocore.test.TestMessage",
+            TQ::field_equals("struct1.string1", "foo").build(),
+        );
+        let res = index.search(query.build())?;
+        assert_eq!(res.mutations.len(), 1);
+        find_put_trait(&res, "trt1");
+
+        // can search by field prefix
+        let query = Q::with_trait_name_query(
+            "exocore.test.TestMessage",
+            TQ::field_equals("struct1", "foo").build(),
+        );
+        let res = index.search(query.build())?;
+        assert_eq!(res.mutations.len(), 1);
+        find_put_trait(&res, "trt1");
+
+        let query = Q::with_trait_name_query(
+            "exocore.test.TestMessage",
+            TQ::field_equals("struct1", "doesn't exist").build(),
+        );
+        let res = index.search(query.build())?;
+        assert_eq!(res.mutations.len(), 0);
     }
 
     Ok(())
