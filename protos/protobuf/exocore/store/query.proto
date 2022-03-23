@@ -14,6 +14,7 @@ message EntityQuery {
         ReferencePredicate reference = 4;
         OperationsPredicate operations = 10;
         AllPredicate all = 11;
+        BooleanPredicate boolean = 14;
 
         TestPredicate test = 99;
     }
@@ -87,6 +88,29 @@ message AllPredicate {
 // Used for tests.
 message TestPredicate {
     bool success = 1;
+}
+
+message BooleanPredicate {
+    enum Occur {
+        INVALID = 0;
+        SHOULD = 1;
+        MUST = 2;
+        SHOULD_NOT = 3;
+    }
+
+    message SubQuery {
+        Occur occur = 1;
+
+        oneof predicate {
+            MatchPredicate match = 2;
+            TraitPredicate trait = 3;
+            IdsPredicate ids = 4;
+            ReferencePredicate reference = 5;
+            OperationsPredicate operations = 6;
+            AllPredicate all = 7;
+            BooleanPredicate boolean = 8;
+        }
+    }
 }
 
 // Query entities that have a specified trait and optionally matching a trait query.

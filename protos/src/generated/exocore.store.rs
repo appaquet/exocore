@@ -73,7 +73,7 @@ pub struct EntityQuery {
     #[prost(bool, tag = "13")]
     pub programmatic: bool,
     /// Main search predicate on individual traits of the entity.
-    #[prost(oneof = "entity_query::Predicate", tags = "1, 2, 3, 4, 10, 11, 99")]
+    #[prost(oneof = "entity_query::Predicate", tags = "1, 2, 3, 4, 10, 11, 14, 99")]
     pub predicate: ::core::option::Option<entity_query::Predicate>,
 }
 /// Nested message and enum types in `EntityQuery`.
@@ -93,6 +93,8 @@ pub mod entity_query {
         Operations(super::OperationsPredicate),
         #[prost(message, tag = "11")]
         All(super::AllPredicate),
+        #[prost(message, tag = "14")]
+        Boolean(super::BooleanPredicate),
         #[prost(message, tag = "99")]
         Test(super::TestPredicate),
     }
@@ -148,6 +150,46 @@ pub struct AllPredicate {}
 pub struct TestPredicate {
     #[prost(bool, tag = "1")]
     pub success: bool,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BooleanPredicate {}
+/// Nested message and enum types in `BooleanPredicate`.
+pub mod boolean_predicate {
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct SubQuery {
+        #[prost(enumeration = "Occur", tag = "1")]
+        pub occur: i32,
+        #[prost(oneof = "sub_query::Predicate", tags = "2, 3, 4, 5, 6, 7, 8")]
+        pub predicate: ::core::option::Option<sub_query::Predicate>,
+    }
+    /// Nested message and enum types in `SubQuery`.
+    pub mod sub_query {
+        #[derive(Clone, PartialEq, ::prost::Oneof)]
+        pub enum Predicate {
+            #[prost(message, tag = "2")]
+            Match(super::super::MatchPredicate),
+            #[prost(message, tag = "3")]
+            Trait(super::super::TraitPredicate),
+            #[prost(message, tag = "4")]
+            Ids(super::super::IdsPredicate),
+            #[prost(message, tag = "5")]
+            Reference(super::super::ReferencePredicate),
+            #[prost(message, tag = "6")]
+            Operations(super::super::OperationsPredicate),
+            #[prost(message, tag = "7")]
+            All(super::super::AllPredicate),
+            #[prost(message, tag = "8")]
+            Boolean(super::super::BooleanPredicate),
+        }
+    }
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+    #[repr(i32)]
+    pub enum Occur {
+        Invalid = 0,
+        Should = 1,
+        Must = 2,
+        ShouldNot = 3,
+    }
 }
 /// Query entities that have a specified trait and optionally matching a trait
 /// query.

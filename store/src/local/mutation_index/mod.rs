@@ -44,6 +44,7 @@ use crate::{
 mod config;
 mod entity_cache;
 mod operations;
+mod query;
 mod results;
 mod schema;
 #[cfg(test)]
@@ -303,6 +304,7 @@ impl MutationIndex {
             Predicate::Operations(inner) => self.search_operations(inner, paging, ordering),
             Predicate::All(inner) => self.search_all(inner, paging, ordering),
             Predicate::Test(_inner) => Err(anyhow!("Query failed for tests").into()),
+            Predicate::Boolean(_) => todo!(), // TODO:
         }?;
 
         Ok(results)
