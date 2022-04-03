@@ -33,11 +33,10 @@ use tantivy::{
     IndexWriter, Order, ReloadPolicy, Searcher, SegmentReader, Term,
 };
 
+use self::query::{ParsedQuery, QueryParser};
 use crate::{
     entity::EntityIdRef, error::Error, mutation::OperationId, ordering::OrderingValueWrapper,
 };
-
-use self::query::{ParsedQuery, QueryParser};
 
 mod config;
 mod entity_cache;

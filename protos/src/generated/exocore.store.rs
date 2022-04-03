@@ -152,7 +152,10 @@ pub struct TestPredicate {
     pub success: bool,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct BooleanPredicate {}
+pub struct BooleanPredicate {
+    #[prost(message, repeated, tag = "1")]
+    pub queries: ::prost::alloc::vec::Vec<boolean_predicate::SubQuery>,
+}
 /// Nested message and enum types in `BooleanPredicate`.
 pub mod boolean_predicate {
     #[derive(Clone, PartialEq, ::prost::Message)]
@@ -185,10 +188,9 @@ pub mod boolean_predicate {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
     #[repr(i32)]
     pub enum Occur {
-        Invalid = 0,
-        Should = 1,
-        Must = 2,
-        ShouldNot = 3,
+        Should = 0,
+        Must = 1,
+        MustNot = 2,
     }
 }
 /// Query entities that have a specified trait and optionally matching a trait

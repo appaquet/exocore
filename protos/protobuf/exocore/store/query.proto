@@ -92,10 +92,9 @@ message TestPredicate {
 
 message BooleanPredicate {
     enum Occur {
-        INVALID = 0;
-        SHOULD = 1;
-        MUST = 2;
-        SHOULD_NOT = 3;
+        SHOULD = 0;
+        MUST = 1;
+        MUST_NOT = 2;
     }
 
     message SubQuery {
@@ -111,6 +110,8 @@ message BooleanPredicate {
             BooleanPredicate boolean = 8;
         }
     }
+
+    repeated SubQuery queries = 1;
 }
 
 // Query entities that have a specified trait and optionally matching a trait query.
