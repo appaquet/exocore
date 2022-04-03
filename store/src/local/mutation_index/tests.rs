@@ -6,7 +6,7 @@ use exocore_protos::{
         exocore_test::{TestMessage, TestMessage2},
     },
     prost::{Any, ProstAnyPackMessageExt, ProstDateTimeExt},
-    store::{entity_query, TraitDetails},
+    store::{entity_query, MatchPredicate, TraitDetails},
     test::TestStruct,
 };
 use itertools::Itertools;

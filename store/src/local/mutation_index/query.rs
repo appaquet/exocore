@@ -1,5 +1,6 @@
 use exocore_protos::store::{
-    entity_query::Predicate, ordering, EntityQuery, MatchPredicate, Ordering, Paging,
+    entity_query::Predicate, ordering, trait_field_predicate, trait_query, EntityQuery,
+    MatchPredicate, Ordering, Paging, TraitFieldPredicate, TraitFieldReferencePredicate,
 };
 use tantivy::{
     query::{AllQuery, BooleanQuery, FuzzyTermQuery, Occur, PhraseQuery, Query, TermQuery},
@@ -7,49 +8,74 @@ use tantivy::{
     Index, Term,
 };
 
+use super::{schema::Fields, MutationIndexConfig};
 use crate::error::Error;
 
-use super::schema::Fields;
+pub(crate) struct ParsedQuery {
+    pub tantivy: Box<dyn Query>,
+    pub paging: Paging,
+    pub ordering: Ordering,
+    pub trait_name: Option<String>,
+}
 
-pub(crate) struct ParsedQuery<'i, 'f, 'q> {
+pub(crate) struct QueryParser<'i, 'f, 'q> {
     index: &'i Index,
     fields: &'f Fields,
+    config: &'f MutationIndexConfig,
     proto: &'q EntityQuery,
+    query: Option<Box<dyn Query>>,
     paging: Paging,
     ordering: Ordering,
     trait_name: Option<String>,
-    query: Option<Box<dyn Query>>,
 }
 
-impl<'i, 'f, 'q> ParsedQuery<'i, 'f, 'q> {
-    pub fn new(
+impl<'i, 'f, 'q> QueryParser<'i, 'f, 'q> {
+    pub fn parse(
         index: &'i Index,
         fields: &'f Fields,
+        config: &'f MutationIndexConfig,
         proto: &'q EntityQuery,
-    ) -> Result<ParsedQuery<'i, 'f, 'q>, Error> {
-        let mut query = ParsedQuery {
+    ) -> Result<ParsedQuery, Error> {
+        let mut parser = QueryParser {
             index,
             fields,
+            config,
             proto,
+            query: None,
             paging: Default::default(),
             ordering: Default::default(),
             trait_name: None,
-            query: None,
         };
 
-        query.parse()?;
+        parser.inner_parse()?;
 
-        Ok(query)
+        let tantivy_query = parser
+            .query
+            .as_ref()
+            .map(|q| q.box_clone())
+            .ok_or_else(|| Error::QueryParsing(anyhow!("query didn't didn't get parsed")))?;
+
+        Ok(ParsedQuery {
+            tantivy: tantivy_query,
+            paging: parser.paging,
+            ordering: parser.ordering,
+            trait_name: parser.trait_name,
+        })
     }
 
-    fn parse(&mut self) -> Result<(), Error> {
+    fn inner_parse(&mut self) -> Result<(), Error> {
         let predicate = self
             .proto
             .predicate
             .as_ref()
             .ok_or(Error::ProtoFieldExpected("predicate"))?;
 
-        self.paging = self.proto.paging.clone().unwrap_or_default();
+        self.paging = self.proto.paging.clone().unwrap_or(Paging {
+            after_ordering_value: None,
+            before_ordering_value: None,
+            count: self.config.iterator_page_size,
+            offset: 0,
+        });
         self.ordering = self.proto.ordering.clone().unwrap_or_default();
         self.query = Some(self.parse_predicate(predicate)?);
 
@@ -66,7 +92,7 @@ impl<'i, 'f, 'q> ParsedQuery<'i, 'f, 'q> {
             }
             Predicate::Operations(op_pred) => self.parse_operation_predicate(op_pred),
             Predicate::All(all_pred) => self.parse_all_predicate(all_pred),
-            Predicate::Boolean(_) => todo!(),
+            Predicate::Boolean(_) => todo!(), // TODO:
             Predicate::Test(_) => Err(anyhow!("Query failed for tests").into()),
         }
     }
@@ -141,6 +167,10 @@ impl<'i, 'f, 'q> ParsedQuery<'i, 'f, 'q> {
         field: Field,
         ref_pred: &exocore_protos::store::ReferencePredicate,
     ) -> Result<Box<dyn Query>, Error> {
+        if self.ordering.value.is_none() {
+            self.ordering.value = Some(ordering::Value::OperationId(true));
+        }
+
         let query: Box<dyn tantivy::query::Query> = if !ref_pred.trait_id.is_empty() {
             let terms = vec![
                 Term::from_field_text(field, &format!("entity{}", ref_pred.entity_id)),
@@ -161,7 +191,103 @@ impl<'i, 'f, 'q> ParsedQuery<'i, 'f, 'q> {
         &mut self,
         trait_pred: &exocore_protos::store::TraitPredicate,
     ) -> Result<Box<dyn Query>, Error> {
-        todo!()
+        if self.ordering.value.is_none() {
+            self.ordering.value = Some(ordering::Value::OperationId(true));
+        }
+
+        let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+
+        let trait_type = Term::from_field_text(self.fields.trait_type, &trait_pred.trait_name);
+        let trait_type_query = TermQuery::new(trait_type, IndexRecordOption::Basic);
+        queries.push((Occur::Must, Box::new(trait_type_query)));
+
+        self.trait_name = Some(trait_pred.trait_name.clone());
+
+        if let Some(trait_query) = &trait_pred.query {
+            match &trait_query.predicate {
+                Some(trait_query::Predicate::Match(trait_pred)) => {
+                    queries.push((Occur::Must, self.parse_match_predicate(trait_pred)?));
+                }
+                Some(trait_query::Predicate::Field(field_trait_pred)) => {
+                    queries.push((
+                        Occur::Must,
+                        self.parse_trait_field_predicate(field_trait_pred)?,
+                    ));
+                }
+                Some(trait_query::Predicate::Reference(field_ref_pred)) => {
+                    queries.push((
+                        Occur::Must,
+                        self.parse_trait_field_reference_predicate(field_ref_pred)?,
+                    ));
+                }
+                None => {}
+            }
+        }
+
+        Ok(Box::new(BooleanQuery::from(queries)))
+    }
+
+    fn parse_trait_field_predicate(
+        &self,
+        predicate: &TraitFieldPredicate,
+    ) -> Result<Box<dyn Query>, Error> {
+        use exocore_protos::reflect::FieldType as FT;
+        use trait_field_predicate::Value as PV;
+
+        let trait_name = self
+            .trait_name
+            .as_ref()
+            .ok_or_else(|| Error::QueryParsing(anyhow!("expected trait name")))?;
+
+        let fields = self
+            .fields
+            .get_dynamic_trait_field_prefix(trait_name, &predicate.field)?;
+
+        let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+        for field in fields {
+            match (&field.field_type, &predicate.value) {
+                (FT::String, Some(PV::String(value))) => {
+                    let term = Term::from_field_text(field.field, value);
+
+                    queries.push((Occur::Should, Box::new(TermQuery::new(term, IndexRecordOption::Basic))));
+                }
+                (ft, pv) => {
+                    return Err(
+                        Error::QueryParsing(
+                            anyhow!(
+                                "Incompatible field type vs field value in predicate: trait_name={} field={}, field_type={:?}, value={:?}",
+                                trait_name,
+                                predicate.field,
+                                ft,
+                                pv,
+                            ))
+                    )
+                }
+            }
+        }
+
+        Ok(Box::new(BooleanQuery::from(queries)))
+    }
+
+    fn parse_trait_field_reference_predicate(
+        &mut self,
+        predicate: &TraitFieldReferencePredicate,
+    ) -> Result<Box<dyn Query>, Error> {
+        let trait_name = self
+            .trait_name
+            .as_ref()
+            .ok_or_else(|| Error::QueryParsing(anyhow!("expected trait name")))?;
+
+        let field = self
+            .fields
+            .get_dynamic_trait_field(trait_name, &predicate.field)?;
+
+        let reference = predicate
+            .reference
+            .as_ref()
+            .ok_or(Error::ProtoFieldExpected("reference"))?;
+
+        self.parse_reference_predicate(field.field, reference)
     }
 
     fn new_fuzzy_query(
@@ -194,9 +320,5 @@ impl<'i, 'f, 'q> ParsedQuery<'i, 'f, 'q> {
         }
 
         Ok(BooleanQuery::from(queries))
-    }
-
-    pub fn to_tantivy(&self) -> Box<dyn tantivy::query::Query> {
-        unimplemented!()
     }
 }
