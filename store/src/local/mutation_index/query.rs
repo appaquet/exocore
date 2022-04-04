@@ -19,30 +19,30 @@ pub(crate) struct ParsedQuery {
     pub trait_name: Option<String>,
 }
 
-pub(crate) struct QueryParser<'i, 'f, 'q> {
-    index: &'i Index,
-    fields: &'f Fields,
-    config: &'f MutationIndexConfig,
-    proto: &'q EntityQuery,
-    query: Option<Box<dyn Query>>,
+pub(crate) struct QueryParser<'s> {
+    index: &'s Index,
+    fields: &'s Fields,
+    config: &'s MutationIndexConfig,
+    proto: &'s EntityQuery,
+    tantivy: Option<Box<dyn Query>>,
     paging: Paging,
     ordering: Ordering,
     trait_name: Option<String>,
 }
 
-impl<'i, 'f, 'q> QueryParser<'i, 'f, 'q> {
+impl<'s> QueryParser<'s> {
     pub fn parse(
-        index: &'i Index,
-        fields: &'f Fields,
-        config: &'f MutationIndexConfig,
-        proto: &'q EntityQuery,
+        index: &'s Index,
+        fields: &'s Fields,
+        config: &'s MutationIndexConfig,
+        proto: &'s EntityQuery,
     ) -> Result<ParsedQuery, Error> {
         let mut parser = QueryParser {
             index,
             fields,
             config,
             proto,
-            query: None,
+            tantivy: None,
             paging: Default::default(),
             ordering: Default::default(),
             trait_name: None,
@@ -50,14 +50,14 @@ impl<'i, 'f, 'q> QueryParser<'i, 'f, 'q> {
 
         parser.inner_parse()?;
 
-        let tantivy_query = parser
-            .query
+        let tantivy = parser
+            .tantivy
             .as_ref()
             .map(|q| q.box_clone())
             .ok_or_else(|| Error::QueryParsing(anyhow!("query didn't didn't get parsed")))?;
 
         Ok(ParsedQuery {
-            tantivy: tantivy_query,
+            tantivy,
             paging: parser.paging,
             ordering: parser.ordering,
             trait_name: parser.trait_name,
@@ -78,7 +78,7 @@ impl<'i, 'f, 'q> QueryParser<'i, 'f, 'q> {
             offset: 0,
         });
         self.ordering = self.proto.ordering.clone().unwrap_or_default();
-        self.query = Some(self.parse_predicate(predicate)?);
+        self.tantivy = Some(self.parse_predicate(predicate)?);
 
         Ok(())
     }
@@ -90,8 +90,9 @@ impl<'i, 'f, 'q> QueryParser<'i, 'f, 'q> {
             Predicate::Ids(ids_pred) => self.parse_ids_pred(ids_pred),
             Predicate::Reference(ref_pred) => self.parse_ref_pred(self.fields.all_refs, ref_pred),
             Predicate::Operations(op_pred) => self.parse_operation_pred(op_pred),
-            Predicate::All(all_pred) => self.parse_all_pred(all_pred),
+            Predicate::All(_all_pred) => self.parse_all_pred(),
             Predicate::Boolean(bool_pred) => self.parse_bool_pred(bool_pred),
+            Predicate::QueryString(query_pred) => self.query_string_pred(query_pred),
             Predicate::Test(_) => Err(anyhow!("Query failed for tests").into()),
         }
     }
@@ -104,7 +105,7 @@ impl<'i, 'f, 'q> QueryParser<'i, 'f, 'q> {
         let field = self.fields.all_text;
         let text = match_pred.query.as_str();
         let no_fuzzy = match_pred.no_fuzzy;
-        Ok(Box::new(self.new_fuzzy_query(field, text, no_fuzzy)?))
+        Ok(Box::new(self.new_fuzzy_match_query(field, text, no_fuzzy)?))
     }
 
     fn parse_trait_pred(
@@ -139,10 +140,7 @@ impl<'i, 'f, 'q> QueryParser<'i, 'f, 'q> {
                     queries.push((Occur::Must, self.parse_match_pred(trait_pred)?));
                 }
                 Some(trait_query::Predicate::Field(field_trait_pred)) => {
-                    queries.push((
-                        Occur::Must,
-                        self.parse_trait_field_predicate(field_trait_pred)?,
-                    ));
+                    queries.push((Occur::Must, self.parse_field_predicate(field_trait_pred)?));
                 }
                 Some(trait_query::Predicate::Reference(field_ref_pred)) => {
                     queries.push((
@@ -157,7 +155,7 @@ impl<'i, 'f, 'q> QueryParser<'i, 'f, 'q> {
         Ok(Box::new(BooleanQuery::from(queries)))
     }
 
-    fn parse_trait_field_predicate(
+    fn parse_field_predicate(
         &self,
         predicate: &TraitFieldPredicate,
     ) -> Result<Box<dyn Query>, Error> {
@@ -224,19 +222,18 @@ impl<'i, 'f, 'q> QueryParser<'i, 'f, 'q> {
         &mut self,
         ids_pred: &exocore_protos::store::IdsPredicate,
     ) -> Result<Box<dyn Query>, Error> {
+        if self.ordering.value.is_none() {
+            self.ordering.value = Some(ordering::Value::OperationId(true));
+            self.ordering.ascending = true;
+        }
+
         let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
         for entity_id in &ids_pred.ids {
             let term = Term::from_field_text(self.fields.entity_id, entity_id);
             let query = TermQuery::new(term, IndexRecordOption::Basic);
             queries.push((Occur::Should, Box::new(query)));
         }
-        let query = BooleanQuery::from(queries);
-
-        if self.ordering.value.is_none() {
-            self.ordering.value = Some(ordering::Value::OperationId(true));
-        }
-
-        Ok(Box::new(query))
+        Ok(Box::new(BooleanQuery::from(queries)))
     }
 
     fn parse_ref_pred(
@@ -246,6 +243,7 @@ impl<'i, 'f, 'q> QueryParser<'i, 'f, 'q> {
     ) -> Result<Box<dyn Query>, Error> {
         if self.ordering.value.is_none() {
             self.ordering.value = Some(ordering::Value::OperationId(true));
+            self.ordering.ascending = true;
         }
 
         let query: Box<dyn tantivy::query::Query> = if !ref_pred.trait_id.is_empty() {
@@ -282,10 +280,7 @@ impl<'i, 'f, 'q> QueryParser<'i, 'f, 'q> {
         Ok(Box::new(BooleanQuery::from(queries)))
     }
 
-    fn parse_all_pred(
-        &mut self,
-        _all_pred: &exocore_protos::store::AllPredicate,
-    ) -> Result<Box<dyn Query>, Error> {
+    fn parse_all_pred(&mut self) -> Result<Box<dyn Query>, Error> {
         if self.ordering.value.is_none() {
             self.ordering.value = Some(ordering::Value::OperationId(true));
             self.ordering.ascending = false;
@@ -315,7 +310,7 @@ impl<'i, 'f, 'q> QueryParser<'i, 'f, 'q> {
                     self.parse_ref_pred(self.fields.all_refs, ref_pred)?
                 }
                 SubPredicate::Operations(op_pred) => self.parse_operation_pred(op_pred)?,
-                SubPredicate::All(all_pred) => self.parse_all_pred(all_pred)?,
+                SubPredicate::All(_all_pred) => self.parse_all_pred()?,
                 SubPredicate::Boolean(bool_pred) => self.parse_bool_pred(bool_pred)?,
             };
 
@@ -337,7 +332,60 @@ impl<'i, 'f, 'q> QueryParser<'i, 'f, 'q> {
         Ok(Box::new(BooleanQuery::from(queries)))
     }
 
-    fn new_fuzzy_query(
+    fn query_string_pred(
+        &mut self,
+        query_pred: &exocore_protos::store::QueryStringPredicate,
+    ) -> Result<Box<dyn Query>, Error> {
+        let parsed = QueryString::parse(&query_pred.query)?;
+
+        if parsed.parts.is_empty() {
+            self.parse_all_pred()
+        } else {
+            let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+            for part in parsed.parts {
+                if part.field == "type" {
+                    // TODO: find trait name by type
+                } else if part.phrase {
+                    let field = if part.field.is_empty() {
+                        self.fields.all_text
+                    } else {
+                        self.field_or_text(&part.field)?
+                    };
+
+                    let mut occur = part.occur.to_tantivy();
+                    if occur == Occur::Should {
+                        occur = Occur::Must;
+                    }
+
+                    queries.push((occur, Box::new(self.new_phrase_query(field, &part.text)?)));
+                } else {
+                    let field = if part.field.is_empty() {
+                        self.fields.all_text
+                    } else {
+                        self.field_or_text(&part.field)?
+                    };
+
+                    queries.push((
+                        part.occur.to_tantivy(),
+                        Box::new(self.new_fuzzy_match_query(field, &part.text, false)?),
+                    ));
+                }
+            }
+            Ok(Box::new(BooleanQuery::from(queries)))
+        }
+    }
+
+    fn field_or_text(&self, field: &str) -> Result<Field, Error> {
+        match &self.trait_name {
+            Some(trait_name) => Ok(self
+                .fields
+                .get_dynamic_trait_field(trait_name, field)?
+                .field),
+            None => Ok(self.fields.all_text),
+        }
+    }
+
+    fn new_fuzzy_match_query(
         &self,
         field: Field,
         text: &str,
@@ -367,5 +415,205 @@ impl<'i, 'f, 'q> QueryParser<'i, 'f, 'q> {
         }
 
         Ok(BooleanQuery::from(queries))
+    }
+
+    fn new_phrase_query(&self, field: Field, text: &str) -> Result<PhraseQuery, Error> {
+        let tok = self.index.tokenizer_for_field(field)?;
+        let mut terms = Vec::new();
+        let mut stream = tok.token_stream(text);
+
+        while stream.advance() {
+            let token = stream.token().text.as_str();
+            let term = Term::from_field_text(field, token);
+            terms.push(term);
+        }
+
+        Ok(PhraseQuery::new(terms))
+    }
+}
+
+#[derive(Default)]
+struct QueryString {
+    pub parts: Vec<QSPart>,
+    plain_part: QSPart,
+}
+
+impl QueryString {
+    fn parse(query: &str) -> Result<QueryString, Error> {
+        let mut qs = QueryString::default();
+        let mut part = QSPart::default();
+
+        for chr in query.chars() {
+            if chr.is_whitespace() && !part.phrase && !part.in_parenthesis {
+                qs.push(part);
+                part = QSPart::default();
+            } else if chr == '+' {
+                part.occur = QSOccur::Must;
+            } else if chr == '-' {
+                part.occur = QSOccur::MustNot;
+            } else if chr == ':' {
+                part.field = part.text.clone();
+                part.text.clear();
+            } else if chr == '"' {
+                if !part.phrase {
+                    part.phrase = true;
+                } else {
+                    qs.push(part);
+                    part = QSPart::default();
+                }
+            } else if !part.phrase && chr == '(' {
+                part.in_parenthesis = true;
+            } else if !part.phrase && chr == ')' {
+                if !part.in_parenthesis {
+                    return Err(Error::QueryParsing(anyhow!(
+                        "Unexpected ')' in query string"
+                    )));
+                } else {
+                    qs.push(part);
+                    part = QSPart::default();
+                }
+            } else {
+                part.text.push(chr);
+            }
+        }
+
+        if part.phrase {
+            return Err(Error::QueryParsing(anyhow!(
+                "Unclosed quote in query string"
+            )));
+        } else if part.in_parenthesis {
+            return Err(Error::QueryParsing(anyhow!(
+                "Unclosed parenthesis in query string"
+            )));
+        }
+
+        qs.push(part);
+
+        if !qs.plain_part.is_empty() {
+            let part = std::mem::take(&mut qs.plain_part);
+            qs.parts.push(part);
+        }
+
+        Ok(qs)
+    }
+
+    fn push(&mut self, part: QSPart) {
+        if part.is_empty() {
+            return;
+        }
+
+        if part.is_plain() {
+            self.plain_part.combine_from(&part);
+        } else {
+            self.parts.push(part);
+        }
+    }
+
+    #[cfg(test)]
+    fn is_empty(&self) -> bool {
+        self.parts.is_empty() && self.plain_part.is_empty()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum QSOccur {
+    Must,
+    MustNot,
+    Should,
+}
+
+impl QSOccur {
+    fn to_tantivy(self) -> Occur {
+        match self {
+            QSOccur::Must => Occur::Must,
+            QSOccur::MustNot => Occur::MustNot,
+            QSOccur::Should => Occur::Should,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct QSPart {
+    occur: QSOccur,
+    text: String,
+    field: String,
+    phrase: bool,
+    in_parenthesis: bool,
+}
+
+impl Default for QSPart {
+    fn default() -> Self {
+        Self {
+            occur: QSOccur::Should,
+            text: String::new(),
+            field: String::new(),
+            phrase: false,
+            in_parenthesis: false,
+        }
+    }
+}
+
+impl QSPart {
+    fn is_empty(&self) -> bool {
+        self.text.is_empty()
+    }
+
+    fn is_plain(&self) -> bool {
+        self.occur == QSOccur::Should
+            && !self.phrase
+            && !self.in_parenthesis
+            && self.field.is_empty()
+    }
+
+    fn combine_from(&mut self, other: &QSPart) {
+        if !self.text.is_empty() {
+            self.text += " ";
+        }
+        self.text += &other.text;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_query_string() {
+        let qs = QueryString::parse("").unwrap();
+        assert!(qs.is_empty());
+
+        let qs = QueryString::parse("hello world").unwrap();
+        assert_eq!(qs.parts.len(), 1);
+        assert_eq!(qs.parts[0].occur, QSOccur::Should);
+        assert_eq!(qs.parts[0].text, "hello world");
+
+        let qs = QueryString::parse("+hello -world").unwrap();
+        assert_eq!(qs.parts.len(), 2);
+        assert_eq!(qs.parts[0].occur, QSOccur::Must);
+        assert_eq!(qs.parts[0].text, "hello");
+        assert_eq!(qs.parts[1].occur, QSOccur::MustNot);
+        assert_eq!(qs.parts[1].text, "world");
+
+        let qs = QueryString::parse("\"hello world\"").unwrap();
+        assert_eq!(qs.parts.len(), 1);
+        assert_eq!(qs.parts[0].occur, QSOccur::Should);
+        assert_eq!(qs.parts[0].text, "hello world");
+        assert!(qs.parts[0].phrase);
+
+        let qs = QueryString::parse("field:token").unwrap();
+        assert_eq!(qs.parts.len(), 1);
+        assert_eq!(qs.parts[0].occur, QSOccur::Should);
+        assert_eq!(qs.parts[0].field, "field");
+        assert_eq!(qs.parts[0].text, "token");
+
+        let qs = QueryString::parse("+field:(hello world)").unwrap();
+        assert_eq!(qs.parts.len(), 1);
+        assert_eq!(qs.parts[0].occur, QSOccur::Must);
+        assert_eq!(qs.parts[0].field, "field");
+        assert_eq!(qs.parts[0].text, "hello world");
+
+        assert!(QueryString::parse("\"").is_err());
+        assert!(QueryString::parse("(").is_err());
+        assert!(QueryString::parse(")").is_err());
     }
 }

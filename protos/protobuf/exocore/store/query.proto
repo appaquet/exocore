@@ -15,6 +15,7 @@ message EntityQuery {
         OperationsPredicate operations = 10;
         AllPredicate all = 11;
         BooleanPredicate boolean = 14;
+        QueryStringPredicate query_string = 15;
 
         TestPredicate test = 99;
     }
@@ -162,6 +163,10 @@ message ReferencePredicate {
 
     // Optional trait id the reference points to
     string trait_id = 2;
+}
+
+message QueryStringPredicate {
+    string query = 1;
 }
 
 message Paging {

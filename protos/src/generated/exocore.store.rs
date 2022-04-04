@@ -73,7 +73,10 @@ pub struct EntityQuery {
     #[prost(bool, tag = "13")]
     pub programmatic: bool,
     /// Main search predicate on individual traits of the entity.
-    #[prost(oneof = "entity_query::Predicate", tags = "1, 2, 3, 4, 10, 11, 14, 99")]
+    #[prost(
+        oneof = "entity_query::Predicate",
+        tags = "1, 2, 3, 4, 10, 11, 14, 15, 99"
+    )]
     pub predicate: ::core::option::Option<entity_query::Predicate>,
 }
 /// Nested message and enum types in `EntityQuery`.
@@ -95,6 +98,8 @@ pub mod entity_query {
         All(super::AllPredicate),
         #[prost(message, tag = "14")]
         Boolean(super::BooleanPredicate),
+        #[prost(message, tag = "15")]
+        QueryString(super::QueryStringPredicate),
         #[prost(message, tag = "99")]
         Test(super::TestPredicate),
     }
@@ -266,6 +271,11 @@ pub struct ReferencePredicate {
     /// Optional trait id the reference points to
     #[prost(string, tag = "2")]
     pub trait_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct QueryStringPredicate {
+    #[prost(string, tag = "1")]
+    pub query: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Paging {
