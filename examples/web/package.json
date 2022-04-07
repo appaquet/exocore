@@ -9,7 +9,7 @@
     "build": "webpack --mode development"
   },
   "devDependencies": {
-    "@types/react": "^17.0.3",
+    "@types/react": "^18.0.0",
     "@types/react-dom": "^17.0.3",
     "@playwright/test": "^1.18.1",
     "html-webpack-plugin": "^5.3.1",
