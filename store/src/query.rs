@@ -304,6 +304,16 @@ impl TraitQueryBuilder {
         }
     }
 
+    pub fn from_query_string<S: Into<String>>(query: S) -> TraitQueryBuilder {
+        TraitQueryBuilder {
+            query: TraitQuery {
+                predicate: Some(trait_query::Predicate::QueryString(QueryStringPredicate {
+                    query: query.into(),
+                })),
+            },
+        }
+    }
+
     pub fn build(self) -> TraitQuery {
         self.query
     }

@@ -306,6 +306,72 @@ fn search_query_matches_recent_boost() -> anyhow::Result<()> {
 }
 
 #[test]
+fn search_query_string() -> anyhow::Result<()> {
+    let registry = Arc::new(Registry::new_with_exocore_types());
+    let config = test_config();
+    let index = MutationIndex::create_in_memory(config, registry)?;
+
+    let now = Utc::now();
+    let trait1 = IndexOperation::PutTrait(PutTraitMutation {
+        block_offset: Some(1),
+        operation_id: 10,
+        entity_id: "entity_id1".to_string(),
+        trt: Trait {
+            id: "foo1".to_string(),
+            modification_date: Some(now.to_proto_timestamp()),
+            message: Some(
+                TestMessage {
+                    string1: "Foo Bar One".to_string(),
+                    ..Default::default()
+                }
+                .pack_to_any()?,
+            ),
+            ..Default::default()
+        },
+    });
+
+    let trait2 = IndexOperation::PutTrait(PutTraitMutation {
+        block_offset: Some(2),
+        operation_id: 20,
+        entity_id: "entity_id2".to_string(),
+        trt: Trait {
+            id: "foo2".to_string(),
+            modification_date: Some(now.to_proto_timestamp()),
+            message: Some(
+                TestMessage {
+                    string1: "Foo Bar Two".to_string(),
+                    ..Default::default()
+                }
+                .pack_to_any()?,
+            ),
+            ..Default::default()
+        },
+    });
+    index.apply_operations(vec![trait1, trait2].into_iter())?;
+
+    let query = Q::from_query_string("foo").build();
+    let res = index.search(query)?;
+    assert_eq!(res.mutations.len(), 2);
+
+    let query = Q::from_query_string("-foo").build();
+    let res = index.search(query)?;
+    assert_eq!(res.mutations.len(), 0);
+
+    let query = Q::from_query_string("foo -two").build();
+    let res = index.search(query)?;
+    assert_eq!(res.mutations.len(), 1);
+    assert_eq!(res.mutations[0].entity_id, "entity_id1");
+
+    let trait_query = TQ::from_query_string("string1:two").build();
+    let query = Q::with_trait_query::<TestMessage>(trait_query).build();
+    let res = index.search(query)?;
+    assert_eq!(res.mutations.len(), 1);
+    assert_eq!(res.mutations[0].entity_id, "entity_id2");
+
+    Ok(())
+}
+
+#[test]
 fn search_query_matches_paging() -> anyhow::Result<()> {
     let registry = Arc::new(Registry::new_with_exocore_types());
     let config = test_config();

@@ -127,6 +127,7 @@ message TraitQuery {
         MatchPredicate match = 1;
         TraitFieldPredicate field = 2;
         TraitFieldReferencePredicate reference = 3;
+        QueryStringPredicate query_string = 4;
     }
 }
 

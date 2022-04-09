@@ -216,7 +216,7 @@ fn convert_field_value(
     }
 }
 
-fn iter_repeated_unknown_value<F>(uk: &UnknownValues, mut f: F) -> Result<(), Error>
+pub fn iter_repeated_unknown_value<F>(uk: &UnknownValues, mut f: F) -> Result<(), Error>
 where
     F: FnMut(UnknownValues) -> Result<(), Error>,
 {
@@ -282,6 +282,9 @@ pub struct ReflectMessageDescriptor {
     pub name: String,
     pub fields: HashMap<FieldId, FieldDescriptor>,
     pub message: DescriptorProto,
+
+    // see exocore/store/options.proto
+    pub short_names: Vec<String>,
 }
 
 #[derive(Debug)]

@@ -209,7 +209,7 @@ pub struct TraitPredicate {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TraitQuery {
-    #[prost(oneof = "trait_query::Predicate", tags = "1, 2, 3")]
+    #[prost(oneof = "trait_query::Predicate", tags = "1, 2, 3, 4")]
     pub predicate: ::core::option::Option<trait_query::Predicate>,
 }
 /// Nested message and enum types in `TraitQuery`.
@@ -222,6 +222,8 @@ pub mod trait_query {
         Field(super::TraitFieldPredicate),
         #[prost(message, tag = "3")]
         Reference(super::TraitFieldReferencePredicate),
+        #[prost(message, tag = "4")]
+        QueryString(super::QueryStringPredicate),
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]

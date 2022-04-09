@@ -15,12 +15,13 @@ extend google.protobuf.FieldOptions {
     // Indicates that the text of this field is to be full-text searchable.
     bool text = 1375;
 
-    // Name that can be used to refer to this field in a query.
-    // Ex: type:<some_type_name>
-    repeated string type_name = 1377;
-
     // Value used by `Projection.field_group_ids` to select the fields to be returned
     // when projection on querying entities with `EntityQuery` is done.
     repeated uint32 field_group = 1376;
 }
 
+extend google.protobuf.MessageOptions {
+    // Name that can be used to refer to this field in a query.
+    // Ex: type:<some_type_name>
+    repeated string short_name = 1377;
+}

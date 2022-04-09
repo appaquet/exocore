@@ -80,6 +80,8 @@ impl<'s> QueryParser<'s> {
         self.ordering = self.proto.ordering.clone().unwrap_or_default();
         self.tantivy = Some(self.parse_predicate(predicate)?);
 
+        println!("{:?}", self.tantivy);
+
         Ok(())
     }
 
@@ -147,6 +149,9 @@ impl<'s> QueryParser<'s> {
                         Occur::Must,
                         self.parse_trait_field_reference_predicate(field_ref_pred)?,
                     ));
+                }
+                Some(trait_query::Predicate::QueryString(query_pred)) => {
+                    queries.push((Occur::Must, self.query_string_pred(query_pred)?));
                 }
                 None => {}
             }
@@ -336,13 +341,18 @@ impl<'s> QueryParser<'s> {
         &mut self,
         query_pred: &exocore_protos::store::QueryStringPredicate,
     ) -> Result<Box<dyn Query>, Error> {
-        let parsed = QueryString::parse(&query_pred.query)?;
+        if self.ordering.value.is_none() {
+            self.ordering.value = Some(ordering::Value::Score(true));
+        }
 
+        let parsed = QueryString::parse(&query_pred.query)?;
         if parsed.parts.is_empty() {
             self.parse_all_pred()
         } else {
             let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
             for part in parsed.parts {
+                // TODO: Sorting
+
                 if part.field == "type" {
                     // TODO: find trait name by type
                 } else if part.phrase {
@@ -444,7 +454,21 @@ impl QueryString {
         let mut part = QSPart::default();
 
         for chr in query.chars() {
-            if chr.is_whitespace() && !part.phrase && !part.in_parenthesis {
+            if part.phrase {
+                if chr == '"' {
+                    qs.push(part);
+                    part = QSPart::default();
+                } else {
+                    part.text.push(chr);
+                }
+            } else if part.in_parenthesis {
+                if chr == ')' {
+                    qs.push(part);
+                    part = QSPart::default();
+                } else {
+                    part.text.push(chr);
+                }
+            } else if chr.is_whitespace() {
                 qs.push(part);
                 part = QSPart::default();
             } else if chr == '+' {
@@ -455,23 +479,9 @@ impl QueryString {
                 part.field = part.text.clone();
                 part.text.clear();
             } else if chr == '"' {
-                if !part.phrase {
-                    part.phrase = true;
-                } else {
-                    qs.push(part);
-                    part = QSPart::default();
-                }
-            } else if !part.phrase && chr == '(' {
+                part.phrase = true;
+            } else if chr == '(' {
                 part.in_parenthesis = true;
-            } else if !part.phrase && chr == ')' {
-                if !part.in_parenthesis {
-                    return Err(Error::QueryParsing(anyhow!(
-                        "Unexpected ')' in query string"
-                    )));
-                } else {
-                    qs.push(part);
-                    part = QSPart::default();
-                }
             } else {
                 part.text.push(chr);
             }
@@ -614,6 +624,5 @@ mod tests {
 
         assert!(QueryString::parse("\"").is_err());
         assert!(QueryString::parse("(").is_err());
-        assert!(QueryString::parse(")").is_err());
     }
 }
