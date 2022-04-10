@@ -190,6 +190,8 @@ message Ordering {
         bool score = 1;         // by match score + date boost
         bool operation_id = 2;  // by operation id
         string field = 3;       // by field value
+        bool created_at = 7;    // by creation date
+        bool updated_at = 8;    // by last update date
     }
 
     // Direction of ordering.

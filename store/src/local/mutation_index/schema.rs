@@ -11,6 +11,7 @@ use crate::error::Error;
 
 /// Tantitvy schema fields
 pub(crate) struct Fields {
+    // TODO: Rename + embed tantitvy schema + move constructor
     pub trait_type: Field,
     pub entity_id: Field,
     pub trait_id: Field,
@@ -30,6 +31,7 @@ pub(crate) struct Fields {
     // message type -> field name -> tantivy field
     pub _dynamic_fields: DynamicFields,
     pub dynamic_mappings: DynamicFieldsMapping,
+    pub short_name_mapping: HashMap<String, String>,
 
     pub references_tokenizer: TextAnalyzer,
 }
@@ -74,6 +76,12 @@ impl Fields {
         index
             .tokenizers()
             .register("references", self.references_tokenizer.clone());
+    }
+
+    pub fn get_message_name_from_short(&self, short_name: &str) -> Option<&str> {
+        self.short_name_mapping
+            .get(&short_name.to_lowercase())
+            .map(|name| name.as_str())
     }
 
     fn trait_fields(
@@ -180,7 +188,7 @@ pub(crate) fn build_tantivy_schema(
     let entity_id = schema_builder.add_text_field("entity_id", STRING | STORED);
     let trait_id = schema_builder.add_text_field("trait_id", STRING | STORED);
     let entity_trait_id = schema_builder.add_text_field("entity_trait_id", STRING);
-    let creation_date = schema_builder.add_u64_field("creation_date", STORED);
+    let creation_date = schema_builder.add_u64_field("creation_date", STORED | FAST);
     let modification_date = schema_builder.add_u64_field("modification_date", STORED | FAST);
     let block_offset = schema_builder.add_u64_field("block_offset", STORED | FAST);
     let operation_id = schema_builder.add_u64_field(
@@ -213,6 +221,8 @@ pub(crate) fn build_tantivy_schema(
         references_options,
     );
 
+    let short_name_mapping = build_schema_short_type_mapping(registry);
+
     let schema = schema_builder.build();
 
     let fields = Fields {
@@ -233,6 +243,7 @@ pub(crate) fn build_tantivy_schema(
 
         _dynamic_fields: dynamic_fields,
         dynamic_mappings,
+        short_name_mapping,
 
         references_tokenizer,
     };
@@ -268,6 +279,26 @@ fn build_dynamic_fields_tantivy_schema(
     }
 
     (dyn_fields, dyn_mappings)
+}
+
+/// Creates a map of short type names to their full type names.
+fn build_schema_short_type_mapping(registry: &Registry) -> HashMap<String, String> {
+    let mut mapping = HashMap::new();
+    let message_descriptors = registry.message_descriptors();
+    for message_descriptor in message_descriptors {
+        for short_name in &message_descriptor.short_names {
+            if mapping.contains_key(short_name) {
+                warn!(
+                    "Short type name {} is already mapped to {}. Skipping mapping to {}.",
+                    short_name, mapping[short_name], message_descriptor.name
+                );
+                continue;
+            }
+
+            mapping.insert(short_name.to_lowercase(), message_descriptor.name.clone());
+        }
+    }
+    mapping
 }
 
 // Fields mapping for a trait.

@@ -279,7 +279,7 @@ pub type FieldId = u32;
 pub type FieldGroupId = u32;
 
 pub struct ReflectMessageDescriptor {
-    pub name: String,
+    pub name: String, // full name of the message
     pub fields: HashMap<FieldId, FieldDescriptor>,
     pub message: DescriptorProto,
 

@@ -80,7 +80,7 @@ impl<'s> QueryParser<'s> {
         self.ordering = self.proto.ordering.clone().unwrap_or_default();
         self.tantivy = Some(self.parse_predicate(predicate)?);
 
-        println!("{:?}", self.tantivy);
+        println!("{:?}", self.tantivy); // TODO: remove me
 
         Ok(())
     }
@@ -120,8 +120,7 @@ impl<'s> QueryParser<'s> {
 
         let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
 
-        let trait_type = Term::from_field_text(self.fields.trait_type, &trait_pred.trait_name);
-        let trait_type_query = TermQuery::new(trait_type, IndexRecordOption::Basic);
+        let trait_type_query = self.trait_type_query(&trait_pred.trait_name);
         queries.push((Occur::Must, Box::new(trait_type_query)));
 
         if let Some(cur_trait_name) = self.trait_name.as_ref() {
@@ -158,6 +157,11 @@ impl<'s> QueryParser<'s> {
         }
 
         Ok(Box::new(BooleanQuery::from(queries)))
+    }
+
+    fn trait_type_query(&mut self, trait_name: &str) -> TermQuery {
+        let trait_type = Term::from_field_text(self.fields.trait_type, trait_name);
+        TermQuery::new(trait_type, IndexRecordOption::Basic)
     }
 
     fn parse_field_predicate(
@@ -351,21 +355,39 @@ impl<'s> QueryParser<'s> {
         } else {
             let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
             for part in parsed.parts {
-                // TODO: Sorting
+                let mut occur = part.occur.to_tantivy();
+                if occur == Occur::Should {
+                    occur = Occur::Must;
+                }
 
                 if part.field == "type" {
-                    // TODO: find trait name by type
+                    let trait_name = self
+                        .fields
+                        .get_message_name_from_short(&part.text)
+                        .unwrap_or(&part.text);
+                    queries.push((occur, Box::new(self.trait_type_query(trait_name))));
+
+                    if occur == Occur::Must || (occur == Occur::Should && self.trait_name.is_none())
+                    {
+                        self.trait_name = Some(trait_name.to_string());
+                    }
+                } else if part.field == "sort" {
+                    if part.text == "date" || part.text.starts_with("create") {
+                        self.ordering.value = Some(ordering::Value::CreatedAt(true));
+                        self.ordering.ascending = false;
+                    } else if part.text.starts_with("update") {
+                        self.ordering.value = Some(ordering::Value::UpdatedAt(true));
+                        self.ordering.ascending = false;
+                    }
+                    if occur == Occur::MustNot {
+                        self.ordering.ascending = !self.ordering.ascending;
+                    }
                 } else if part.phrase {
                     let field = if part.field.is_empty() {
                         self.fields.all_text
                     } else {
                         self.field_or_text(&part.field)?
                     };
-
-                    let mut occur = part.occur.to_tantivy();
-                    if occur == Occur::Should {
-                        occur = Occur::Must;
-                    }
 
                     queries.push((occur, Box::new(self.new_phrase_query(field, &part.text)?)));
                 } else {
@@ -438,6 +460,7 @@ impl<'s> QueryParser<'s> {
             terms.push(term);
         }
 
+        // TODO: Should not return phrase if not enough terms
         Ok(PhraseQuery::new(terms))
     }
 }
@@ -485,16 +508,6 @@ impl QueryString {
             } else {
                 part.text.push(chr);
             }
-        }
-
-        if part.phrase {
-            return Err(Error::QueryParsing(anyhow!(
-                "Unclosed quote in query string"
-            )));
-        } else if part.in_parenthesis {
-            return Err(Error::QueryParsing(anyhow!(
-                "Unclosed parenthesis in query string"
-            )));
         }
 
         qs.push(part);
@@ -621,8 +634,5 @@ mod tests {
         assert_eq!(qs.parts[0].occur, QSOccur::Must);
         assert_eq!(qs.parts[0].field, "field");
         assert_eq!(qs.parts[0].text, "hello world");
-
-        assert!(QueryString::parse("\"").is_err());
-        assert!(QueryString::parse("(").is_err());
     }
 }

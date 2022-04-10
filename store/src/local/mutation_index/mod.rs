@@ -640,6 +640,30 @@ impl MutationIndex {
                     collector,
                 )?
             }
+            ordering::Value::CreatedAt(_) => {
+                let collector = self.sorted_field_collector(
+                    &query.paging,
+                    self.fields.creation_date,
+                    query.ordering.ascending,
+                );
+                self.execute_tantity_query_with_collector(
+                    searcher,
+                    query.tantivy.as_ref(),
+                    collector,
+                )?
+            }
+            ordering::Value::UpdatedAt(_) => {
+                let collector = self.sorted_field_collector(
+                    &query.paging,
+                    self.fields.modification_date,
+                    query.ordering.ascending,
+                );
+                self.execute_tantity_query_with_collector(
+                    searcher,
+                    query.tantivy.as_ref(),
+                    collector,
+                )?
+            }
             ordering::Value::Field(field_name) => {
                 let trait_name = query.trait_name.ok_or_else(|| {
                     Error::QueryParsing(anyhow!("Ordering by field only supported in trait query",))

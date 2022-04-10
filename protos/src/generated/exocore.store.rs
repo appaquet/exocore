@@ -306,7 +306,7 @@ pub struct Ordering {
     #[prost(bool, tag = "6")]
     pub no_reference_boost: bool,
     /// Value by which we want results to be ordered.
-    #[prost(oneof = "ordering::Value", tags = "1, 2, 3")]
+    #[prost(oneof = "ordering::Value", tags = "1, 2, 3, 7, 8")]
     pub value: ::core::option::Option<ordering::Value>,
 }
 /// Nested message and enum types in `Ordering`.
@@ -323,6 +323,12 @@ pub mod ordering {
         /// by field value
         #[prost(string, tag = "3")]
         Field(::prost::alloc::string::String),
+        /// by creation date
+        #[prost(bool, tag = "7")]
+        CreatedAt(bool),
+        /// by last update date
+        #[prost(bool, tag = "8")]
+        UpdatedAt(bool),
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]

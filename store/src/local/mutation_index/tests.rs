@@ -368,6 +368,9 @@ fn search_query_string() -> anyhow::Result<()> {
     assert_eq!(res.mutations.len(), 1);
     assert_eq!(res.mutations[0].entity_id, "entity_id2");
 
+    // TODO: sort
+    // TODO: type
+
     Ok(())
 }
 
