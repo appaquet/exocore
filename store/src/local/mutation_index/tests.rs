@@ -349,27 +349,50 @@ fn search_query_string() -> anyhow::Result<()> {
     });
     index.apply_operations(vec![trait1, trait2].into_iter())?;
 
+    // should
     let query = Q::from_query_string("foo").build();
     let res = index.search(query)?;
     assert_eq!(res.mutations.len(), 2);
 
+    // must not
     let query = Q::from_query_string("-foo").build();
     let res = index.search(query)?;
     assert_eq!(res.mutations.len(), 0);
 
+    // should & not
     let query = Q::from_query_string("foo -two").build();
     let res = index.search(query)?;
     assert_eq!(res.mutations.len(), 1);
     assert_eq!(res.mutations[0].entity_id, "entity_id1");
 
+    // must
+    let query = Q::from_query_string("foo +one").build();
+    let res = index.search(query)?;
+    assert_eq!(res.mutations.len(), 1);
+    assert_eq!(res.mutations[0].entity_id, "entity_id1");
+
+    // field value
     let trait_query = TQ::from_query_string("string1:two").build();
     let query = Q::with_trait_query::<TestMessage>(trait_query).build();
     let res = index.search(query)?;
     assert_eq!(res.mutations.len(), 1);
     assert_eq!(res.mutations[0].entity_id, "entity_id2");
 
-    // TODO: sort
-    // TODO: type
+    // type
+    let query = Q::from_query_string("type:test").build();
+    let res = index.search(query)?;
+    assert_eq!(res.mutations.len(), 2);
+
+    // sort
+    let query = Q::from_query_string("sort:created").build();
+    let res1 = index.search(query)?;
+    assert_eq!(res1.mutations.len(), 2);
+
+    let query = Q::from_query_string("-sort:created").build();
+    let res2 = index.search(query)?;
+
+    // inverted from res1 to res2
+    assert_eq!(res1.mutations[0].entity_id, res2.mutations[1].entity_id);
 
     Ok(())
 }

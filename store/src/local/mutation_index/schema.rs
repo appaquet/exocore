@@ -9,9 +9,10 @@ use tantivy::{schema::*, tokenizer::*, Document};
 use super::MutationIndexConfig;
 use crate::error::Error;
 
-/// Tantitvy schema fields
-pub(crate) struct Fields {
-    // TODO: Rename + embed tantitvy schema + move constructor
+/// Mutation index schema
+pub(crate) struct MutationIndexSchema {
+    pub tantivy: Schema,
+
     pub trait_type: Field,
     pub entity_id: Field,
     pub trait_id: Field,
@@ -29,14 +30,87 @@ pub(crate) struct Fields {
 
     // mapping for indexed/sorted fields of messages in registry
     // message type -> field name -> tantivy field
-    pub _dynamic_fields: DynamicFields,
-    pub dynamic_mappings: DynamicFieldsMapping,
-    pub short_name_mapping: HashMap<String, String>,
+    pub dynamic_fields: DynamicFieldsMapping,
+    pub short_names: HashMap<String, String>,
 
     pub references_tokenizer: TextAnalyzer,
 }
 
-impl Fields {
+impl MutationIndexSchema {
+    /// Builds Tantivy schema required for mutations related queries and registered
+    /// messages fields.
+    ///
+    /// Tantivy doesn't support dynamic schema yet: https://github.com/tantivy-search/tantivy/issues/301
+    /// Because of this, we need to pre-allocate fields that will be used
+    /// sequentially by fields of each registered messages. This means that we only
+    /// support a limited amount of indexed/sorted fields per message.
+    pub(crate) fn new(config: MutationIndexConfig, registry: &Registry) -> MutationIndexSchema {
+        let mut schema_builder = SchemaBuilder::default();
+
+        let trait_type = schema_builder.add_text_field("trait_type", STRING | STORED);
+        let entity_id = schema_builder.add_text_field("entity_id", STRING | STORED);
+        let trait_id = schema_builder.add_text_field("trait_id", STRING | STORED);
+        let entity_trait_id = schema_builder.add_text_field("entity_trait_id", STRING);
+        let creation_date = schema_builder.add_u64_field("creation_date", STORED | FAST);
+        let modification_date = schema_builder.add_u64_field("modification_date", STORED | FAST);
+        let block_offset = schema_builder.add_u64_field("block_offset", STORED | FAST);
+        let operation_id = schema_builder.add_u64_field(
+            "operation_id",
+            NumericOptions::default()
+                .set_indexed()
+                .set_stored()
+                .set_fast(Cardinality::SingleValue),
+        );
+        let document_type = schema_builder.add_u64_field("document_type", STORED);
+
+        // Tokenize references by space, but no stemming, case folding or length limit
+        let references_tokenizer = TextAnalyzer::from(SimpleTokenizer);
+        let references_options = TextOptions::default()
+            .set_indexing_options(
+                TextFieldIndexing::default()
+                    .set_tokenizer("references")
+                    .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+            )
+            .set_stored();
+
+        let all_text = schema_builder.add_text_field("all_text", TEXT);
+        let all_refs = schema_builder.add_text_field("all_refs", references_options.clone());
+        let has_reference = schema_builder.add_u64_field("has_reference", STORED);
+
+        let dynamic_fields = build_dynamic_fields_tantivy_schema(
+            &config,
+            registry,
+            &mut schema_builder,
+            references_options,
+        );
+
+        let short_names = build_schema_short_type_mapping(registry);
+
+        MutationIndexSchema {
+            tantivy: schema_builder.build(),
+
+            trait_type,
+            entity_id,
+            trait_id,
+            entity_trait_id,
+            creation_date,
+            modification_date,
+            block_offset,
+            operation_id,
+            document_type,
+
+            all_text,
+            all_refs,
+
+            has_reference,
+
+            dynamic_fields,
+            short_names,
+
+            references_tokenizer,
+        }
+    }
+
     pub fn get_dynamic_trait_field(
         &self,
         trait_name: &str,
@@ -79,7 +153,7 @@ impl Fields {
     }
 
     pub fn get_message_name_from_short(&self, short_name: &str) -> Option<&str> {
-        self.short_name_mapping
+        self.short_names
             .get(&short_name.to_lowercase())
             .map(|name| name.as_str())
     }
@@ -88,7 +162,7 @@ impl Fields {
         &self,
         trait_name: &str,
     ) -> Result<&BTreeMap<String, MappedDynamicField>, Error> {
-        let trait_fields = self.dynamic_mappings.get(trait_name).ok_or_else(|| {
+        let trait_fields = self.dynamic_fields.get(trait_name).ok_or_else(|| {
             Error::QueryParsing(anyhow!(
                 "Trait '{}' doesn\'t have any dynamic fields",
                 trait_name
@@ -171,86 +245,6 @@ pub(crate) struct MappedDynamicField {
     pub is_fast_field: bool,
 }
 
-/// Builds Tantivy schema required for mutations related queries and registered
-/// messages fields.
-///
-/// Tantivy doesn't support dynamic schema yet: https://github.com/tantivy-search/tantivy/issues/301
-/// Because of this, we need to pre-allocate fields that will be used
-/// sequentially by fields of each registered messages. This means that we only
-/// support a limited amount of indexed/sorted fields per message.
-pub(crate) fn build_tantivy_schema(
-    config: MutationIndexConfig,
-    registry: &Registry,
-) -> (Schema, Fields) {
-    let mut schema_builder = SchemaBuilder::default();
-
-    let trait_type = schema_builder.add_text_field("trait_type", STRING | STORED);
-    let entity_id = schema_builder.add_text_field("entity_id", STRING | STORED);
-    let trait_id = schema_builder.add_text_field("trait_id", STRING | STORED);
-    let entity_trait_id = schema_builder.add_text_field("entity_trait_id", STRING);
-    let creation_date = schema_builder.add_u64_field("creation_date", STORED | FAST);
-    let modification_date = schema_builder.add_u64_field("modification_date", STORED | FAST);
-    let block_offset = schema_builder.add_u64_field("block_offset", STORED | FAST);
-    let operation_id = schema_builder.add_u64_field(
-        "operation_id",
-        NumericOptions::default()
-            .set_indexed()
-            .set_stored()
-            .set_fast(Cardinality::SingleValue),
-    );
-    let document_type = schema_builder.add_u64_field("document_type", STORED);
-
-    // Tokenize references by space, but no stemming, case folding or length limit
-    let references_tokenizer = TextAnalyzer::from(SimpleTokenizer);
-    let references_options = TextOptions::default()
-        .set_indexing_options(
-            TextFieldIndexing::default()
-                .set_tokenizer("references")
-                .set_index_option(IndexRecordOption::WithFreqsAndPositions),
-        )
-        .set_stored();
-
-    let all_text = schema_builder.add_text_field("all_text", TEXT);
-    let all_refs = schema_builder.add_text_field("all_refs", references_options.clone());
-    let has_reference = schema_builder.add_u64_field("has_reference", STORED);
-
-    let (dynamic_fields, dynamic_mappings) = build_dynamic_fields_tantivy_schema(
-        &config,
-        registry,
-        &mut schema_builder,
-        references_options,
-    );
-
-    let short_name_mapping = build_schema_short_type_mapping(registry);
-
-    let schema = schema_builder.build();
-
-    let fields = Fields {
-        trait_type,
-        entity_id,
-        trait_id,
-        entity_trait_id,
-        creation_date,
-        modification_date,
-        block_offset,
-        operation_id,
-        document_type,
-
-        all_text,
-        all_refs,
-
-        has_reference,
-
-        _dynamic_fields: dynamic_fields,
-        dynamic_mappings,
-        short_name_mapping,
-
-        references_tokenizer,
-    };
-
-    (schema, fields)
-}
-
 /// Adds all dynamic fields to the tantivy schema based on the registered
 /// messages and creates a mapping of registered messages' fields to dynamic
 /// fields.
@@ -259,7 +253,7 @@ fn build_dynamic_fields_tantivy_schema(
     registry: &Registry,
     schema_builder: &mut SchemaBuilder,
     references_options: TextOptions,
-) -> (DynamicFields, DynamicFieldsMapping) {
+) -> DynamicFieldsMapping {
     let mut dyn_fields = DynamicFields::new(index_config, schema_builder, references_options);
 
     // map fields of each message in registry that need to be indexed / sortable to
@@ -278,7 +272,7 @@ fn build_dynamic_fields_tantivy_schema(
         }
     }
 
-    (dyn_fields, dyn_mappings)
+    dyn_mappings
 }
 
 /// Creates a map of short type names to their full type names.

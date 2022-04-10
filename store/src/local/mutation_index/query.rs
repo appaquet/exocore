@@ -9,7 +9,7 @@ use tantivy::{
     Index, Term,
 };
 
-use super::{schema::Fields, MutationIndexConfig};
+use super::{schema::MutationIndexSchema, MutationIndexConfig};
 use crate::error::Error;
 
 pub(crate) struct ParsedQuery {
@@ -21,7 +21,7 @@ pub(crate) struct ParsedQuery {
 
 pub(crate) struct QueryParser<'s> {
     index: &'s Index,
-    fields: &'s Fields,
+    fields: &'s MutationIndexSchema,
     config: &'s MutationIndexConfig,
     proto: &'s EntityQuery,
     tantivy: Option<Box<dyn Query>>,
@@ -33,7 +33,7 @@ pub(crate) struct QueryParser<'s> {
 impl<'s> QueryParser<'s> {
     pub fn parse(
         index: &'s Index,
-        fields: &'s Fields,
+        fields: &'s MutationIndexSchema,
         config: &'s MutationIndexConfig,
         proto: &'s EntityQuery,
     ) -> Result<ParsedQuery, Error> {
@@ -79,8 +79,6 @@ impl<'s> QueryParser<'s> {
         });
         self.ordering = self.proto.ordering.clone().unwrap_or_default();
         self.tantivy = Some(self.parse_predicate(predicate)?);
-
-        println!("{:?}", self.tantivy); // TODO: remove me
 
         Ok(())
     }
@@ -354,10 +352,11 @@ impl<'s> QueryParser<'s> {
             self.parse_all_pred()
         } else {
             let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+            let mut one_positive = false;
             for part in parsed.parts {
                 let mut occur = part.occur.to_tantivy();
-                if occur == Occur::Should {
-                    occur = Occur::Must;
+                if occur == Occur::Should || occur == Occur::Must {
+                    one_positive = true;
                 }
 
                 if part.field == "type" {
@@ -372,17 +371,25 @@ impl<'s> QueryParser<'s> {
                         self.trait_name = Some(trait_name.to_string());
                     }
                 } else if part.field == "sort" {
-                    if part.text == "date" || part.text.starts_with("create") {
-                        self.ordering.value = Some(ordering::Value::CreatedAt(true));
-                        self.ordering.ascending = false;
-                    } else if part.text.starts_with("update") {
+                    if part.text == "date" || part.text.starts_with("update") {
                         self.ordering.value = Some(ordering::Value::UpdatedAt(true));
                         self.ordering.ascending = false;
+                    } else if part.text.starts_with("create") {
+                        self.ordering.value = Some(ordering::Value::CreatedAt(true));
+                        self.ordering.ascending = false;
+                    } else if part.text == "score" {
+                        self.ordering.value = Some(ordering::Value::Score(true));
+                        self.ordering.ascending = false;
                     }
+
                     if occur == Occur::MustNot {
                         self.ordering.ascending = !self.ordering.ascending;
                     }
                 } else if part.phrase {
+                    if occur == Occur::Should {
+                        occur = Occur::Must;
+                    }
+
                     let field = if part.field.is_empty() {
                         self.fields.all_text
                     } else {
@@ -403,6 +410,11 @@ impl<'s> QueryParser<'s> {
                     ));
                 }
             }
+
+            if !one_positive {
+                queries.push((Occur::Should, Box::new(AllQuery)));
+            }
+
             Ok(Box::new(BooleanQuery::from(queries)))
         }
     }
@@ -449,7 +461,7 @@ impl<'s> QueryParser<'s> {
         Ok(BooleanQuery::from(queries))
     }
 
-    fn new_phrase_query(&self, field: Field, text: &str) -> Result<PhraseQuery, Error> {
+    fn new_phrase_query(&self, field: Field, text: &str) -> Result<Box<dyn Query>, Error> {
         let tok = self.index.tokenizer_for_field(field)?;
         let mut terms = Vec::new();
         let mut stream = tok.token_stream(text);
@@ -460,8 +472,16 @@ impl<'s> QueryParser<'s> {
             terms.push(term);
         }
 
-        // TODO: Should not return phrase if not enough terms
-        Ok(PhraseQuery::new(terms))
+        if terms.is_empty() {
+            Err(Error::QueryParsing(anyhow!("empty phrase query")))
+        } else if terms.len() == 1 {
+            Ok(Box::new(TermQuery::new(
+                terms[0].clone(),
+                IndexRecordOption::WithFreqsAndPositions,
+            )))
+        } else {
+            Ok(Box::new(PhraseQuery::new(terms)))
+        }
     }
 }
 

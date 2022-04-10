@@ -33,7 +33,10 @@ use tantivy::{
     IndexWriter, Order, ReloadPolicy, Searcher, SegmentReader, Term,
 };
 
-use self::query::{ParsedQuery, QueryParser};
+use self::{
+    query::{ParsedQuery, QueryParser},
+    schema::MutationIndexSchema,
+};
 use crate::{
     entity::EntityIdRef, error::Error, mutation::OperationId, ordering::OrderingValueWrapper,
 };
@@ -61,11 +64,11 @@ pub struct MutationIndex {
     index: TantivyIndex,
     index_reader: IndexReader,
     index_writer: Mutex<IndexWriter>,
-    schemas: Arc<Registry>,
-    fields: schema::Fields,
+    schema: MutationIndexSchema,
     storage: Storage,
     entity_cache: EntityMutationsCache,
     full_text_boost: f32,
+    schema_registry: Arc<Registry>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -78,14 +81,14 @@ impl MutationIndex {
     /// Creates or opens a disk persisted index.
     pub fn open_or_create_mmap(
         config: MutationIndexConfig,
-        schemas: Arc<Registry>,
+        schema_registry: Arc<Registry>,
         directory: &Path,
     ) -> Result<MutationIndex, Error> {
-        let (tantivy_schema, fields) = schema::build_tantivy_schema(config, schemas.as_ref());
+        let fields = MutationIndexSchema::new(config, schema_registry.as_ref());
 
         let directory = MmapDirectory::open(directory)?;
         let index = TantivyIndex::builder()
-            .schema(tantivy_schema)
+            .schema(fields.tantivy.clone())
             .settings(index_settings())
             .open_or_create(directory)?;
         fields.register_tokenizers(&index);
@@ -106,23 +109,23 @@ impl MutationIndex {
             index,
             index_reader,
             index_writer: Mutex::new(index_writer),
-            schemas,
-            fields,
+            schema: fields,
             storage: Storage::Disk,
             entity_cache: EntityMutationsCache::new(config.entity_mutations_cache_size as usize),
             full_text_boost: 1.0,
+            schema_registry,
         })
     }
 
     /// Creates or opens a in-memory index.
     pub fn create_in_memory(
         config: MutationIndexConfig,
-        schemas: Arc<Registry>,
+        schema_registry: Arc<Registry>,
     ) -> Result<MutationIndex, Error> {
-        let (tantivy_schema, fields) = schema::build_tantivy_schema(config, schemas.as_ref());
+        let fields = MutationIndexSchema::new(config, schema_registry.as_ref());
 
         let index = TantivyIndex::builder()
-            .schema(tantivy_schema)
+            .schema(fields.tantivy.clone())
             .settings(index_settings())
             .create_in_ram()?;
         fields.register_tokenizers(&index);
@@ -143,11 +146,11 @@ impl MutationIndex {
             index,
             index_reader,
             index_writer: Mutex::new(index_writer),
-            schemas,
-            fields,
+            schema: fields,
             storage: Storage::Memory,
             entity_cache: EntityMutationsCache::new(config.entity_mutations_cache_size as usize),
             full_text_boost: 1.0,
+            schema_registry,
         })
     }
 
@@ -241,7 +244,7 @@ impl MutationIndex {
                     self.entity_cache.remove(&entity_id);
 
                     index_writer
-                        .delete_term(Term::from_field_u64(self.fields.operation_id, operation_id));
+                        .delete_term(Term::from_field_u64(self.schema.operation_id, operation_id));
                 }
             }
 
@@ -273,7 +276,7 @@ impl MutationIndex {
         let searcher = self.index_reader.searcher();
 
         let query = AllQuery;
-        let top_collector = TopDocs::with_limit(1).order_by_u64_field(self.fields.block_offset);
+        let top_collector = TopDocs::with_limit(1).order_by_u64_field(self.schema.block_offset);
         let search_results = searcher.search(&query, &top_collector)?;
 
         Ok(search_results
@@ -284,7 +287,7 @@ impl MutationIndex {
     /// Execute a query on the index and return a page of mutations matching the
     /// query.
     pub fn search<Q: Borrow<EntityQuery>>(&self, query: Q) -> Result<MutationResults, Error> {
-        let query = QueryParser::parse(&self.index, &self.fields, &self.config, query.borrow())?;
+        let query = QueryParser::parse(&self.index, &self.schema, &self.config, query.borrow())?;
 
         let searcher = self.index_reader.searcher();
         let results = self.execute_tantivy_query_with_paging(searcher, query)?;
@@ -326,7 +329,7 @@ impl MutationIndex {
 
         let searcher = self.index_reader.searcher();
 
-        let term = Term::from_field_text(self.fields.entity_id, entity_id);
+        let term = Term::from_field_text(self.schema.entity_id, entity_id);
         let tantivy = TermQuery::new(term, IndexRecordOption::Basic);
 
         let ordering = Ordering {
@@ -372,33 +375,33 @@ impl MutationIndex {
         let mut doc = Document::default();
 
         let message_full_name = reflect::any_url_to_full_name(&message_any.type_url);
-        doc.add_text(self.fields.trait_type, &message_full_name);
-        doc.add_text(self.fields.trait_id, &operation.trt.id);
-        doc.add_text(self.fields.entity_id, &operation.entity_id);
+        doc.add_text(self.schema.trait_type, &message_full_name);
+        doc.add_text(self.schema.trait_id, &operation.trt.id);
+        doc.add_text(self.schema.entity_id, &operation.entity_id);
         doc.add_text(
-            self.fields.entity_trait_id,
+            self.schema.entity_trait_id,
             &format!("{}_{}", operation.entity_id, &operation.trt.id),
         );
 
-        doc.add_u64(self.fields.operation_id, operation.operation_id);
+        doc.add_u64(self.schema.operation_id, operation.operation_id);
         if let Some(block_offset) = operation.block_offset {
-            doc.add_u64(self.fields.block_offset, block_offset);
+            doc.add_u64(self.schema.block_offset, block_offset);
         }
 
         if let Some(creation_date) = &operation.trt.creation_date {
             doc.add_u64(
-                self.fields.creation_date,
+                self.schema.creation_date,
                 creation_date.to_timestamp_nanos(),
             );
         }
         if let Some(modification_date) = &operation.trt.modification_date {
             doc.add_u64(
-                self.fields.modification_date,
+                self.schema.modification_date,
                 modification_date.to_timestamp_nanos(),
             );
         }
 
-        doc.add_u64(self.fields.document_type, MutationType::TRAIT_PUT_ID);
+        doc.add_u64(self.schema.document_type, MutationType::TRAIT_PUT_ID);
 
         self.trait_message_to_document(&mut doc, message_any, message_full_name);
 
@@ -413,7 +416,8 @@ impl MutationIndex {
         message_any: &Any,
         message_full_name: String,
     ) {
-        let dyn_message = match reflect::from_prost_any(self.schemas.as_ref(), message_any) {
+        let dyn_message = match reflect::from_prost_any(self.schema_registry.as_ref(), message_any)
+        {
             Ok(dyn_message) => dyn_message,
             Err(err) => {
                 error!(
@@ -424,7 +428,7 @@ impl MutationIndex {
         };
 
         let message_mappings = if let Some(message_mappings) =
-            self.fields.dynamic_mappings.get(dyn_message.full_name())
+            self.schema.dynamic_fields.get(dyn_message.full_name())
         {
             message_mappings
         } else {
@@ -448,7 +452,7 @@ impl MutationIndex {
         // the message has at least one reference field
         if has_reference {
             doc.add_u64(
-                self.fields.has_reference,
+                self.schema.has_reference,
                 schema::bool_to_u64(has_reference),
             );
         }
@@ -481,7 +485,7 @@ impl MutationIndex {
         // they don't have a mapping directly since mapping is done on
         // sub-fields (ex: mapped into `field.sub_field`)
         if let FieldValue::Message(_, _) = &field_value {
-            match field_value.into_message(&self.schemas) {
+            match field_value.into_message(&self.schema_registry) {
                 Ok(dyn_msg) => {
                     for sub_field in dyn_msg.fields().values() {
                         self.add_trait_message_document_field(
@@ -511,7 +515,7 @@ impl MutationIndex {
         match field_value {
             FieldValue::String(value) if field_desc.text_flag => {
                 doc.add_text(mapped_field.field, &value);
-                doc.add_text(self.fields.all_text, &value);
+                doc.add_text(self.schema.all_text, &value);
             }
             FieldValue::String(value) if field_desc.indexed_flag => {
                 doc.add_text(mapped_field.field, &value);
@@ -519,7 +523,7 @@ impl MutationIndex {
             FieldValue::Reference(value) if field_desc.indexed_flag => {
                 let ref_value = format!("entity{} trait{}", value.entity_id, value.trait_id);
                 doc.add_text(mapped_field.field, &ref_value);
-                doc.add_text(self.fields.all_refs, &ref_value);
+                doc.add_text(self.schema.all_refs, &ref_value);
                 *has_reference = true;
             }
             FieldValue::DateTime(value) if field_desc.indexed_flag || field_desc.sorted_flag => {
@@ -550,19 +554,19 @@ impl MutationIndex {
     fn trait_tombstone_to_document(&self, operation: &PutTraitTombstoneMutation) -> Document {
         let mut doc = Document::default();
 
-        doc.add_text(self.fields.trait_id, &operation.trait_id);
-        doc.add_text(self.fields.entity_id, &operation.entity_id);
+        doc.add_text(self.schema.trait_id, &operation.trait_id);
+        doc.add_text(self.schema.entity_id, &operation.entity_id);
         doc.add_text(
-            self.fields.entity_trait_id,
+            self.schema.entity_trait_id,
             &format!("{}_{}", operation.entity_id, operation.trait_id),
         );
-        doc.add_u64(self.fields.operation_id, operation.operation_id);
+        doc.add_u64(self.schema.operation_id, operation.operation_id);
 
         if let Some(block_offset) = operation.block_offset {
-            doc.add_u64(self.fields.block_offset, block_offset);
+            doc.add_u64(self.schema.block_offset, block_offset);
         }
 
-        doc.add_u64(self.fields.document_type, MutationType::TRAIT_TOMBSTONE_ID);
+        doc.add_u64(self.schema.document_type, MutationType::TRAIT_TOMBSTONE_ID);
 
         doc
     }
@@ -571,14 +575,14 @@ impl MutationIndex {
     fn entity_tombstone_to_document(&self, operation: &PutEntityTombstoneMutation) -> Document {
         let mut doc = Document::default();
 
-        doc.add_text(self.fields.entity_id, &operation.entity_id);
-        doc.add_u64(self.fields.operation_id, operation.operation_id);
+        doc.add_text(self.schema.entity_id, &operation.entity_id);
+        doc.add_u64(self.schema.operation_id, operation.operation_id);
 
         if let Some(block_offset) = operation.block_offset {
-            doc.add_u64(self.fields.block_offset, block_offset);
+            doc.add_u64(self.schema.block_offset, block_offset);
         }
 
-        doc.add_u64(self.fields.document_type, MutationType::ENTITY_TOMBSTONE_ID);
+        doc.add_u64(self.schema.document_type, MutationType::ENTITY_TOMBSTONE_ID);
 
         doc
     }
@@ -593,9 +597,9 @@ impl MutationIndex {
     ) -> Document {
         let mut doc = Document::default();
 
-        doc.add_text(self.fields.entity_id, entity_id);
-        doc.add_u64(self.fields.operation_id, operation_id);
-        doc.add_u64(self.fields.document_type, MutationType::PENDING_DELETION_ID);
+        doc.add_text(self.schema.entity_id, entity_id);
+        doc.add_u64(self.schema.operation_id, operation_id);
+        doc.add_u64(self.schema.document_type, MutationType::PENDING_DELETION_ID);
 
         doc
     }
@@ -628,7 +632,7 @@ impl MutationIndex {
                 )?
             }
             ordering::Value::OperationId(_) => {
-                let sort_field = self.fields.operation_id;
+                let sort_field = self.schema.operation_id;
                 let collector = self.sorted_field_collector(
                     &query.paging,
                     sort_field,
@@ -643,7 +647,7 @@ impl MutationIndex {
             ordering::Value::CreatedAt(_) => {
                 let collector = self.sorted_field_collector(
                     &query.paging,
-                    self.fields.creation_date,
+                    self.schema.creation_date,
                     query.ordering.ascending,
                 );
                 self.execute_tantity_query_with_collector(
@@ -655,7 +659,7 @@ impl MutationIndex {
             ordering::Value::UpdatedAt(_) => {
                 let collector = self.sorted_field_collector(
                     &query.paging,
-                    self.fields.modification_date,
+                    self.schema.modification_date,
                     query.ordering.ascending,
                 );
                 self.execute_tantity_query_with_collector(
@@ -670,7 +674,7 @@ impl MutationIndex {
                 })?;
 
                 let sort_field = self
-                    .fields
+                    .schema
                     .get_dynamic_trait_field(&trait_name, &field_name)?;
                 if !sort_field.is_fast_field {
                     return Err(Error::QueryParsing(anyhow!(
@@ -734,24 +738,24 @@ impl MutationIndex {
             // ignored results were out of the requested paging
             if !sort_value.ignore {
                 let doc = searcher.doc(doc_addr)?;
-                let block_offset = schema::get_doc_opt_u64_value(&doc, self.fields.block_offset);
-                let operation_id = schema::get_doc_u64_value(&doc, self.fields.operation_id);
-                let entity_id = schema::get_doc_string_value(&doc, self.fields.entity_id);
-                let opt_trait_id = schema::get_doc_opt_string_value(&doc, self.fields.trait_id);
-                let document_type_id = schema::get_doc_u64_value(&doc, self.fields.document_type);
+                let block_offset = schema::get_doc_opt_u64_value(&doc, self.schema.block_offset);
+                let operation_id = schema::get_doc_u64_value(&doc, self.schema.operation_id);
+                let entity_id = schema::get_doc_string_value(&doc, self.schema.entity_id);
+                let opt_trait_id = schema::get_doc_opt_string_value(&doc, self.schema.trait_id);
+                let document_type_id = schema::get_doc_u64_value(&doc, self.schema.document_type);
 
                 let mut mutation_type = MutationType::new(document_type_id, opt_trait_id)?;
                 if let MutationType::TraitPut(put_trait) = &mut mutation_type {
                     put_trait.creation_date =
-                        schema::get_doc_opt_u64_value(&doc, self.fields.creation_date)
+                        schema::get_doc_opt_u64_value(&doc, self.schema.creation_date)
                             .map(|ts| Utc.timestamp_nanos(ts as i64));
                     put_trait.modification_date =
-                        schema::get_doc_opt_u64_value(&doc, self.fields.modification_date)
+                        schema::get_doc_opt_u64_value(&doc, self.schema.modification_date)
                             .map(|ts| Utc.timestamp_nanos(ts as i64));
                     put_trait.trait_type =
-                        schema::get_doc_opt_string_value(&doc, self.fields.trait_type);
+                        schema::get_doc_opt_string_value(&doc, self.schema.trait_type);
                     put_trait.has_reference =
-                        schema::get_doc_opt_bool_value(&doc, self.fields.has_reference)
+                        schema::get_doc_opt_bool_value(&doc, self.schema.has_reference)
                             .unwrap_or(false);
                 }
 
@@ -779,7 +783,7 @@ impl MutationIndex {
         sort_field: Field,
         ascending: bool,
     ) -> impl Collector<Fruit = Vec<(OrderingValueWrapper, DocAddress)>> {
-        let operation_id_field = self.fields.operation_id;
+        let operation_id_field = self.schema.operation_id;
         TopDocs::with_limit(paging.count as usize)
             .and_offset(paging.offset as usize)
             .custom_score(move |segment_reader: &SegmentReader| {
@@ -812,8 +816,8 @@ impl MutationIndex {
         no_recency_boost: bool,
     ) -> impl Collector<Fruit = Vec<(OrderingValueWrapper, DocAddress)>> {
         let now = Utc::now().timestamp_nanos() as u64;
-        let operation_id_field = self.fields.operation_id;
-        let modification_date_field = self.fields.modification_date;
+        let operation_id_field = self.schema.operation_id;
+        let modification_date_field = self.schema.modification_date;
         let boost = self.full_text_boost;
         TopDocs::with_limit(paging.count as usize)
             .and_offset(paging.offset as usize)
