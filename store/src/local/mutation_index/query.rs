@@ -355,11 +355,15 @@ impl<'s> QueryParser<'s> {
             let mut one_positive = false;
             for part in parsed.parts {
                 let mut occur = part.occur.to_tantivy();
-                if occur == Occur::Should || occur == Occur::Must {
+                if part.field != "sort" && (occur == Occur::Should || occur == Occur::Must) {
                     one_positive = true;
                 }
 
                 if part.field == "type" {
+                    if occur == Occur::Should {
+                        occur = Occur::Must;
+                    }
+
                     let trait_name = self
                         .fields
                         .get_message_name_from_short(&part.text)
@@ -371,10 +375,10 @@ impl<'s> QueryParser<'s> {
                         self.trait_name = Some(trait_name.to_string());
                     }
                 } else if part.field == "sort" {
-                    if part.text == "date" || part.text.starts_with("update") {
+                    if part.text.starts_with("update") {
                         self.ordering.value = Some(ordering::Value::UpdatedAt(true));
                         self.ordering.ascending = false;
-                    } else if part.text.starts_with("create") {
+                    } else if part.text == "date" || part.text.starts_with("create") {
                         self.ordering.value = Some(ordering::Value::CreatedAt(true));
                         self.ordering.ascending = false;
                     } else if part.text == "score" {
@@ -496,7 +500,7 @@ impl QueryString {
         let mut qs = QueryString::default();
         let mut part = QSPart::default();
 
-        for chr in query.chars() {
+        for chr in query.to_lowercase().chars() {
             if part.phrase {
                 if chr == '"' {
                     qs.push(part);

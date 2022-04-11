@@ -9,7 +9,12 @@ use tantivy::{schema::*, tokenizer::*, Document};
 use super::MutationIndexConfig;
 use crate::error::Error;
 
-/// Mutation index schema
+/// Schema that contains Tantivy fields for mutations and indexed messages.
+///
+/// Tantivy doesn't support dynamic schema yet: https://github.com/tantivy-search/tantivy/issues/301
+/// Because of this, we need to pre-allocate fields that will be used sequentially by fields of each
+/// registered messages. This means that we only support a limited amount of indexed/sorted fields
+/// per message.
 pub(crate) struct MutationIndexSchema {
     pub tantivy: Schema,
 
@@ -37,13 +42,6 @@ pub(crate) struct MutationIndexSchema {
 }
 
 impl MutationIndexSchema {
-    /// Builds Tantivy schema required for mutations related queries and registered
-    /// messages fields.
-    ///
-    /// Tantivy doesn't support dynamic schema yet: https://github.com/tantivy-search/tantivy/issues/301
-    /// Because of this, we need to pre-allocate fields that will be used
-    /// sequentially by fields of each registered messages. This means that we only
-    /// support a limited amount of indexed/sorted fields per message.
     pub(crate) fn new(config: MutationIndexConfig, registry: &Registry) -> MutationIndexSchema {
         let mut schema_builder = SchemaBuilder::default();
 

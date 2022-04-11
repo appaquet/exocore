@@ -91,6 +91,7 @@ message TestPredicate {
     bool success = 1;
 }
 
+// Boolean query constructed of different sub queries with occurrence logic.
 message BooleanPredicate {
     enum Occur {
         SHOULD = 0;
@@ -191,7 +192,7 @@ message Ordering {
         bool operation_id = 2;  // by operation id
         string field = 3;       // by field value
         bool created_at = 7;    // by creation date
-        bool updated_at = 8;    // by last update date
+        bool updated_at = 8;    // by update date
     }
 
     // Direction of ordering.

@@ -84,14 +84,14 @@ impl MutationIndex {
         schema_registry: Arc<Registry>,
         directory: &Path,
     ) -> Result<MutationIndex, Error> {
-        let fields = MutationIndexSchema::new(config, schema_registry.as_ref());
+        let schema = MutationIndexSchema::new(config, schema_registry.as_ref());
 
         let directory = MmapDirectory::open(directory)?;
         let index = TantivyIndex::builder()
-            .schema(fields.tantivy.clone())
+            .schema(schema.tantivy.clone())
             .settings(index_settings())
             .open_or_create(directory)?;
-        fields.register_tokenizers(&index);
+        schema.register_tokenizers(&index);
 
         let index_reader = index
             .reader_builder()
@@ -109,7 +109,7 @@ impl MutationIndex {
             index,
             index_reader,
             index_writer: Mutex::new(index_writer),
-            schema: fields,
+            schema,
             storage: Storage::Disk,
             entity_cache: EntityMutationsCache::new(config.entity_mutations_cache_size as usize),
             full_text_boost: 1.0,
@@ -122,13 +122,13 @@ impl MutationIndex {
         config: MutationIndexConfig,
         schema_registry: Arc<Registry>,
     ) -> Result<MutationIndex, Error> {
-        let fields = MutationIndexSchema::new(config, schema_registry.as_ref());
+        let schema = MutationIndexSchema::new(config, schema_registry.as_ref());
 
         let index = TantivyIndex::builder()
-            .schema(fields.tantivy.clone())
+            .schema(schema.tantivy.clone())
             .settings(index_settings())
             .create_in_ram()?;
-        fields.register_tokenizers(&index);
+        schema.register_tokenizers(&index);
 
         let index_reader = index
             .reader_builder()
@@ -146,7 +146,7 @@ impl MutationIndex {
             index,
             index_reader,
             index_writer: Mutex::new(index_writer),
-            schema: fields,
+            schema,
             storage: Storage::Memory,
             entity_cache: EntityMutationsCache::new(config.entity_mutations_cache_size as usize),
             full_text_boost: 1.0,
@@ -287,10 +287,11 @@ impl MutationIndex {
     /// Execute a query on the index and return a page of mutations matching the
     /// query.
     pub fn search<Q: Borrow<EntityQuery>>(&self, query: Q) -> Result<MutationResults, Error> {
-        let query = QueryParser::parse(&self.index, &self.schema, &self.config, query.borrow())?;
+        let parsed_query =
+            QueryParser::parse(&self.index, &self.schema, &self.config, query.borrow())?;
 
         let searcher = self.index_reader.searcher();
-        let results = self.execute_tantivy_query_with_paging(searcher, query)?;
+        let results = self.execute_tantivy_query_with_paging(searcher, parsed_query)?;
 
         Ok(results)
     }
@@ -342,14 +343,14 @@ impl MutationIndex {
             ..Default::default()
         };
 
-        let query = ParsedQuery {
+        let parsed_query = ParsedQuery {
             tantivy: Box::new(tantivy),
             paging,
             ordering,
             trait_name: None,
         };
 
-        let mut results = self.execute_tantivy_query_with_paging(searcher, query)?;
+        let mut results = self.execute_tantivy_query_with_paging(searcher, parsed_query)?;
 
         // because of the way we index pending (we may have pending store events after
         // indexing it after first), we need to make sure we don't include any
