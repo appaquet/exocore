@@ -2,30 +2,31 @@ use std::{collections::HashMap, convert::TryFrom, fmt::Debug, sync::Arc};
 
 use protobuf::{
     descriptor::DescriptorProto,
-    types::{
-        ProtobufType, ProtobufTypeInt32, ProtobufTypeInt64, ProtobufTypeMessage,
-        ProtobufTypeString, ProtobufTypeUint32, ProtobufTypeUint64,
+    reflect::{
+        RuntimeType,
+        // ProtobufType, ProtobufTypeInt32, ProtobufTypeInt64, ProtobufTypeMessage,
+        // ProtobufTypeString, ProtobufTypeUint32, ProtobufTypeUint64,
     },
-    well_known_types::{Any, Empty, Timestamp},
-    UnknownValues,
+    well_known_types::{any::Any, empty::Empty, timestamp::Timestamp},
+    // UnknownValues,
 };
 pub use protobuf::{descriptor::FileDescriptorSet, Message};
 
 use super::{registry::Registry, Error};
 use crate::generated::exocore_store::Reference;
 
-pub trait ReflectMessage: Debug + Sized {
-    fn descriptor(&self) -> &ReflectMessageDescriptor;
+pub trait ExoReflectMessage: Debug + Sized {
+    fn descriptor(&self) -> &ExoReflectMessageDescriptor;
 
     fn full_name(&self) -> &str {
         &self.descriptor().name
     }
 
-    fn fields(&self) -> &HashMap<FieldId, FieldDescriptor> {
+    fn fields(&self) -> &HashMap<FieldId, ExoFieldDescriptor> {
         &self.descriptor().fields
     }
 
-    fn get_field(&self, id: FieldId) -> Option<&FieldDescriptor> {
+    fn get_field(&self, id: FieldId) -> Option<&ExoFieldDescriptor> {
         self.descriptor().fields.get(&id)
     }
 
@@ -46,7 +47,7 @@ pub trait ReflectMessage: Debug + Sized {
     }
 }
 
-fn message_to_json<M: ReflectMessage>(
+fn message_to_json<M: ExoReflectMessage>(
     msg: &M,
     registry: &Registry,
 ) -> Result<serde_json::Value, Error> {
@@ -106,17 +107,17 @@ fn field_value_to_json(value: FieldValue, registry: &Registry) -> Result<serde_j
     })
 }
 
-pub trait MutableReflectMessage: ReflectMessage {
+pub trait ExoMutableReflectMessage: ExoReflectMessage {
     fn clear_field_value(&mut self, field_id: FieldId) -> Result<(), Error>;
 }
 
-pub struct DynamicMessage {
+pub struct ExoDynamicMessage {
     message: Empty,
-    descriptor: Arc<ReflectMessageDescriptor>,
+    descriptor: Arc<ExoReflectMessageDescriptor>,
 }
 
-impl ReflectMessage for DynamicMessage {
-    fn descriptor(&self) -> &ReflectMessageDescriptor {
+impl ExoReflectMessage for ExoDynamicMessage {
+    fn descriptor(&self) -> &ExoReflectMessageDescriptor {
         self.descriptor.as_ref()
     }
 
@@ -126,11 +127,13 @@ impl ReflectMessage for DynamicMessage {
             .ok_or(Error::NoSuchField(field_id))?;
         let value = self
             .message
-            .unknown_fields
+            .unknown_fields()
             .get(field_id)
             .ok_or(Error::NoSuchField(field_id))?;
 
-        convert_field_value(field_id, &field.field_type, value)
+        // convert_field_value(field_id, &field.field_type, value)
+
+        todo!() // TODO:
     }
 
     fn encode(&self) -> Result<Vec<u8>, Error> {
@@ -139,134 +142,131 @@ impl ReflectMessage for DynamicMessage {
     }
 }
 
-fn convert_field_value(
-    field_id: FieldId,
-    field_type: &FieldType,
-    value: &UnknownValues,
-) -> Result<FieldValue, Error> {
-    match field_type {
-        FieldType::String => {
-            let value =
-                ProtobufTypeString::get_from_unknown(value).ok_or(Error::NoSuchField(field_id))?;
-            Ok(FieldValue::String(value))
-        }
-        FieldType::Int32 => {
-            let value =
-                ProtobufTypeInt32::get_from_unknown(value).ok_or(Error::NoSuchField(field_id))?;
-            Ok(FieldValue::Int32(value))
-        }
-        FieldType::Uint32 => {
-            let value =
-                ProtobufTypeUint32::get_from_unknown(value).ok_or(Error::NoSuchField(field_id))?;
-            Ok(FieldValue::Uint32(value))
-        }
-        FieldType::Int64 => {
-            let value =
-                ProtobufTypeInt64::get_from_unknown(value).ok_or(Error::NoSuchField(field_id))?;
-            Ok(FieldValue::Int64(value))
-        }
-        FieldType::Uint64 => {
-            let value =
-                ProtobufTypeUint64::get_from_unknown(value).ok_or(Error::NoSuchField(field_id))?;
-            Ok(FieldValue::Uint64(value))
-        }
-        FieldType::DateTime => {
-            let value = ProtobufTypeMessage::<Timestamp>::get_from_unknown(value)
-                .ok_or(Error::NoSuchField(field_id))?;
-            Ok(FieldValue::DateTime(
-                crate::time::timestamp_parts_to_datetime(value.seconds, value.nanos),
-            ))
-        }
-        FieldType::Reference => {
-            let ref_msg = ProtobufTypeMessage::<Empty>::get_from_unknown(value)
-                .ok_or(Error::NoSuchField(field_id))?;
+// fn convert_field_value(
+//     field_id: FieldId,
+//     field_type: &FieldType,
+//     value: &UnknownValues,
+// ) -> Result<FieldValue, Error> {
+//     match field_type {
+//         FieldType::String => {
+//             let value =
+//                 ProtobufTypeString::get_from_unknown(value).ok_or(Error::NoSuchField(field_id))?;
+//             Ok(FieldValue::String(value))
+//         }
+//         FieldType::Int32 => {
+//             let value =
+//                 ProtobufTypeInt32::get_from_unknown(value).ok_or(Error::NoSuchField(field_id))?;
+//             Ok(FieldValue::Int32(value))
+//         }
+//         FieldType::Uint32 => {
+//             let value =
+//                 ProtobufTypeUint32::get_from_unknown(value).ok_or(Error::NoSuchField(field_id))?;
+//             Ok(FieldValue::Uint32(value))
+//         }
+//         FieldType::Int64 => {
+//             let value =
+//                 ProtobufTypeInt64::get_from_unknown(value).ok_or(Error::NoSuchField(field_id))?;
+//             Ok(FieldValue::Int64(value))
+//         }
+//         FieldType::Uint64 => {
+//             let value =
+//                 ProtobufTypeUint64::get_from_unknown(value).ok_or(Error::NoSuchField(field_id))?;
+//             Ok(FieldValue::Uint64(value))
+//         }
+//         FieldType::DateTime => {
+//             let value = ProtobufTypeMessage::<Timestamp>::get_from_unknown(value)
+//                 .ok_or(Error::NoSuchField(field_id))?;
+//             Ok(FieldValue::DateTime(
+//                 crate::time::timestamp_parts_to_datetime(value.seconds, value.nanos),
+//             ))
+//         }
+//         FieldType::Reference => {
+//             let ref_msg = ProtobufTypeMessage::<Empty>::get_from_unknown(value)
+//                 .ok_or(Error::NoSuchField(field_id))?;
 
-            let entity_id_value = ref_msg
-                .unknown_fields
-                .get(1)
-                .and_then(ProtobufTypeString::get_from_unknown);
-            let entity_id = entity_id_value.unwrap_or_default();
+//             let entity_id_value = ref_msg
+//                 .unknown_fields
+//                 .get(1)
+//                 .and_then(ProtobufTypeString::get_from_unknown);
+//             let entity_id = entity_id_value.unwrap_or_default();
 
-            let trait_id_value = ref_msg
-                .unknown_fields
-                .get(2)
-                .and_then(ProtobufTypeString::get_from_unknown);
-            let trait_id = trait_id_value.unwrap_or_default();
+//             let trait_id_value = ref_msg
+//                 .unknown_fields
+//                 .get(2)
+//                 .and_then(ProtobufTypeString::get_from_unknown);
+//             let trait_id = trait_id_value.unwrap_or_default();
 
-            Ok(FieldValue::Reference(Reference {
-                entity_id,
-                trait_id,
-            }))
-        }
-        FieldType::Message(typ) => {
-            let ref_msg = ProtobufTypeMessage::<Empty>::get_from_unknown(value)
-                .ok_or(Error::NoSuchField(field_id))?;
-            Ok(FieldValue::Message(typ.clone(), ref_msg))
-        }
-        FieldType::Repeated(inner) => {
-            let mut values = Vec::new();
-            let inner_type = inner.as_ref().clone();
-            iter_repeated_unknown_value(value, |value| {
-                let value = convert_field_value(field_id, &inner_type, &value)?;
-                values.push(value);
-                Ok(())
-            })?;
-            Ok(FieldValue::Repeated(values))
-        }
-    }
-}
+//             Ok(FieldValue::Reference(Reference {
+//                 entity_id,
+//                 trait_id,
+//             }))
+//         }
+//         FieldType::Message(typ) => {
+//             let ref_msg = ProtobufTypeMessage::<Empty>::get_from_unknown(value)
+//                 .ok_or(Error::NoSuchField(field_id))?;
+//             Ok(FieldValue::Message(typ.clone(), ref_msg))
+//         }
+//         FieldType::Repeated(inner) => {
+//             let mut values = Vec::new();
+//             let inner_type = inner.as_ref().clone();
+//             iter_repeated_unknown_value(value, |value| {
+//                 let value = convert_field_value(field_id, &inner_type, &value)?;
+//                 values.push(value);
+//                 Ok(())
+//             })?;
+//             Ok(FieldValue::Repeated(values))
+//         }
+//     }
+// }
 
-pub fn iter_repeated_unknown_value<F>(uk: &UnknownValues, mut f: F) -> Result<(), Error>
-where
-    F: FnMut(UnknownValues) -> Result<(), Error>,
-{
-    for v in &uk.fixed32 {
-        f(UnknownValues {
-            fixed32: vec![*v],
-            fixed64: vec![],
-            varint: vec![],
-            length_delimited: vec![],
-        })?;
-    }
-    for v in &uk.fixed64 {
-        f(UnknownValues {
-            fixed32: vec![],
-            fixed64: vec![*v],
-            varint: vec![],
-            length_delimited: vec![],
-        })?;
-    }
-    for v in &uk.varint {
-        f(UnknownValues {
-            fixed32: vec![],
-            fixed64: vec![],
-            varint: vec![*v],
-            length_delimited: vec![],
-        })?;
-    }
-    for v in &uk.length_delimited {
-        f(UnknownValues {
-            fixed32: vec![],
-            fixed64: vec![],
-            varint: vec![],
-            length_delimited: vec![v.clone()],
-        })?;
-    }
-    Ok(())
-}
+// pub fn iter_repeated_unknown_value<F>(uk: &UnknownValues, mut f: F) -> Result<(), Error>
+// where
+//     F: FnMut(UnknownValues) -> Result<(), Error>,
+// {
+//     for v in &uk.fixed32 {
+//         f(UnknownValues {
+//             fixed32: vec![*v],
+//             fixed64: vec![],
+//             varint: vec![],
+//             length_delimited: vec![],
+//         })?;
+//     }
+//     for v in &uk.fixed64 {
+//         f(UnknownValues {
+//             fixed32: vec![],
+//             fixed64: vec![*v],
+//             varint: vec![],
+//             length_delimited: vec![],
+//         })?;
+//     }
+//     for v in &uk.varint {
+//         f(UnknownValues {
+//             fixed32: vec![],
+//             fixed64: vec![],
+//             varint: vec![*v],
+//             length_delimited: vec![],
+//         })?;
+//     }
+//     for v in &uk.length_delimited {
+//         f(UnknownValues {
+//             fixed32: vec![],
+//             fixed64: vec![],
+//             varint: vec![],
+//             length_delimited: vec![v.clone()],
+//         })?;
+//     }
+//     Ok(())
+// }
 
-impl MutableReflectMessage for DynamicMessage {
+impl ExoMutableReflectMessage for ExoDynamicMessage {
     fn clear_field_value(&mut self, field_id: FieldId) -> Result<(), Error> {
         let fields = self.message.mut_unknown_fields();
-        if let Some(fields) = &mut fields.fields {
-            fields.remove(&field_id);
-        }
-
+        fields.remove(field_id);
         Ok(())
     }
 }
 
-impl Debug for DynamicMessage {
+impl Debug for ExoDynamicMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_struct("DynamicMessage")
             .field("full_name", &self.descriptor.name)
@@ -278,17 +278,17 @@ pub type FieldId = u32;
 
 pub type FieldGroupId = u32;
 
-pub struct ReflectMessageDescriptor {
+pub struct ExoReflectMessageDescriptor {
     pub name: String, // full name of the message
-    pub fields: HashMap<FieldId, FieldDescriptor>,
-    pub message: DescriptorProto,
+    pub fields: HashMap<FieldId, ExoFieldDescriptor>,
+    pub message: protobuf::reflect::MessageDescriptor,
 
     // see exocore/store/options.proto
     pub short_names: Vec<String>,
 }
 
 #[derive(Debug)]
-pub struct FieldDescriptor {
+pub struct ExoFieldDescriptor {
     pub id: FieldId,
     pub name: String,
     pub field_type: FieldType,
@@ -351,10 +351,10 @@ impl FieldValue {
         }
     }
 
-    pub fn into_message(self, registry: &Registry) -> Result<DynamicMessage, Error> {
+    pub fn into_message(self, registry: &Registry) -> Result<ExoDynamicMessage, Error> {
         if let FieldValue::Message(typ, message) = self {
             let descriptor = registry.get_message_descriptor(&typ)?;
-            Ok(DynamicMessage {
+            Ok(ExoDynamicMessage {
                 message,
                 descriptor,
             })
@@ -375,14 +375,14 @@ impl<'s> TryFrom<&'s FieldValue> for &'s str {
     }
 }
 
-pub fn from_stepan_any(registry: &Registry, any: &Any) -> Result<DynamicMessage, Error> {
+pub fn from_stepan_any(registry: &Registry, any: &Any) -> Result<ExoDynamicMessage, Error> {
     from_any_url_and_data(registry, &any.type_url, &any.value)
 }
 
 pub fn from_prost_any(
     registry: &Registry,
     any: &prost_types::Any,
-) -> Result<DynamicMessage, Error> {
+) -> Result<ExoDynamicMessage, Error> {
     from_any_url_and_data(registry, &any.type_url, &any.value)
 }
 
@@ -390,13 +390,13 @@ pub fn from_any_url_and_data(
     registry: &Registry,
     url: &str,
     data: &[u8],
-) -> Result<DynamicMessage, Error> {
+) -> Result<ExoDynamicMessage, Error> {
     let full_name = any_url_to_full_name(url);
 
     let descriptor = registry.get_message_descriptor(&full_name)?;
     let message = Empty::parse_from_bytes(data)?;
 
-    Ok(DynamicMessage {
+    Ok(ExoDynamicMessage {
         message,
         descriptor,
     })

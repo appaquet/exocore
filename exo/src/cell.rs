@@ -21,7 +21,7 @@ use exocore_protos::{
     core::{cell_node_config, CellConfig, CellNodeConfig, LocalNodeConfig, NodeCellConfig},
     generated::data_chain_capnp::{block_header, chain_operation},
     prost::{Message, ProstTimestampExt},
-    reflect::ReflectMessage,
+    reflect::ExoReflectMessage,
     registry::Registry,
     serde_derive, serde_json,
     store::{Entity, EntityMutation, Trait},

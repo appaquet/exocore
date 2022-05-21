@@ -18,7 +18,7 @@ use exocore_protos::{
     },
     prost::{Any, ProstTimestampExt},
     reflect,
-    reflect::{DynamicMessage, FieldDescriptor, FieldValue, ReflectMessage},
+    reflect::{ExoDynamicMessage, ExoFieldDescriptor, FieldValue, ExoReflectMessage},
     registry::Registry,
 };
 pub use operations::*;
@@ -462,9 +462,9 @@ impl MutationIndex {
     fn add_trait_message_document_field(
         &self,
         doc: &mut Document,
-        dyn_message: &DynamicMessage,
+        dyn_message: &ExoDynamicMessage,
         prefix: Option<&str>,
-        field_desc: &FieldDescriptor,
+        field_desc: &ExoFieldDescriptor,
         message_mappings: &BTreeMap<String, schema::MappedDynamicField>,
         has_reference: &mut bool,
     ) {

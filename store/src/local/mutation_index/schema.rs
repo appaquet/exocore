@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use exocore_protos::{
-    reflect::{FieldDescriptor, FieldType, ReflectMessageDescriptor},
+    reflect::{ExoFieldDescriptor, FieldType, ExoReflectMessageDescriptor},
     registry::Registry,
 };
 use tantivy::{schema::*, tokenizer::*, Document};
@@ -312,8 +312,8 @@ impl MsgFields {
         prefix: Option<&str>,
         registry: &Registry,
         dyn_fields: &mut DynamicFields,
-        msg_desc: &ReflectMessageDescriptor,
-        field_desc: &FieldDescriptor,
+        msg_desc: &ExoReflectMessageDescriptor,
+        field_desc: &ExoFieldDescriptor,
     ) {
         if !field_desc.indexed_flag && !field_desc.text_flag && !field_desc.sorted_flag {
             return;
