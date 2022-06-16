@@ -431,7 +431,8 @@ impl MsgFields {
         }
 
         error!(
-            "Invalid index option / type for field {field_desc:?} of message {} or ran out of fields",
+            "Invalid index option / type for field {} of message {} or ran out of fields",
+            field_desc.name,
             msg_desc.name,
         );
     }

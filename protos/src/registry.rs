@@ -16,6 +16,7 @@ use protobuf::{
     // types::{ProtobufType, ProtobufTypeBool, ProtobufTypeString},
     Message,
     MessageFull,
+    UnknownValueRef,
 };
 
 use super::{
@@ -132,7 +133,7 @@ impl Registry {
 
     pub fn register_message_descriptor(
         &self,
-        full_name: String, // TODO: not necessary
+        full_name: String,
         msg_descriptor: protobuf::reflect::MessageDescriptor,
     ) -> Arc<ExoReflectMessageDescriptor> {
         for sub_msg in msg_descriptor.nested_messages() {
@@ -142,45 +143,51 @@ impl Registry {
 
         let mut fields = HashMap::new();
         for field in msg_descriptor.fields() {
+            let field_proto = field.proto();
 
-            // let mut field_type = match field.type_ {
-            //     FieldDescriptorProto_Type::TYPE_STRING => FieldType::String,
-            //     FieldDescriptorProto_Type::TYPE_INT32 => FieldType::Int32,
-            //     FieldDescriptorProto_Type::TYPE_UINT32 => FieldType::Uint32,
-            //     FieldDescriptorProto_Type::TYPE_INT64 => FieldType::Int64,
-            //     FieldDescriptorProto_Type::TYPE_UINT64 => FieldType::Uint64,
-            //     FieldDescriptorProto_Type::TYPE_MESSAGE => {
-            //         let typ = field.type_name.unwrap_or_default().trim_start_matches('.');
-            //         match typ {
-            //             "google.protobuf.Timestamp" => FieldType::DateTime,
-            //             "exocore.store.Reference" => FieldType::Reference,
-            //             _ => FieldType::Message(typ.to_string()),
-            //         }
-            //     }
-            //     _ => continue,
-            // };
+            use protobuf::descriptor::field_descriptor_proto::Type as ProtoFieldType;
+            let mut field_type = match field_proto.type_.map(|e| e.enum_value()) {
+                Some(Ok(ProtoFieldType::TYPE_STRING)) => FieldType::String,
+                Some(Ok(ProtoFieldType::TYPE_INT32)) => FieldType::Int32,
+                Some(Ok(ProtoFieldType::TYPE_UINT32)) => FieldType::Uint32,
+                Some(Ok(ProtoFieldType::TYPE_INT64)) => FieldType::Int64,
+                Some(Ok(ProtoFieldType::TYPE_UINT64)) => FieldType::Uint64,
+                Some(Ok(ProtoFieldType::TYPE_MESSAGE)) => {
+                    let typ = field_proto.type_name().trim_start_matches('.');
+                    match typ {
+                        "google.protobuf.Timestamp" => FieldType::DateTime,
+                        "exocore.store.Reference" => FieldType::Reference,
+                        _ => FieldType::Message(typ.to_string()),
+                    }
+                }
 
-            // if field.label == Some(FieldDescriptorProto_Label::LABEL_REPEATED) {
-            //     field_type = FieldType::Repeated(Box::new(field_type));
-            // }
+                _ => continue,
+            };
 
-            // if let Some(number) = field.number {
-            //     let id = number as u32;
-            //     fields.insert(
-            //         id,
-            //         ExoFieldDescriptor {
-            //             id,
-            //             name: field.name.unwrap_or_default().to_string(),
-            //             field_type,
+            if field_proto.label()
+                == protobuf::descriptor::field_descriptor_proto::Label::LABEL_REPEATED
+            {
+                field_type = FieldType::Repeated(Box::new(field_type));
+            }
 
-            //             // see exocore/store/options.proto
-            //             indexed_flag: Registry::field_has_option(field, 1373),
-            //             sorted_flag: Registry::field_has_option(field, 1374),
-            //             text_flag: Registry::field_has_option(field, 1375),
-            //             groups: Registry::get_field_u32s_option(field, 1376),
-            //         },
-            //     );
-            // }
+            if let Some(number) = field_proto.number {
+                let id = number as u32;
+                fields.insert(
+                    id,
+                    ExoFieldDescriptor {
+                        id,
+                        descriptor: field.clone(),
+                        name: field.name().to_string(),
+                        field_type,
+
+                        // see exocore/store/options.proto
+                        indexed_flag: Registry::field_has_option(field_proto, 1373),
+                        sorted_flag: Registry::field_has_option(field_proto, 1374),
+                        text_flag: Registry::field_has_option(field_proto, 1375),
+                        groups: Registry::get_field_u32s_option(field_proto, 1376),
+                    },
+                );
+            }
         }
 
         let short_names = Registry::get_message_strings_option(&msg_descriptor, 1377);
@@ -214,66 +221,48 @@ impl Registry {
             .ok_or_else(|| Error::NotInRegistry(full_name.to_string()))
     }
 
-    pub fn get_or_register_generated_descriptor<M: MessageFull>(
-        &self,
-        message: &M,
-    ) -> Arc<ExoReflectMessageDescriptor> {
-        let descriptor = M::descriptor();
-        let full_name = descriptor.full_name();
-
-        {
-            let message_descriptors = self.message_descriptors.read().unwrap();
-            if let Some(desc) = message_descriptors.get(full_name) {
-                return desc.clone();
-            }
-        }
-
-        self.register_message_descriptor(full_name.to_string(), M::descriptor())
-    }
-
     pub fn message_descriptors(&self) -> Vec<Arc<ExoReflectMessageDescriptor>> {
         let message_descriptors = self.message_descriptors.read().unwrap();
         message_descriptors.values().cloned().collect()
     }
 
     fn field_has_option(field: &FieldDescriptorProto, option_field_id: u32) -> bool {
-        // if let Some(unknown_value) = field.options.unknown_fields().get(option_field_id) {
-        //     ProtobufTypeBool::get_from_unknown(unknown_value).unwrap_or(false)
-        // } else {
-        //     false
-        // }
-        todo!() // TODO:
+        if let Some(UnknownValueRef::Varint(v)) =
+            field.options.unknown_fields().get(option_field_id)
+        {
+            v == 1
+        } else {
+            false
+        }
     }
 
     fn get_field_u32s_option(field: &FieldDescriptorProto, option_field_id: u32) -> Vec<u32> {
-        // if let Some(unknown_value) = field.options.unknown_fields().get(option_field_id) {
-        //     unknown_value.varint.iter().map(|&v| v as u32).collect()
-        // } else {
-        //     vec![]
-        // }
-
-        todo!() // TODO:
+        let mut ret = Vec::new();
+        for (field_id, value) in field.options.unknown_fields().iter() {
+            if let UnknownValueRef::Varint(v) = value {
+                // unfortunately, doesn't allow getting multiple values for one field other than iterating on all options
+                if field_id == option_field_id {
+                    ret.push(v as u32);
+                }
+            }
+        }
+        ret
     }
 
     fn get_message_strings_option(
         msg_desc: &protobuf::reflect::MessageDescriptor,
         option_field_id: u32,
     ) -> Vec<String> {
-        let msg_desc_proto = msg_desc.proto();
-        if let Some(unknown_value) = msg_desc_proto.options.unknown_fields().get(option_field_id) {
-            println!("{:?}", unknown_value);
-
-            let mut values = Vec::new();
-            // let _ = iter_repeated_unknown_value(unknown_value, |uk| {
-            //     if let Some(value) = ProtobufTypeString::get_from_unknown(&uk) {
-            //         values.push(value);
-            //     }
-            //     Ok(())
-            // });
-            values
-        } else {
-            vec![]
+        let mut ret = Vec::new();
+        for (field_id, value) in msg_desc.proto().options.unknown_fields().iter() {
+            if let UnknownValueRef::LengthDelimited(bytes) = value {
+                // unfortunately, doesn't allow getting multiple values for one field other than iterating on all options
+                if field_id == option_field_id {
+                    ret.push(String::from_utf8_lossy(bytes).to_string());
+                }
+            }
         }
+        ret
     }
 }
 
