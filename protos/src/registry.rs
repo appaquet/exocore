@@ -10,11 +10,11 @@ use protobuf::{
 };
 
 use super::{
-    reflect::{ExoFieldDescriptor, ExoReflectMessageDescriptor, FieldType},
+    reflect::{FieldDescriptor, FieldType, ReflectMessageDescriptor},
     Error,
 };
 
-type MessageDescriptorsMap = HashMap<String, Arc<ExoReflectMessageDescriptor>>;
+type MessageDescriptorsMap = HashMap<String, Arc<ReflectMessageDescriptor>>;
 type FileDescriptorsMap = HashMap<String, FileDescriptor>;
 
 pub struct Registry {
@@ -77,16 +77,6 @@ impl Registry {
     }
 
     fn dependencies(&self) -> Vec<FileDescriptor> {
-        // let mut files = HashMap::new();
-
-        // let message_descriptors = self.message_descriptors.read().unwrap();
-        // for msg_desc in message_descriptors.values() {
-        //     let fd = msg_desc.message.file_descriptor();
-        //     files.insert(fd.name(), fd.clone());
-        // }
-
-        // files.values().cloned().collect()
-
         let fds = self.file_descriptors.read().unwrap();
         fds.values().cloned().collect()
     }
@@ -125,7 +115,7 @@ impl Registry {
         &self,
         full_name: String,
         msg_descriptor: protobuf::reflect::MessageDescriptor,
-    ) -> Arc<ExoReflectMessageDescriptor> {
+    ) -> Arc<ReflectMessageDescriptor> {
         for sub_msg in msg_descriptor.nested_messages() {
             let sub_full_name = format!("{}.{}", full_name, sub_msg.name());
             self.register_message_descriptor(sub_full_name, sub_msg.clone());
@@ -164,7 +154,7 @@ impl Registry {
                 let id = number as u32;
                 fields.insert(
                     id,
-                    ExoFieldDescriptor {
+                    FieldDescriptor {
                         id,
                         descriptor: field.clone(),
                         name: field.name().to_string(),
@@ -181,7 +171,7 @@ impl Registry {
         }
 
         let short_names = Registry::get_message_strings_option(&msg_descriptor, 1377);
-        let descriptor = Arc::new(ExoReflectMessageDescriptor {
+        let descriptor = Arc::new(ReflectMessageDescriptor {
             name: full_name.clone(),
             fields,
             message: msg_descriptor,
@@ -203,7 +193,7 @@ impl Registry {
     pub fn get_message_descriptor(
         &self,
         full_name: &str,
-    ) -> Result<Arc<ExoReflectMessageDescriptor>, Error> {
+    ) -> Result<Arc<ReflectMessageDescriptor>, Error> {
         let message_descriptors = self.message_descriptors.read().unwrap();
         message_descriptors
             .get(full_name)
@@ -211,7 +201,7 @@ impl Registry {
             .ok_or_else(|| Error::NotInRegistry(full_name.to_string()))
     }
 
-    pub fn message_descriptors(&self) -> Vec<Arc<ExoReflectMessageDescriptor>> {
+    pub fn message_descriptors(&self) -> Vec<Arc<ReflectMessageDescriptor>> {
         let message_descriptors = self.message_descriptors.read().unwrap();
         message_descriptors.values().cloned().collect()
     }

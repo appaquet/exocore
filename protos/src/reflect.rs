@@ -2,7 +2,7 @@ use std::{collections::HashMap, convert::TryFrom, fmt::Debug, sync::Arc};
 
 pub use protobuf::{descriptor::FileDescriptorSet, Message};
 use protobuf::{
-    reflect::{FieldDescriptor, ReflectFieldRef, ReflectValueRef},
+    reflect::{FieldDescriptor as FieldDescriptorProto, ReflectFieldRef, ReflectValueRef},
     well_known_types::any::Any,
     MessageDyn,
 };
@@ -10,18 +10,18 @@ use protobuf::{
 use super::{registry::Registry, Error};
 use crate::generated::exocore_store::Reference;
 
-pub trait ExoReflectMessage: Debug + Sized {
-    fn descriptor(&self) -> &ExoReflectMessageDescriptor;
+pub trait ReflectMessage: Debug + Sized {
+    fn descriptor(&self) -> &ReflectMessageDescriptor;
 
     fn full_name(&self) -> &str {
         &self.descriptor().name
     }
 
-    fn fields(&self) -> &HashMap<FieldId, ExoFieldDescriptor> {
+    fn fields(&self) -> &HashMap<FieldId, FieldDescriptor> {
         &self.descriptor().fields
     }
 
-    fn get_field(&self, id: FieldId) -> Option<&ExoFieldDescriptor> {
+    fn get_field(&self, id: FieldId) -> Option<&FieldDescriptor> {
         self.descriptor().fields.get(&id)
     }
 
@@ -42,7 +42,7 @@ pub trait ExoReflectMessage: Debug + Sized {
     }
 }
 
-fn message_to_json<M: ExoReflectMessage>(
+fn message_to_json<M: ReflectMessage>(
     msg: &M,
     registry: &Registry,
 ) -> Result<serde_json::Value, Error> {
@@ -102,17 +102,17 @@ fn field_value_to_json(value: FieldValue, registry: &Registry) -> Result<serde_j
     })
 }
 
-pub trait ExoMutableReflectMessage: ExoReflectMessage {
+pub trait MutableReflectMessage: ReflectMessage {
     fn clear_field_value(&mut self, field_id: FieldId) -> Result<(), Error>;
 }
 
-pub struct ExoDynamicMessage {
+pub struct DynamicMessage {
     message: Box<dyn MessageDyn>,
-    descriptor: Arc<ExoReflectMessageDescriptor>,
+    descriptor: Arc<ReflectMessageDescriptor>,
 }
 
-impl ExoReflectMessage for ExoDynamicMessage {
-    fn descriptor(&self) -> &ExoReflectMessageDescriptor {
+impl ReflectMessage for DynamicMessage {
+    fn descriptor(&self) -> &ReflectMessageDescriptor {
         self.descriptor.as_ref()
     }
 
@@ -242,7 +242,7 @@ fn convert_field_value(
     }
 }
 
-impl ExoMutableReflectMessage for ExoDynamicMessage {
+impl MutableReflectMessage for DynamicMessage {
     fn clear_field_value(&mut self, field_id: FieldId) -> Result<(), Error> {
         let field = self
             .descriptor
@@ -268,7 +268,7 @@ impl ExoMutableReflectMessage for ExoDynamicMessage {
     }
 }
 
-impl Debug for ExoDynamicMessage {
+impl Debug for DynamicMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_struct("DynamicMessage")
             .field("full_name", &self.descriptor.name)
@@ -280,18 +280,18 @@ pub type FieldId = u32;
 
 pub type FieldGroupId = u32;
 
-pub struct ExoReflectMessageDescriptor {
+pub struct ReflectMessageDescriptor {
     pub name: String, // full name of the message
-    pub fields: HashMap<FieldId, ExoFieldDescriptor>,
+    pub fields: HashMap<FieldId, FieldDescriptor>,
     pub message: protobuf::reflect::MessageDescriptor,
 
     // see exocore/store/options.proto
     pub short_names: Vec<String>,
 }
 
-pub struct ExoFieldDescriptor {
+pub struct FieldDescriptor {
     pub id: FieldId,
-    pub descriptor: FieldDescriptor,
+    pub descriptor: FieldDescriptorProto,
     pub name: String,
     pub field_type: FieldType,
 
@@ -353,10 +353,10 @@ impl FieldValue {
         }
     }
 
-    pub fn into_message(self, registry: &Registry) -> Result<ExoDynamicMessage, Error> {
+    pub fn into_message(self, registry: &Registry) -> Result<DynamicMessage, Error> {
         if let FieldValue::Message(typ, message) = self {
             let descriptor = registry.get_message_descriptor(&typ)?;
-            Ok(ExoDynamicMessage {
+            Ok(DynamicMessage {
                 message,
                 descriptor,
             })
@@ -377,14 +377,14 @@ impl<'s> TryFrom<&'s FieldValue> for &'s str {
     }
 }
 
-pub fn from_stepan_any(registry: &Registry, any: &Any) -> Result<ExoDynamicMessage, Error> {
+pub fn from_stepan_any(registry: &Registry, any: &Any) -> Result<DynamicMessage, Error> {
     from_any_url_and_data(registry, &any.type_url, &any.value)
 }
 
 pub fn from_prost_any(
     registry: &Registry,
     any: &prost_types::Any,
-) -> Result<ExoDynamicMessage, Error> {
+) -> Result<DynamicMessage, Error> {
     from_any_url_and_data(registry, &any.type_url, &any.value)
 }
 
@@ -392,13 +392,13 @@ pub fn from_any_url_and_data(
     registry: &Registry,
     url: &str,
     data: &[u8],
-) -> Result<ExoDynamicMessage, Error> {
+) -> Result<DynamicMessage, Error> {
     let full_name = any_url_to_full_name(url);
 
     let descriptor = registry.get_message_descriptor(&full_name)?;
     let message = descriptor.message.parse_from_bytes(data)?;
 
-    Ok(ExoDynamicMessage {
+    Ok(DynamicMessage {
         message,
         descriptor,
     })
