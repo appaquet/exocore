@@ -18,7 +18,7 @@ use exocore_protos::{
     },
     prost::{Any, ProstTimestampExt},
     reflect,
-    reflect::{ExoDynamicMessage, ExoFieldDescriptor, FieldValue, ExoReflectMessage},
+    reflect::{ExoDynamicMessage, ExoFieldDescriptor, ExoReflectMessage, FieldValue},
     registry::Registry,
 };
 pub use operations::*;

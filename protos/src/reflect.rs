@@ -3,8 +3,8 @@ use std::{collections::HashMap, convert::TryFrom, fmt::Debug, sync::Arc};
 pub use protobuf::{descriptor::FileDescriptorSet, Message};
 use protobuf::{
     reflect::{FieldDescriptor, ReflectFieldRef, ReflectValueRef},
-    well_known_types::{any::Any, empty::Empty, timestamp::Timestamp},
-    MessageDyn, MessageFull,
+    well_known_types::any::Any,
+    MessageDyn,
 };
 
 use super::{registry::Registry, Error};
@@ -237,7 +237,7 @@ fn convert_field_value(
             ))),
         },
         FieldType::Repeated(_) => {
-            unreachable!("repeated fields handled above");
+            unreachable!("repeated fields should have been handled in convert_field_ref");
         }
     }
 }

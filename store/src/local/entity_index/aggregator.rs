@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use exocore_chain::{block::BlockOffset, operation::OperationId};
 use exocore_core::time::ConsistentTimestamp;
 use exocore_protos::{
-    reflect::{FieldId, ExoMutableReflectMessage, ExoReflectMessage},
+    reflect::{ExoMutableReflectMessage, ExoReflectMessage, FieldId},
     registry::Registry,
     store::{Projection, Trait, TraitDetails},
 };

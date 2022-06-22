@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use protobuf::{
     well_known_types::{any::Any, timestamp::Timestamp},
-    Message, MessageFull,
+    MessageFull,
 };
 
 use super::Error;
@@ -18,10 +18,6 @@ impl StepanTimestampExt for Timestamp {
 
 pub trait StepanDateTimeExt {
     fn to_proto_timestamp(&self) -> Timestamp;
-
-    // fn to_proto_timestamp_ptr(&self) -> SingularPtrField<Timestamp> {
-    //     Some(self.to_proto_timestamp()).into()
-    // }
 }
 
 impl StepanDateTimeExt for chrono::DateTime<Utc> {
@@ -36,10 +32,6 @@ impl StepanDateTimeExt for chrono::DateTime<Utc> {
 
 pub trait StepanMessageExt {
     fn pack_to_any(&self) -> Result<Any, Error>;
-
-    // fn pack_to_any_ptr(&self) -> Result<SingularPtrField<Any>, Error> {
-    //     Ok(Some(self.pack_to_any()?).into())
-    // }
 }
 
 impl<M> StepanMessageExt for M

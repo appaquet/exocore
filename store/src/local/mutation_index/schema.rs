@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use exocore_protos::{
-    reflect::{ExoFieldDescriptor, FieldType, ExoReflectMessageDescriptor},
+    reflect::{ExoFieldDescriptor, ExoReflectMessageDescriptor, FieldType},
     registry::Registry,
 };
 use tantivy::{schema::*, tokenizer::*, Document};
@@ -432,8 +432,7 @@ impl MsgFields {
 
         error!(
             "Invalid index option / type for field {} of message {} or ran out of fields",
-            field_desc.name,
-            msg_desc.name,
+            field_desc.name, msg_desc.name,
         );
     }
 }
