@@ -145,7 +145,9 @@ fn convert_field_ref(
             let inner_field_type = if let FieldType::Repeated(inner) = field_type {
                 inner
             } else {
-                return Err(Error::Other(anyhow!("expected repeated field type, got {field_type:?} at field {field_id:?}")));
+                return Err(Error::Other(anyhow!(
+                    "expected repeated field type, got {field_type:?} at field {field_id:?}"
+                )));
             };
 
             let mut values = Vec::new();
