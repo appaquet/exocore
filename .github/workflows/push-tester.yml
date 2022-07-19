@@ -243,9 +243,7 @@ jobs:
       - name: Build example project
         run: |
           cd $GITHUB_WORKSPACE/examples/ios
-          gem install bundler
-          bundle install
-          bundle exec pod install
+          pod install
           xcodebuild -workspace ExamplesIos.xcworkspace -scheme ExamplesIos -destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO
 
   markdown_links_check:
