@@ -27,6 +27,8 @@ jobs:
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Check formatting
         uses: actions-rs/cargo@v1.0.3
@@ -68,6 +70,8 @@ jobs:
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions-rs/cargo@v1.0.3
         with:
@@ -103,6 +107,8 @@ jobs:
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Tests
         uses: actions-rs/cargo@v1.0.3
@@ -131,6 +137,8 @@ jobs:
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Test coverage
         run: |
@@ -161,6 +169,8 @@ jobs:
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate sample WASM fixtures
         run: |
@@ -239,9 +249,6 @@ jobs:
           profile: minimal
 
       - uses: Swatinem/rust-cache@v1
-
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v1
 
       - name: Install dependencies
         run: |
