@@ -65,11 +65,6 @@
   resolved "https://registry.yarnpkg.com/@types/linkify-it/-/linkify-it-3.0.2.tgz#fd2cd2edbaa7eaac7e7f3c1748b52a19143846c9"
   integrity sha512-HZQYqbiFVWufzCwexrvh694SOim8z2d+xJl5UNamcvQFejLY/2YUtzXHYi3cHdI7PMlS8ejH2slRAOJQ32aNbA==
 
-"@types/long@^4.0.1":
-  version "4.0.1"
-  resolved "https://registry.npmjs.org/@types/long/-/long-4.0.1.tgz"
-  integrity sha512-5tXH6Bx/kNGd3MgffdmP4dy2Z+G4eaXw0SE81Tq3BNadtnMR5/ySMzX4SLEzHJzSmPNn4HIdpQsBvXMUykr58w==
-
 "@types/markdown-it@^12.2.3":
   version "12.2.3"
   resolved "https://registry.yarnpkg.com/@types/markdown-it/-/markdown-it-12.2.3.tgz#0d6f6e5e413f8daaa26522904597be3d6cd93b51"
@@ -439,10 +434,10 @@ protobufjs-cli@^1.0.0:
     tmp "^0.2.1"
     uglify-js "^3.7.7"
 
-protobufjs@^7.0.0:
-  version "7.0.0"
-  resolved "https://registry.npmjs.org/protobufjs/-/protobufjs-7.0.0.tgz"
-  integrity sha512-ffNIEm+quOcYtQvHdW406v1NQmZSuqVklxsXk076BtuFnlYZfigLU+JOMrTD8TUOyqHYbRI/fSVNvgd25YeN3w==
+protobufjs@^7.1.0:
+  version "7.1.0"
+  resolved "https://registry.yarnpkg.com/protobufjs/-/protobufjs-7.1.0.tgz#5174b5f96fad4f7dea7dd4abd594042ac360e665"
+  integrity sha512-rCuxKlh0UQKSMjrpIcTLbR5TtGQ52cgs1a5nUoPBAKOccdPblN67BJtjrbtudUJK6HmBvUdsmymyYOzO7lxZEA==
   dependencies:
     "@protobufjs/aspromise" "^1.1.2"
     "@protobufjs/base64" "^1.1.2"
@@ -454,7 +449,6 @@ protobufjs@^7.0.0:
     "@protobufjs/path" "^1.1.2"
     "@protobufjs/pool" "^1.1.0"
     "@protobufjs/utf8" "^1.1.0"
-    "@types/long" "^4.0.1"
     "@types/node" ">=13.7.0"
     long "^5.0.0"
 

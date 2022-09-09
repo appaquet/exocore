@@ -22,6 +22,6 @@
     "protobufjs-cli": "^1.0.0"
   },
   "dependencies": {
-    "protobufjs": "^7.0.0"
+    "protobufjs": "^7.1.0"
   }
 }
