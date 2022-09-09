@@ -1,36 +1,38 @@
 fn main() {
-    {
-        let capn_protos_file = vec![
-            "./capn/common.capnp",
-            "./capn/data_chain.capnp",
-            "./capn/data_transport.capnp",
-            "./capn/store_transport.capnp",
-        ];
-        for proto_file in capn_protos_file {
-            capnpc::CompilerCommand::new()
-                .file(proto_file)
-                .run()
-                .unwrap_or_else(|_| panic!("compiling {} schema", proto_file));
+    if std::env::var("GENERATE_PROTOS").is_ok() {
+        {
+            let capn_protos_file = vec![
+                "./capn/common.capnp",
+                "./capn/data_chain.capnp",
+                "./capn/data_transport.capnp",
+                "./capn/store_transport.capnp",
+            ];
+            for proto_file in capn_protos_file {
+                capnpc::CompilerCommand::new()
+                    .file(proto_file)
+                    .output_path("./src/generated/")
+                    .run()
+                    .unwrap_or_else(|_| panic!("compiling {} schema", proto_file));
+            }
         }
-    }
 
-    {
-        let prost_protos_file = vec![
-            "./protobuf/exocore/store/entity.proto",
-            "./protobuf/exocore/store/query.proto",
-            "./protobuf/exocore/store/mutation.proto",
-            "./protobuf/exocore/test/test.proto",
-            "./protobuf/exocore/core/auth.proto",
-            "./protobuf/exocore/core/config.proto",
-            "./protobuf/exocore/core/build.proto",
-            "./protobuf/exocore/apps/manifest.proto",
-            "./protobuf/exocore/apps/runtime.proto",
-        ];
+        {
+            let prost_protos_file = vec![
+                "./protobuf/exocore/store/entity.proto",
+                "./protobuf/exocore/store/query.proto",
+                "./protobuf/exocore/store/mutation.proto",
+                "./protobuf/exocore/test/test.proto",
+                "./protobuf/exocore/core/auth.proto",
+                "./protobuf/exocore/core/config.proto",
+                "./protobuf/exocore/core/build.proto",
+                "./protobuf/exocore/apps/manifest.proto",
+                "./protobuf/exocore/apps/runtime.proto",
+            ];
 
-        let mut config = prost_build::Config::new();
+            let mut config = prost_build::Config::new();
 
-        // add serde annotations on some types and fields
-        config
+            // add serde annotations on some types and fields
+            config
                 .type_attribute("LocalNodeConfig", "#[derive(Serialize, Deserialize)]")
                 .type_attribute("NodeAddresses", "#[derive(Serialize, Deserialize)]")
                 .type_attribute("NodeCellConfig", "#[derive(Serialize, Deserialize)]")
@@ -104,8 +106,10 @@ fn main() {
                 .field_attribute("Manifest.schemas", "#[serde(default)]")
                 .field_attribute("ManifestModule.multihash", "#[serde(default)]");
 
-        config
-            .compile_protos(&prost_protos_file, &["./protobuf/"])
-            .expect("prost error");
+            config
+                .out_dir("./src/generated/")
+                .compile_protos(&prost_protos_file, &["./protobuf/"])
+                .expect("prost error");
+        }
     }
 }
