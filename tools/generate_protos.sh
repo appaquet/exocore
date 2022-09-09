@@ -9,7 +9,6 @@ protoc -I"$EXOCORE_ROOT/protos/protobuf/" $EXOCORE_ROOT/protos/protobuf/exocore/
 protoc -I"$EXOCORE_ROOT/protos/protobuf/" $EXOCORE_ROOT/protos/protobuf/exocore/test/*.proto -o "$EXOCORE_ROOT/protos/src/generated/exocore_test.fd"
 
 # Prost & capnp generation
-export GENERATE_PROTOS=1
 cargo clean -p exocore-protos
 cargo build -p exocore-protos || true # we only care about build.rs being run
 cargo +nightly fmt -- --config-path ./rustfmt-nightly.toml
