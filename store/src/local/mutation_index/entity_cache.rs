@@ -1,4 +1,4 @@
-use std::{sync::Mutex, num::NonZeroUsize};
+use std::{num::NonZeroUsize, sync::Mutex};
 
 use lru::LruCache;
 
