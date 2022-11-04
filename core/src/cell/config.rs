@@ -148,10 +148,12 @@ impl CellConfigExt for CellConfig {
     }
 
     fn find_node(&mut self, node_pk: &str) -> Option<&mut CellNodeConfig> {
-        self.nodes.iter_mut().find(|cell_node| cell_node
+        self.nodes.iter_mut().find(|cell_node| {
+            cell_node
                 .node
                 .as_ref()
-                .map_or(false, |n| n.public_key == node_pk))
+                .map_or(false, |n| n.public_key == node_pk)
+        })
     }
 
     fn add_node(&mut self, node: CellNodeConfig) {
