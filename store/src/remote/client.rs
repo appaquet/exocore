@@ -313,9 +313,12 @@ impl Inner {
             Err(err) => {
                 if let Some(pending_request) = inner.pending_mutations.remove(&rendez_vous_id) {
                     let _ = pending_request.result_sender.send(Err(err));
-                } else if let Some(mut watched_query) = inner.watched_queries.remove(&rendez_vous_id) {
+                } else if let Some(mut watched_query) =
+                    inner.watched_queries.remove(&rendez_vous_id)
+                {
                     let _ = watched_query.result_sender.try_send(Err(err));
-                } else if let Some(pending_request) = inner.pending_queries.remove(&rendez_vous_id) {
+                } else if let Some(pending_request) = inner.pending_queries.remove(&rendez_vous_id)
+                {
                     let _ = pending_request.result_sender.send(Err(err));
                 }
             }
