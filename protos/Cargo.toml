@@ -20,7 +20,7 @@ protobuf = "3.2.0"
 serde = "1.0.151"
 serde_derive = "1.0.149"
 serde_json = "1.0.89"
-thiserror = "1.0.37"
+thiserror = "1.0.38"
 
 [build-dependencies]
 capnpc = "0.15.2"
