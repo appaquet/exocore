@@ -806,7 +806,9 @@ impl MutationIndex {
                     .expect("Field requested is not a i64/u64 fast field.");
                 move |doc_id| OrderingValueWrapper {
                     value: OrderingValue {
-                        value: Some(ordering_value::Value::Uint64(sort_fast_field.get_val(doc_id))),
+                        value: Some(ordering_value::Value::Uint64(
+                            sort_fast_field.get_val(doc_id),
+                        )),
                         operation_id: operation_id_reader.get_val(doc_id),
                     },
                     reverse: ascending,
