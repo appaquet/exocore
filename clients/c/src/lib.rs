@@ -17,7 +17,7 @@ pub mod utils;
 ///
 /// This method can be called multiple times without problems as it makes sure
 /// its logic is only executed once.
-/// 
+///
 /// # Safety
 /// * `log_file` should be a valid C string.
 #[no_mangle]
