@@ -198,7 +198,7 @@ impl BlockMetadata {
 
         for (blocks_count, current_block) in blocks_iter
             .enumerate()
-            .take(range_blocks_count as usize + 1)
+            .take(range_blocks_count + 1)
         {
             let current_block = current_block?;
 
