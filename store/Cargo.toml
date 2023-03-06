@@ -37,7 +37,7 @@ futures = "0.3.26"
 itertools = "0.10.5"
 log = "0.4.17"
 smallvec = "1.10.0"
-thiserror = "1.0.38"
+thiserror = "1.0.39"
 
 # local or remote
 exocore-chain = {version = "0.1.24", path = "../chain", default-features = false, optional = true}

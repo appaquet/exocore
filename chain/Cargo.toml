@@ -27,7 +27,7 @@ futures = "0.3.26"
 itertools = "0.10.5"
 log = "0.4.17"
 serde = { version = "1.0.152", features = ["derive"] }
-thiserror = "1.0.38"
+thiserror = "1.0.39"
 bytes = "1.4.0"
 
 # For directory chain
