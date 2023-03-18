@@ -135,7 +135,7 @@ impl ConnectionHandler for ExocoreProtoHandler {
                 debug!("Address change: {addr}", addr = event.new_address);
             }
             ConnectionEvent::ListenUpgradeError(event) => {
-                debug!("Listen upgrade error: {err}", err = event.error);
+                error!("Listen upgrade error: {err}", err = event.error);
             }
         }
     }
