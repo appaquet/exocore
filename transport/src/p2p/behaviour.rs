@@ -261,18 +261,12 @@ impl NetworkBehaviour for ExocoreBehaviour {
             FromSwarm::DialFailure(event) => {
                 self.handle_dial_failure(event);
             }
-
-            // TODO: May want to implement some other methods?
-            // FromSwarm::ConnectionEstablished(_) => todo!(),
-            // FromSwarm::AddressChange(_) => todo!(),
-            // FromSwarm::ListenFailure(_) => todo!(),
-            // FromSwarm::NewListener(_) => todo!(),
-            // FromSwarm::NewListenAddr(_) => todo!(),
-            // FromSwarm::ExpiredListenAddr(_) => todo!(),
-            // FromSwarm::ListenerError(_) => todo!(),
-            // FromSwarm::ListenerClosed(_) => todo!(),
-            // FromSwarm::NewExternalAddr(_) => todo!(),
-            // FromSwarm::ExpiredExternalAddr(_) => todo!(),
+            FromSwarm::ListenFailure(event) => {
+                error!("Listen failure: {err}", err = event.error);
+            }
+            FromSwarm::ListenerError(event) => {
+                error!("Listener error: {err}", err = event.err);
+            }
             _ => {}
         }
     }

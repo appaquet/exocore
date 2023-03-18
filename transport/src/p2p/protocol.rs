@@ -131,11 +131,12 @@ impl ConnectionHandler for ExocoreProtoHandler {
             ConnectionEvent::DialUpgradeError(event) => {
                 self.handle_dial_upgrade_error(event);
             }
-            _ => {}
-
-            // TODO: May want to implement some other methods?
-            // ConnectionEvent::AddressChange(_) => todo!(),
-            // ConnectionEvent::ListenUpgradeError(_) => todo!(),
+            ConnectionEvent::AddressChange(event) => {
+                debug!("Address change: {addr}", addr = event.new_address);
+            }
+            ConnectionEvent::ListenUpgradeError(event) => {
+                debug!("Listen upgrade error: {err}", err = event.error);
+            }
         }
     }
 
