@@ -6,12 +6,13 @@ use std::{
 use exocore_core::{cell::Node, time::Instant};
 use futures::task::{Context, Poll};
 use libp2p::{
-    core::{connection::ConnectionId, ConnectedPoint, Multiaddr, PeerId},
+    core::Multiaddr,
     swarm::{
         dial_opts::{DialOpts, PeerCondition},
-        CloseConnection, DialError, IntoConnectionHandler, NetworkBehaviour,
-        NetworkBehaviourAction, NotifyHandler, PollParameters,
+        CloseConnection, ConnectionId, FromSwarm, NetworkBehaviour, NetworkBehaviourAction,
+        NotifyHandler, PollParameters, THandler, THandlerInEvent,
     },
+    PeerId,
 };
 
 use super::protocol::{ExocoreProtoHandler, MessageData};
@@ -34,7 +35,8 @@ pub struct ExocoreBehaviour {
     last_redial_check: Option<Instant>,
 }
 
-type BehaviourAction = NetworkBehaviourAction<ExocoreBehaviourEvent, ExocoreProtoHandler>;
+type BehaviourAction =
+    NetworkBehaviourAction<ExocoreBehaviourEvent, THandlerInEvent<ExocoreBehaviour>>;
 
 impl ExocoreBehaviour {
     pub fn send_message(
@@ -157,7 +159,6 @@ impl ExocoreBehaviour {
                 opts: DialOpts::peer_id(peer_id)
                     .condition(PeerCondition::NotDialing)
                     .build(),
-                handler: ExocoreProtoHandler::default(),
             });
         }
     }
@@ -186,6 +187,42 @@ impl ExocoreBehaviour {
             warn!("Got connection from unknown peer {}", peer_id);
         }
     }
+
+    fn handle_connection_closed(
+        &mut self,
+        event: libp2p::swarm::ConnectionClosed<ExocoreProtoHandler>,
+    ) {
+        let peer_id = event.peer_id;
+        if let Some(peer) = self.peers.get_mut(&peer_id) {
+            info!("Disconnected from peer {}", peer.node);
+
+            peer.status = PeerStatus::Disconnected;
+            self.actions
+                .push_back(NetworkBehaviourAction::GenerateEvent(
+                    ExocoreBehaviourEvent::PeerStatus(peer_id, peer.status),
+                ));
+
+            // cleanup old messages
+            peer.cleanup_expired();
+
+            // trigger reconnection
+            self.dial_peer(peer_id, true);
+        }
+    }
+
+    fn handle_dial_failure(&mut self, event: libp2p::swarm::DialFailure) {
+        if let Some(peer) = event
+            .peer_id
+            .and_then(|peer_id| self.peers.get_mut(&peer_id))
+        {
+            info!(
+                "Failed to connect to peer {}: {:?}. {} messages in queue for node.",
+                peer.node,
+                event.error,
+                peer.temp_queue.len()
+            );
+        }
+    }
 }
 
 impl NetworkBehaviour for ExocoreBehaviour {
@@ -205,43 +242,47 @@ impl NetworkBehaviour for ExocoreBehaviour {
             .unwrap_or_else(Vec::new)
     }
 
-    fn inject_connection_established(
+    fn handle_established_inbound_connection(
         &mut self,
-        peer_id: &PeerId,
-        _connection_id: &ConnectionId,
-        _endpoint: &ConnectedPoint,
-        _failed_addresses: Option<&Vec<Multiaddr>>,
-        _other_established: usize,
-    ) {
-        self.mark_peer_connected(peer_id);
+        _connection_id: ConnectionId,
+        peer: PeerId,
+        _local_addr: &Multiaddr,
+        _remote_addr: &Multiaddr,
+    ) -> Result<THandler<Self>, libp2p::swarm::ConnectionDenied> {
+        self.mark_peer_connected(&peer);
+        Ok(ExocoreProtoHandler::default())
     }
 
-    fn inject_connection_closed(
-        &mut self,
-        peer_id: &PeerId,
-        _: &ConnectionId,
-        _: &ConnectedPoint,
-        _: <Self::ConnectionHandler as IntoConnectionHandler>::Handler,
-        _remaining_established: usize,
-    ) {
-        if let Some(peer) = self.peers.get_mut(peer_id) {
-            info!("Disconnected from peer {}", peer.node);
+    fn on_swarm_event(&mut self, event: FromSwarm<Self::ConnectionHandler>) {
+        match event {
+            FromSwarm::ConnectionClosed(event) => {
+                self.handle_connection_closed(event);
+            }
+            FromSwarm::DialFailure(event) => {
+                self.handle_dial_failure(event);
+            }
 
-            peer.status = PeerStatus::Disconnected;
-            self.actions
-                .push_back(NetworkBehaviourAction::GenerateEvent(
-                    ExocoreBehaviourEvent::PeerStatus(*peer_id, peer.status),
-                ));
-
-            // cleanup old messages
-            peer.cleanup_expired();
-
-            // trigger reconnection
-            self.dial_peer(*peer_id, true);
+            // TODO: May want to implement some other methods?
+            // FromSwarm::ConnectionEstablished(_) => todo!(),
+            // FromSwarm::AddressChange(_) => todo!(),
+            // FromSwarm::ListenFailure(_) => todo!(),
+            // FromSwarm::NewListener(_) => todo!(),
+            // FromSwarm::NewListenAddr(_) => todo!(),
+            // FromSwarm::ExpiredListenAddr(_) => todo!(),
+            // FromSwarm::ListenerError(_) => todo!(),
+            // FromSwarm::ListenerClosed(_) => todo!(),
+            // FromSwarm::NewExternalAddr(_) => todo!(),
+            // FromSwarm::ExpiredExternalAddr(_) => todo!(),
+            _ => {}
         }
     }
 
-    fn inject_event(&mut self, peer_id: PeerId, connection: ConnectionId, message: MessageData) {
+    fn on_connection_handler_event(
+        &mut self,
+        peer_id: PeerId,
+        connection: ConnectionId,
+        event: libp2p::swarm::THandlerOutEvent<Self>,
+    ) {
         if let Some(peer) = self.peers.get_mut(&peer_id) {
             trace!("Received message from {}", peer.node);
 
@@ -250,33 +291,17 @@ impl NetworkBehaviour for ExocoreBehaviour {
                     ExocoreBehaviourEvent::Message(ExocoreBehaviourMessage {
                         source: peer_id,
                         connection,
-                        message,
+                        message: event,
                     }),
                 ));
         }
     }
 
-    fn inject_dial_failure(
-        &mut self,
-        peer_id: Option<PeerId>,
-        _handler: ExocoreProtoHandler,
-        err: &DialError,
-    ) {
-        if let Some(peer) = peer_id.and_then(|peer_id| self.peers.get_mut(&peer_id)) {
-            info!(
-                "Failed to connect to peer {}: {:?}. {} messages in queue for node.",
-                peer.node,
-                err,
-                peer.temp_queue.len()
-            );
-        }
-    }
-
     fn poll(
         &mut self,
-        _ctx: &mut Context,
+        _cx: &mut Context<'_>,
         _params: &mut impl PollParameters,
-    ) -> Poll<NetworkBehaviourAction<ExocoreBehaviourEvent, ExocoreProtoHandler>> {
+    ) -> Poll<NetworkBehaviourAction<Self::OutEvent, THandlerInEvent<Self>>> {
         // check if we could try to dial to disconnected nodes
         let redial_check = self
             .last_redial_check

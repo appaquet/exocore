@@ -11,8 +11,8 @@ use libp2p::{
     core::{InboundUpgrade, OutboundUpgrade, UpgradeInfo},
     swarm::{
         handler::{
-            ConnectionHandler, ConnectionHandlerEvent, ConnectionHandlerUpgrErr, KeepAlive,
-            SubstreamProtocol,
+            ConnectionEvent, ConnectionHandler, ConnectionHandlerEvent, DialUpgradeError,
+            KeepAlive, SubstreamProtocol,
         },
         NegotiatedSubstream,
     },
@@ -56,6 +56,31 @@ pub struct ExocoreProtoHandler {
     keep_alive: KeepAlive,
 }
 
+impl ExocoreProtoHandler {
+    fn handle_dial_upgrade_error(&mut self, event: DialUpgradeError<(), ExocoreProtoConfig>) {
+        debug!("Upgrade error. Dropping stream. {err}", err = event.error);
+        self.outbound_dialing = false;
+    }
+
+    fn handle_full_negotiated_inbound(
+        &mut self,
+        event: libp2p::swarm::handler::FullyNegotiatedInbound<ExocoreProtoConfig, ()>,
+    ) {
+        trace!("Inbound negotiated");
+        self.inbound_stream_futures
+            .push(Box::pin(event.protocol.read_next()));
+    }
+
+    fn handle_full_negotiated_outbound(
+        &mut self,
+        event: libp2p::swarm::handler::FullyNegotiatedOutbound<ExocoreProtoConfig, ()>,
+    ) {
+        trace!("Outbound negotiated. Sending message.");
+        self.outbound_dialing = false;
+        self.idle_outbound_stream = Some(event.protocol);
+    }
+}
+
 impl Default for ExocoreProtoHandler {
     fn default() -> Self {
         ExocoreProtoHandler {
@@ -83,37 +108,35 @@ impl ConnectionHandler for ExocoreProtoHandler {
         self.listen_protocol.clone()
     }
 
-    fn inject_fully_negotiated_inbound(
-        &mut self,
-        substream: WrappedStream<NegotiatedSubstream>,
-        _in_info: (),
-    ) {
-        trace!("Inbound negotiated");
-        self.inbound_stream_futures
-            .push(Box::pin(substream.read_next()));
+    fn on_behaviour_event(&mut self, event: Self::InEvent) {
+        self.send_queue.push_back(event);
     }
 
-    fn inject_fully_negotiated_outbound(
+    fn on_connection_event(
         &mut self,
-        substream: WrappedStream<NegotiatedSubstream>,
-        _out_info: (),
+        event: ConnectionEvent<
+            Self::InboundProtocol,
+            Self::OutboundProtocol,
+            Self::InboundOpenInfo,
+            Self::OutboundOpenInfo,
+        >,
     ) {
-        trace!("Outbound negotiated. Sending message.");
-        self.outbound_dialing = false;
-        self.idle_outbound_stream = Some(substream);
-    }
+        match event {
+            ConnectionEvent::FullyNegotiatedInbound(event) => {
+                self.handle_full_negotiated_inbound(event);
+            }
+            ConnectionEvent::FullyNegotiatedOutbound(event) => {
+                self.handle_full_negotiated_outbound(event);
+            }
+            ConnectionEvent::DialUpgradeError(event) => {
+                self.handle_dial_upgrade_error(event);
+            }
+            _ => {}
 
-    fn inject_event(&mut self, message: MessageData) {
-        self.send_queue.push_back(message);
-    }
-
-    fn inject_dial_upgrade_error(
-        &mut self,
-        _out_info: (),
-        _err: ConnectionHandlerUpgrErr<io::Error>,
-    ) {
-        debug!("Upgrade error. Dropping stream.");
-        self.outbound_dialing = false;
+            // TODO: May want to implement some other methods?
+            // ConnectionEvent::AddressChange(_) => todo!(),
+            // ConnectionEvent::ListenUpgradeError(_) => todo!(),
+        }
     }
 
     fn connection_keep_alive(&self) -> KeepAlive {
