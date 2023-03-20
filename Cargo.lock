@@ -1842,7 +1842,7 @@ dependencies = [
  "futures",
  "log",
  "quote",
- "syn 1.0.109",
+ "syn 2.0.0",
  "thiserror",
 ]
 
