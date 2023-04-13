@@ -33,7 +33,7 @@ async-trait = "0.1.67"
 bytes = "1.4.0"
 chrono = {version = "0.4.24", features = ["serde"]}
 exocore-protos = {version = "0.1.25", path = "../protos"}
-futures = "0.3.27"
+futures = "0.3.28"
 itertools = "0.10.5"
 log = "0.4.17"
 smallvec = "1.10.0"

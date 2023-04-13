@@ -34,7 +34,7 @@ byteorder = "1.4.3"
 bytes = "1.4.0"
 chrono = "0.4.24"
 exocore-protos = {version = "0.1.25", path = "../protos"}
-futures = { version = "0.3.27", features = ["async-await"] }
+futures = { version = "0.3.28", features = ["async-await"] }
 libp2p = { version = "0.51.1", features = ["noise", "secp256k1"], default-features = false }
 libp2p-identity = { version = "0.1.1", features = ["secp256k1"], default-features = false }
 log = "0.4.17"
