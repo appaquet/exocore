@@ -1891,7 +1891,7 @@ dependencies = [
  "futures",
  "itertools",
  "log",
- "memmap2",
+ "memmap2 0.6.2",
  "serde",
  "tempfile",
  "thiserror",
@@ -2083,7 +2083,7 @@ dependencies = [
  "byteorder",
  "extsort",
  "log",
- "memmap2",
+ "memmap2 0.5.10",
  "serde",
  "smallvec",
 ]
@@ -3661,6 +3661,15 @@ name = "memmap2"
 version = "0.5.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "83faa42c0a078c393f6b29d5db232d8be22776a891f8f56e5284faee4a20b327"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "memmap2"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d28bba84adfe6646737845bc5ebbfa2c08424eb1c37e94a1fd2a82adb56a872"
 dependencies = [
  "libc",
 ]
@@ -5566,7 +5575,7 @@ dependencies = [
  "lru 0.7.8",
  "lz4_flex",
  "measure_time",
- "memmap2",
+ "memmap2 0.5.10",
  "murmurhash32",
  "num_cpus",
  "once_cell",
