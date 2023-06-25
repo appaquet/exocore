@@ -24,7 +24,7 @@ exocore-core = {version = "0.1.25", path = "../core"}
 exocore-protos = {version = "0.1.25", path = "../protos"}
 exocore-transport = {version = "0.1.25", path = "../transport", default-features = false}
 futures = "0.3.28"
-itertools = "0.10.5"
+itertools = "0.11.0"
 log = "0.4.19"
 serde = { version = "1.0.164", features = ["derive"] }
 thiserror = "1.0.40"
