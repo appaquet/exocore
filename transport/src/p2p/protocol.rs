@@ -96,8 +96,8 @@ impl Default for ExocoreProtoHandler {
 }
 
 impl ConnectionHandler for ExocoreProtoHandler {
-    type InEvent = MessageData;
-    type OutEvent = MessageData;
+    type FromBehaviour = MessageData;
+    type ToBehaviour = MessageData;
     type Error = io::Error;
     type InboundProtocol = ExocoreProtoConfig;
     type InboundOpenInfo = ();
@@ -108,7 +108,7 @@ impl ConnectionHandler for ExocoreProtoHandler {
         self.listen_protocol.clone()
     }
 
-    fn on_behaviour_event(&mut self, event: Self::InEvent) {
+    fn on_behaviour_event(&mut self, event: Self::FromBehaviour) {
         self.send_queue.push_back(event);
     }
 
@@ -137,6 +137,13 @@ impl ConnectionHandler for ExocoreProtoHandler {
             ConnectionEvent::ListenUpgradeError(event) => {
                 error!("Listen upgrade error: {err}", err = event.error);
             }
+            ConnectionEvent::LocalProtocolsChange(event) => {
+                debug!("Local protocols change");
+            }
+            ConnectionEvent::RemoteProtocolsChange(event) => {
+                debug!("Remote protocols change");
+            }
+            
         }
     }
 
@@ -217,7 +224,7 @@ impl ConnectionHandler for ExocoreProtoHandler {
                         // copying data to a stream consumed by the application
                         if let Some(message) = opt_msg {
                             trace!("Successfully read a message on substream");
-                            return Poll::Ready(ConnectionHandlerEvent::Custom(message));
+                            return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(message));
                         }
                     }
                     Poll::Ready(Err(err)) => {
@@ -244,14 +251,14 @@ impl ConnectionHandler for ExocoreProtoHandler {
 #[derive(Clone, Default)]
 pub struct ExocoreProtoConfig;
 
-type UpgradeInfoData = &'static [u8];
+type UpgradeInfoData = &'static str;
 
 impl UpgradeInfo for ExocoreProtoConfig {
     type Info = UpgradeInfoData;
     type InfoIter = iter::Once<Self::Info>;
 
     fn protocol_info(&self) -> Self::InfoIter {
-        iter::once(b"/exocore/0.1.0")
+        iter::once("/exocore/0.1.0")
     }
 }
 
