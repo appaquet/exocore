@@ -102,21 +102,17 @@ impl Libp2pTransport {
         let mut swarm = {
             use libp2p::wasm_ext::{ffi::websocket_transport, ExtTransport};
 
-            let noise_keys = libp2p::noise::Keypair::<libp2p::noise::X25519Spec>::new()
-                .into_authentic(self.local_node.keypair().to_libp2p())
-                .map_err(|err| {
-                    Error::Other(format!(
-                        "Signing libp2p-noise static DH keypair failed: {}",
-                        err
-                    ))
-                })?;
+            let keypair = self.local_node.keypair().to_libp2p();
 
             let transport = ExtTransport::new(websocket_transport())
                 .upgrade(libp2p::core::upgrade::Version::V1)
-                .authenticate(libp2p::noise::NoiseConfig::xx(noise_keys).into_authenticated())
+                .authenticate(
+                    libp2p::noise::Config::new(keypair)
+                        .expect("Couldn't build noise authentication"),
+                )
                 .multiplex(libp2p::core::upgrade::SelectUpgrade::new(
-                    libp2p::yamux::YamuxConfig::default(),
-                    libp2p::mplex::MplexConfig::new(),
+                    libp2p::yamux::Config::default(),
+                    libp2p_mplex::MplexConfig::new(),
                 ))
                 .map(|(peer, muxer), _| (peer, libp2p::core::muxing::StreamMuxerBox::new(muxer)))
                 .boxed();

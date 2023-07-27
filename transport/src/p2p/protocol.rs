@@ -14,7 +14,7 @@ use libp2p::{
             ConnectionEvent, ConnectionHandler, ConnectionHandlerEvent, DialUpgradeError,
             KeepAlive, SubstreamProtocol,
         },
-        NegotiatedSubstream,
+        Stream,
     },
 };
 
@@ -26,12 +26,9 @@ const STREAM_BUFFER_SIZE: usize = 1024;
 type HandlerEvent = ConnectionHandlerEvent<ExocoreProtoConfig, (), MessageData, io::Error>;
 
 // TODO: Remove dyn dispatched future once type_alias_impl_trait lands: https://github.com/rust-lang/rust/issues/63063
-type InboundStreamFuture = BoxFuture<
-    'static,
-    Result<(Option<MessageData>, WrappedStream<NegotiatedSubstream>), io::Error>,
->;
-type OutboundStreamFuture =
-    BoxFuture<'static, Result<Option<WrappedStream<NegotiatedSubstream>>, io::Error>>;
+type InboundStreamFuture =
+    BoxFuture<'static, Result<(Option<MessageData>, WrappedStream<Stream>), io::Error>>;
+type OutboundStreamFuture = BoxFuture<'static, Result<Option<WrappedStream<Stream>>, io::Error>>;
 
 /// Protocol handler for Exocore protocol. This handles protocols and substreams
 /// to with a connection with a remote peer. This sends and receives messages
@@ -51,7 +48,7 @@ pub struct ExocoreProtoHandler {
     inbound_stream_futures: Vec<InboundStreamFuture>,
     outbound_dialing: bool,
     outbound_stream_futures: Vec<OutboundStreamFuture>,
-    idle_outbound_stream: Option<WrappedStream<NegotiatedSubstream>>,
+    idle_outbound_stream: Option<WrappedStream<Stream>>,
     send_queue: VecDeque<MessageData>,
     keep_alive: KeepAlive,
 }
@@ -84,7 +81,7 @@ impl ExocoreProtoHandler {
 impl Default for ExocoreProtoHandler {
     fn default() -> Self {
         ExocoreProtoHandler {
-            listen_protocol: SubstreamProtocol::new(ExocoreProtoConfig::default(), ()),
+            listen_protocol: SubstreamProtocol::new(ExocoreProtoConfig, ()),
             inbound_stream_futures: Vec::new(),
             outbound_dialing: false,
             outbound_stream_futures: Vec::new(),
@@ -137,13 +134,12 @@ impl ConnectionHandler for ExocoreProtoHandler {
             ConnectionEvent::ListenUpgradeError(event) => {
                 error!("Listen upgrade error: {err}", err = event.error);
             }
-            ConnectionEvent::LocalProtocolsChange(event) => {
+            ConnectionEvent::LocalProtocolsChange(_event) => {
                 debug!("Local protocols change");
             }
-            ConnectionEvent::RemoteProtocolsChange(event) => {
+            ConnectionEvent::RemoteProtocolsChange(_event) => {
                 debug!("Remote protocols change");
             }
-            
         }
     }
 
