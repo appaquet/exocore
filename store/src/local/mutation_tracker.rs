@@ -63,10 +63,7 @@ impl MutationTracker {
         );
 
         for operation_id in operation_ids {
-            let entry = inner
-                .operations_requests
-                .entry(operation_id)
-                .or_default();
+            let entry = inner.operations_requests.entry(operation_id).or_default();
             entry.insert(request_id);
         }
     }
