@@ -66,7 +66,7 @@ impl MutationTracker {
             let entry = inner
                 .operations_requests
                 .entry(operation_id)
-                .or_insert_with(HashSet::new);
+                .or_default();
             entry.insert(request_id);
         }
     }
