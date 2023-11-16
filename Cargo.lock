@@ -1639,7 +1639,7 @@ dependencies = [
  "exocore-transport",
  "extindex",
  "futures",
- "itertools 0.11.0",
+ "itertools 0.12.0",
  "log",
  "memmap2 0.9.0",
  "serde",
@@ -1791,7 +1791,7 @@ dependencies = [
  "exocore-transport",
  "extsort",
  "futures",
- "itertools 0.11.0",
+ "itertools 0.12.0",
  "log",
  "lru 0.12.0",
  "serde",
@@ -2678,9 +2678,9 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.11.0"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
+checksum = "25db6b064527c5d482d0423354fcd07a89a2dfe07b67892e62411946db7f07b0"
 dependencies = [
  "either",
 ]
@@ -4176,7 +4176,7 @@ checksum = "8bdf592881d821b83d471f8af290226c8d51402259e9bb5be7f9f8bdebbb11ac"
 dependencies = [
  "bytes",
  "heck",
- "itertools 0.11.0",
+ "itertools 0.10.5",
  "log",
  "multimap",
  "once_cell",
@@ -4197,7 +4197,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "065717a5dfaca4a83d2fe57db3487b311365200000551d7a364e715dbf4346bc"
 dependencies = [
  "anyhow",
- "itertools 0.11.0",
+ "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "syn 2.0.39",
