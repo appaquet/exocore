@@ -1828,15 +1828,15 @@ dependencies = [
 
 [[package]]
 name = "extindex"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ac24fc0e5ee1242cd356fb66670db5a8e4f9c6901802684f95e0d040e318209"
+checksum = "8eefcd80392efbda47db8f9e63231b6ffc84e5af6887c4350501e1575d8fe146"
 dependencies = [
  "bincode 2.0.0-rc.3",
  "byteorder",
  "extsort",
  "log",
- "memmap2 0.5.10",
+ "memmap2 0.9.0",
  "serde",
  "smallvec",
 ]
