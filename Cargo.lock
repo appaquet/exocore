@@ -598,7 +598,16 @@ version = "0.18.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b671a5b39eadb909b0c2b81d22a400d446526e651e64be9eb6674b33644a4"
 dependencies = [
- "embedded-io",
+ "embedded-io 0.5.0",
+]
+
+[[package]]
+name = "capnp"
+version = "0.19.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f57dd1f96ae33d2f735964d3cb5b9c5fec1a4c081a0aab44cc857015fbc1c72"
+dependencies = [
+ "embedded-io 0.6.1",
 ]
 
 [[package]]
@@ -607,7 +616,7 @@ version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5067f3c8ee94d993d03150153e9a57a6ff330127b1c1ad76475051e1cef79c2d"
 dependencies = [
- "capnp",
+ "capnp 0.18.13",
 ]
 
 [[package]]
@@ -1446,6 +1455,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "658bbadc628dc286b9ae02f0cb0f5411c056eb7487b72f0083203f115de94060"
 
 [[package]]
+name = "embedded-io"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d"
+
+[[package]]
 name = "encode_unicode"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1780,7 +1795,7 @@ version = "0.1.25"
 dependencies = [
  "anyhow",
  "base64 0.21.7",
- "capnp",
+ "capnp 0.19.1",
  "capnpc",
  "chrono",
  "prost",
