@@ -14,7 +14,7 @@ default = ["p2p-full", "http-server"]
 http-server = ["hyper", "url", "exocore-core/runtime"]
 p2p-base = ["libp2p", "libp2p-mplex"]
 p2p-full = ["p2p-base", "libp2p/tcp"]
-p2p-web = ["p2p-base", "libp2p/websocket-websys", "libp2p/wasm-bindgen", "gloo-timers"]
+p2p-web = ["p2p-base", "libp2p/websocket-websys", "libp2p/wasm-bindgen"]
 tests-utils = ["exocore-core/tests-utils"]
 
 [dependencies]
@@ -24,7 +24,6 @@ bytes = "1.5.0"
 exocore-core = {version = "0.1.25", path = "../core"}
 exocore-protos = {version = "0.1.25", path = "../protos"}
 futures = "0.3.30"
-gloo-timers = {version = "0.3", optional = true}
 hyper = {version = "0.14.28", features = ["full"], optional = true}
 libp2p = {version = "0.53.2", optional = true, default-features = false, features = ["noise", "websocket", "yamux", "ping", "identify", "macros", "tokio", "dns"]}
 libp2p-identity = { version = "0.2.8", features = ["secp256k1", "ed25519"], default-features = false }
