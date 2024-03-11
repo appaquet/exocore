@@ -9,7 +9,7 @@ use libp2p::{
     core::Multiaddr,
     swarm::{
         dial_opts::{DialOpts, PeerCondition},
-        CloseConnection, ConnectionId, FromSwarm, NetworkBehaviour, NotifyHandler, PollParameters,
+        CloseConnection, ConnectionId, FromSwarm, NetworkBehaviour, NotifyHandler,
         THandler, THandlerInEvent, ToSwarm,
     },
     PeerId,
@@ -189,7 +189,7 @@ impl ExocoreBehaviour {
 
     fn handle_connection_closed(
         &mut self,
-        event: libp2p::swarm::ConnectionClosed<ExocoreProtoHandler>,
+        event: libp2p::swarm::ConnectionClosed,
     ) {
         let peer_id = event.peer_id;
         if let Some(peer) = self.peers.get_mut(&peer_id) {
@@ -282,7 +282,7 @@ impl NetworkBehaviour for ExocoreBehaviour {
         Ok(addrs)
     }
 
-    fn on_swarm_event(&mut self, event: FromSwarm<Self::ConnectionHandler>) {
+    fn on_swarm_event(&mut self, event: FromSwarm) {
         match event {
             FromSwarm::ConnectionClosed(event) => {
                 self.handle_connection_closed(event);
@@ -337,7 +337,6 @@ impl NetworkBehaviour for ExocoreBehaviour {
     fn poll(
         &mut self,
         _cx: &mut Context<'_>,
-        _params: &mut impl PollParameters,
     ) -> Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
         // check if we could try to dial to disconnected nodes
         let redial_check = self

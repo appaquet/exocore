@@ -412,8 +412,8 @@ pub fn build_transport(
                 Default::default(),
             )
         };
-        let ws_dns_tcp = libp2p::websocket::WsConfig::new(dns_tcp()?);
-        ws_dns_tcp.or_transport(dns_tcp()?)
+        let ws_dns_tcp = libp2p::websocket::WsConfig::new(dns_tcp());
+        ws_dns_tcp.or_transport(dns_tcp())
     };
 
     Ok(transport
