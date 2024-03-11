@@ -9,8 +9,8 @@ use libp2p::{
     core::Multiaddr,
     swarm::{
         dial_opts::{DialOpts, PeerCondition},
-        CloseConnection, ConnectionId, FromSwarm, NetworkBehaviour, NotifyHandler,
-        THandler, THandlerInEvent, ToSwarm,
+        CloseConnection, ConnectionId, FromSwarm, NetworkBehaviour, NotifyHandler, THandler,
+        THandlerInEvent, ToSwarm,
     },
     PeerId,
 };
@@ -187,10 +187,7 @@ impl ExocoreBehaviour {
         }
     }
 
-    fn handle_connection_closed(
-        &mut self,
-        event: libp2p::swarm::ConnectionClosed,
-    ) {
+    fn handle_connection_closed(&mut self, event: libp2p::swarm::ConnectionClosed) {
         let peer_id = event.peer_id;
         if let Some(peer) = self.peers.get_mut(&peer_id) {
             info!("Disconnected from peer {}", peer.node);
