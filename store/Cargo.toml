@@ -28,16 +28,16 @@ remote = ["exocore-core", "exocore-transport"]
 tests-utils = []
 
 [dependencies]
-anyhow = "1.0.80"
-async-trait = "0.1.77"
-bytes = "1.5.0"
+anyhow = "1.0.81"
+async-trait = "0.1.79"
+bytes = "1.6.0"
 chrono = {version = "0.4.35", features = ["serde"]}
 exocore-protos = {version = "0.1.25", path = "../protos"}
 futures = "0.3.30"
 itertools = "0.12.1"
 log = "0.4.21"
-smallvec = "1.13.1"
-thiserror = "1.0.57"
+smallvec = "1.13.2"
+thiserror = "1.0.58"
 
 # local or remote
 exocore-chain = {version = "0.1.25", path = "../chain", default-features = false, optional = true}
