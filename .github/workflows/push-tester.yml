@@ -52,7 +52,7 @@ jobs:
             os: ubuntu-latest
             cross: true
           - target: aarch64-apple-darwin
-            os: macOS-11
+            os: macos-14
             cross: false
 
     runs-on: ${{ matrix.pair.os }}
@@ -91,7 +91,7 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
           - target: x86_64-apple-darwin
-            os: macOS-11
+            os: macos-14
           - target: x86_64-pc-windows-msvc
             os: windows-latest
 
@@ -243,7 +243,7 @@ jobs:
           retention-days: 7
 
   ios_client_build:
-    runs-on: macos-11 # See https://github.com/actions/virtual-environments/blob/main/images/macos for versions
+    runs-on: macos-14 # See https://github.com/actions/virtual-environments/blob/main/images/macos for versions
     steps:
       - uses: actions/checkout@v4
 
