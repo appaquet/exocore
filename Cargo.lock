@@ -1796,7 +1796,7 @@ dependencies = [
  "exocore-core",
  "exocore-protos",
  "exocore-transport",
- "extsort 0.4.2",
+ "extsort",
  "futures",
  "itertools 0.12.1",
  "log",
@@ -1840,23 +1840,12 @@ checksum = "df3af6786b0611dc719006c212cd4d273d9630b3140aaad717cd179642a927bf"
 dependencies = [
  "bincode 2.0.0-rc.3",
  "byteorder",
- "extsort 0.5.0",
+ "extsort",
  "log",
  "memmap2 0.9.4",
  "serde",
  "skeptic",
  "smallvec",
-]
-
-[[package]]
-name = "extsort"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ffc5bb6fbca3c5ce6a51f6857eab8c35c898b2fbcb62ff1b728243dd19ec0c9f"
-dependencies = [
- "rayon",
- "skeptic",
- "tempfile",
 ]
 
 [[package]]
