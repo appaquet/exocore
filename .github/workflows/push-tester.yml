@@ -223,7 +223,7 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE/examples/web
           npm install
-          npx playwright install --with-deps
+          npx playwright install --with-deps firefox
 
       - name: Run end-to-end tests
         run: |
@@ -258,7 +258,7 @@ jobs:
         run: |
           HOMEBREW_NO_INSTALL_CLEANUP=1 brew install swift-protobuf
           rustup target add aarch64-apple-ios x86_64-apple-ios aarch64-apple-ios-sim # actions-rs doesn't support multiple targets: https://github.com/actions-rs/toolchain/issues/16
-          cargo install cargo-lipo --debug # make build faster, no need for speed from it
+          cargo install cargo-lipo cbindgen --debug # make build faster, no need for speed from it
 
       - name: Build client & pod
         run: |
