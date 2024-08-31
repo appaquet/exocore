@@ -6,7 +6,7 @@ use std::{
 use exocore_core::{cell::Node, time::Instant};
 use futures::task::{Context, Poll};
 use libp2p::{
-    core::{transport::PortUse, Multiaddr},
+    core::Multiaddr,
     swarm::{
         dial_opts::{DialOpts, PeerCondition},
         CloseConnection, ConnectionId, FromSwarm, NetworkBehaviour, NotifyHandler, THandler,
@@ -243,7 +243,6 @@ impl NetworkBehaviour for ExocoreBehaviour {
         peer: PeerId,
         _addr: &Multiaddr,
         _role_override: libp2p::core::Endpoint,
-        _port_use: PortUse,
     ) -> Result<THandler<Self>, libp2p::swarm::ConnectionDenied> {
         self.mark_peer_connected(&peer);
         Ok(ExocoreProtoHandler::default())
