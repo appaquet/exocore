@@ -22,7 +22,7 @@
   "dependencies": {
     "core-js": "^3.10.2",
     "exocore": "file:../..",
-    "react": "^18.0.0",
+    "react": "^19.0.0",
     "react-dom": "^18.0.0"
   }
 }
